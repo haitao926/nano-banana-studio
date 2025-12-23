@@ -1,0 +1,17 @@
+# Python caches and envs
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# Node artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Local data/secrets
+backend/data/config.json
+nano_test.png
+
+# Streamlit local state
+.streamlit/

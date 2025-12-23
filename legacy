@@ -1,0 +1,254 @@
+import streamlit as st
+import os
+import time
+from image_generator import ImageGenerator
+from batch_image_generator import BatchImageGenerator
+import glob
+from PIL import Image
+
+# --- 页面配置 ---
+st.set_page_config(
+    page_title="Nano Banana - AI 绘图工坊",
+    page_icon="🍌",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# --- 自定义样式 ---
+st.markdown(r'''
+    <style>
+    .stButton>button {
+        width: 100%;
+    }
+    .success-msg {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background-color: #d4edda;
+        color: #155724;
+    }
+    </style>
+    ''', unsafe_allow_html=True)
+
+# --- 初始化状态 ---
+if 'img_gen' not in st.session_state:
+    st.session_state.img_gen = ImageGenerator()
+if 'batch_gen' not in st.session_state:
+    st.session_state.batch_gen = BatchImageGenerator()
+
+# --- 侧边栏 ---
+st.sidebar.title("🍌 AI 绘图工坊")
+st.sidebar.markdown("---")
+page = st.sidebar.radio(
+    "功能导航",
+    ["✨ 单图创作 (Playground)", "🏭 批量工厂 (Batch Factory)", "🖼️ 作品画廊 (Gallery)"]
+)
+
+st.sidebar.markdown("---")
+with st.sidebar.expander("⚙️ 全局设置"):
+    api_key_input = st.text_input("API Key", value=st.session_state.img_gen.config["auth"]["api_key"], type="password")
+    if api_key_input != st.session_state.img_gen.config["auth"]["api_key"]:
+        st.session_state.img_gen.config["auth"]["api_key"] = api_key_input
+        st.session_state.img_gen.api_key = api_key_input
+        st.session_state.img_gen.headers["Authorization"] = f"Bearer {api_key_input}"
+        st.success("API Key 已更新")
+
+# --- 页面 1: 单图创作 ---
+if page == "✨ 单图创作 (Playground)":
+    st.header("✨ 单图创作")
+    st.caption("快速测试 Prompt，调试风格")
+
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        prompt_text = st.text_area("提示词 (Prompt)", height=150, placeholder="描述你想生成的画面...")
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            size = st.selectbox("尺寸", ["1024x1024", "1792x1024", "1024x1792"], index=0)
+        with c2:
+            quality = st.selectbox("画质", ["standard", "hd"], index=0)
+        with c3:
+            style = st.selectbox("风格", ["vivid", "natural"], index=0)
+        
+        generate_btn = st.button("🚀 生成图片", type="primary")
+
+    with col2:
+        if generate_btn and prompt_text:
+            with st.spinner("正在绘制中..."):
+                # 使用时间戳作为文件名
+                timestamp = int(time.time())
+                filename = f"single_{timestamp}.png"
+                
+                # 调用现有库生成并下载
+                # 临时修改配置以匹配用户选择
+                original_config = st.session_state.img_gen.config.copy()
+                st.session_state.img_gen.config["image"]["size"] = size
+                st.session_state.img_gen.config["image"]["quality"] = quality
+                st.session_state.img_gen.config["image"]["style"] = style
+                
+                save_path = st.session_state.img_gen.generate_and_download(
+                    prompt_text, 
+                    filename, 
+                    folder="generated_images"
+                )
+                
+                # 恢复配置
+                st.session_state.img_gen.config = original_config
+
+                if save_path:
+                    st.image(save_path, caption=f"Size: {size} | Style: {style}", use_container_width=True)
+                    st.success(f"保存至: {save_path}")
+                else:
+                    st.error("生成失败，请检查控制台日志")
+        elif generate_btn and not prompt_text:
+            st.warning("请输入提示词")
+        else:
+            st.info("👈 在左侧输入提示词开始生成")
+
+# --- 页面 2: 批量工厂 ---
+elif page == "🏭 批量工厂 (Batch Factory)":
+    st.header("🏭 批量生成工厂")
+    st.caption("组合 '系统风格' 与 '内容需求'，批量生产图片矩阵")
+
+    tab1, tab2 = st.tabs(["配置与生成", "提示词管理"])
+
+    with tab2:
+        # 提示词管理界面
+        st.subheader("📝 系统提示词 (Styles)")
+        
+        # 添加新系统提示词
+        with st.form("add_sys_prompt"):
+            col_k, col_v, col_btn = st.columns([1, 3, 1])
+            new_sys_key = col_k.text_input("Key (如: cyber_punk)")
+            new_sys_val = col_v.text_input("Prompt (如: 赛博朋克风格，霓虹灯)")
+            if col_btn.form_submit_button("添加"):
+                if new_sys_key and new_sys_val:
+                    st.session_state.batch_gen.add_system_prompt(new_sys_key, new_sys_val)
+                    st.success(f"已添加: {new_sys_key}")
+                    st.rerun()
+
+        # 添加新需求提示词
+        st.subheader("📝 需求提示词 (Contents)")
+        with st.form("add_req_prompt"):
+            col_req, col_btn2 = st.columns([3, 1])
+            new_req = col_req.text_input("需求内容 (如: 机器人喝咖啡)")
+            if col_btn2.form_submit_button("添加"):
+                if new_req:
+                    st.session_state.batch_gen.requirement_prompts.append(new_req)
+                    st.session_state.batch_gen.save_config()
+                    st.success("已添加需求")
+                    st.rerun()
+
+    with tab1:
+        # 选择要生成的组合
+        st.subheader("1. 选择组合")
+        
+        col_sys, col_req = st.columns(2)
+        
+        with col_sys:
+            st.markdown("**选择风格 (System Prompts)**")
+            selected_systems = []
+            # 获取所有key
+            sys_keys = list(st.session_state.batch_gen.system_prompts.keys())
+            
+            # 全选/全不选
+            if st.checkbox("全选所有风格"):
+                selected_systems = sys_keys
+            else:
+                for key in sys_keys:
+                    if st.checkbox(f"**{key}**: {st.session_state.batch_gen.system_prompts[key]}", key=f"sys_{key}"):
+                        selected_systems.append(key)
+
+        with col_req:
+            st.markdown("**选择内容 (Requirement Prompts)**")
+            selected_req_indices = []
+            req_prompts = st.session_state.batch_gen.requirement_prompts
+            
+            if st.checkbox("全选所有需求"):
+                selected_req_indices = list(range(len(req_prompts)))
+            else:
+                for idx, prompt in enumerate(req_prompts):
+                    if st.checkbox(f"{idx+1}. {prompt}", key=f"req_{idx}"):
+                        selected_req_indices.append(idx)
+
+        # 预览与执行
+        st.subheader("2. 确认并执行")
+        total_tasks = len(selected_systems) * len(selected_req_indices)
+        
+        st.info(f"📊 预计生成任务数: **{len(selected_systems)}** (风格) x **{len(selected_req_indices)}** (需求) = **{total_tasks}** 张图片")
+        
+        if st.button("🚀 开始批量生成", type="primary", disabled=total_tasks == 0):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            gallery_placeholder = st.container()
+            
+            completed = 0
+            
+            # 创建保存目录
+            batch_folder = "batch_images"
+            os.makedirs(batch_folder, exist_ok=True)
+
+            for sys_key in selected_systems:
+                for req_idx in selected_req_indices:
+                    # 准备Prompt
+                    sys_prompt = st.session_state.batch_gen.system_prompts[sys_key]
+                    req_prompt = st.session_state.batch_gen.requirement_prompts[req_idx]
+                    full_prompt = f"{sys_prompt} {req_prompt}"
+                    
+                    status_text.markdown(f"**正在生成 ({completed+1}/{total_tasks})**: \n\n🛠️ Style: `{sys_key}` \n\n📝 Content: `{req_prompt}`")
+                    
+                    # 文件名
+                    filename = f"{sys_key}_{req_idx}.png"
+                    
+                    # 调用生成 (复用 img_gen)
+                    save_path = st.session_state.img_gen.generate_and_download(
+                        full_prompt,
+                        filename,
+                        folder=batch_folder
+                    )
+                    
+                    if save_path:
+                        st.toast(f"✅ 完成: {filename}")
+                    else:
+                        st.error(f"❌ 失败: {filename}")
+                    
+                    completed += 1
+                    progress_bar.progress(completed / total_tasks)
+                    
+                    # 避免API速率限制，简短暂停
+                    if completed < total_tasks:
+                        time.sleep(1)
+            
+            status_text.success("🎉 批量生成任务全部完成！")
+
+# --- 页面 3: 画廊 ---
+elif page == "🖼️ 作品画廊 (Gallery)":
+    st.header("🖼️ 作品画廊")
+    
+    # 获取所有图片
+    image_files = []
+    for ext in ["*.png", "*.jpg"]:
+        image_files.extend(glob.glob(f"batch_images/{ext}"))
+        image_files.extend(glob.glob(f"generated_images/{ext}"))
+    
+    # 按时间倒序
+    image_files.sort(key=os.path.getmtime, reverse=True)
+    
+    if not image_files:
+        st.info("暂无生成的图片，快去生成一张吧！")
+    else:
+        # 筛选
+        filter_text = st.text_input("🔍 搜索文件名...", "")
+        if filter_text:
+            image_files = [f for f in image_files if filter_text.lower() in f.lower()]
+            
+        # 分页显示
+        cols = st.columns(4)
+        for idx, img_path in enumerate(image_files):
+            with cols[idx % 4]:
+                try:
+                    image = Image.open(img_path)
+                    st.image(image, use_container_width=True)
+                    st.caption(os.path.basename(img_path))
+                except Exception as e:
+                    st.error(f"无法加载: {os.path.basename(img_path)}")
