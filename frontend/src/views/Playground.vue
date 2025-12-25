@@ -13,7 +13,19 @@
         <n-card class="shadow-sm rounded-xl border-0">
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Prompt (提示词)</label>
+              <div class="flex justify-between items-center mb-2">
+                <label class="block text-sm font-medium text-gray-700">Prompt (提示词)</label>
+                <n-button 
+                  size="tiny" 
+                  secondary 
+                  type="primary" 
+                  @click="handleOptimize" 
+                  :loading="optimizing"
+                  :disabled="!prompt"
+                >
+                  ✨ 魔法润色
+                </n-button>
+              </div>
               <n-input
                 v-model:value="prompt"
                 type="textarea"
@@ -21,6 +33,20 @@
                 :rows="5"
                 class="rounded-lg"
               />
+            </div>
+
+            <!-- 参考图上传区域 -->
+            <div class="border-2 border-red-500 p-2 rounded-lg">
+              <label class="block text-sm font-bold text-red-600 mb-2">📸 参考图 (调试中 - 可选)</label>
+              <n-upload
+                action="/api/upload"
+                :max="1"
+                list-type="image-card"
+                @finish="handleUploadFinish"
+                @remove="handleRemove"
+              >
+                点击上传
+              </n-upload>
             </div>
 
             <div class="grid grid-cols-2 gap-4">
@@ -44,6 +70,28 @@
             >
               {{ loading ? '正在绘制中...' : '🚀 开始生成' }}
             </n-button>
+            
+            <!-- 二次修改区域 -->
+            <div v-if="resultUrl && !loading" class="mt-8 pt-6 border-t border-gray-100">
+              <h3 class="text-md font-bold text-gray-800 mb-3">🎨 基于结果修改</h3>
+              <n-input
+                v-model:value="modificationPrompt"
+                type="textarea"
+                placeholder="例如：给它加上一顶帽子，或者变成夜晚..."
+                :rows="3"
+                class="rounded-lg mb-3"
+              />
+              <n-button 
+                secondary
+                type="info" 
+                class="w-full" 
+                :loading="modifying"
+                :disabled="!modificationPrompt"
+                @click="handleModify"
+              >
+                ✨ 确认修改
+              </n-button>
+            </div>
           </div>
         </n-card>
       </div>
@@ -77,13 +125,18 @@
 
 <script setup>
 import { ref } from 'vue'
-import { NCard, NInput, NSelect, NButton, NSpin, useMessage } from 'naive-ui'
+import { NCard, NInput, NSelect, NButton, NSpin, NUpload, useMessage } from 'naive-ui'
 import axios from 'axios'
 
 const message = useMessage()
 const loading = ref(false)
+const optimizing = ref(false)
+const modifying = ref(false)
+
 const prompt = ref('')
+const modificationPrompt = ref('')
 const resultUrl = ref('')
+const refImageUrl = ref('') // 存储参考图URL
 
 const size = ref('1024x1024')
 const style = ref('vivid')
@@ -99,17 +152,51 @@ const styleOptions = [
   { label: 'Natural (自然)', value: 'natural' }
 ]
 
+const handleUploadFinish = ({ file, event }) => {
+  const res = JSON.parse(event.target.response)
+  if (res.success) {
+    refImageUrl.value = res.url
+    message.success('参考图上传成功')
+  } else {
+    message.error('上传失败')
+  }
+}
+
+const handleRemove = () => {
+  refImageUrl.value = ''
+}
+
+const handleOptimize = async () => {
+  if (!prompt.value) return
+  optimizing.value = true
+  try {
+    const res = await axios.post('/api/optimize_prompt', {
+      prompt: prompt.value
+    })
+    if (res.data.success) {
+      prompt.value = res.data.optimized_prompt
+      message.success('提示词已润色！')
+    }
+  } catch (err) {
+    message.error('润色失败: ' + err.message)
+  } finally {
+    optimizing.value = false
+  }
+}
+
 const handleGenerate = async () => {
   if (!prompt.value) return
   
   loading.value = true
   resultUrl.value = '' // clear previous
+  modificationPrompt.value = '' // clear mod prompt
   
   try {
     const res = await axios.post('/api/generate/single', {
       prompt: prompt.value,
       size: size.value,
-      style: style.value
+      style: style.value,
+      reference_image_url: refImageUrl.value || null
     })
     
     if (res.data.success) {
@@ -120,6 +207,31 @@ const handleGenerate = async () => {
     message.error('生成失败: ' + (err.response?.data?.detail || err.message))
   } finally {
     loading.value = false
+  }
+}
+
+const handleModify = async () => {
+  if (!modificationPrompt.value || !resultUrl.value) return
+  
+  modifying.value = true
+  // Don't clear resultUrl, just show loading on button or overlay? 
+  // User might want to see old image while waiting.
+  
+  try {
+    const res = await axios.post('/api/generate/modify', {
+      prompt: modificationPrompt.value,
+      original_image_url: resultUrl.value
+    })
+    
+    if (res.data.success) {
+      resultUrl.value = res.data.url
+      modificationPrompt.value = '' // clear after success
+      message.success('修改成功！')
+    }
+  } catch (err) {
+    message.error('修改失败: ' + (err.response?.data?.detail || err.message))
+  } finally {
+    modifying.value = false
   }
 }
 

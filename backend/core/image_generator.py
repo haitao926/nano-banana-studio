@@ -10,6 +10,8 @@ import requests
 import time
 from typing import Dict, Optional
 import os
+import base64
+import re
 
 class ImageGenerator:
     """基于 HTTP 请求的通用图片生成器"""
@@ -21,18 +23,20 @@ class ImageGenerator:
             
         self.config_path = config_path
         self.config = self._load_config(config_path)
-        
-        # 加载配置
-        self.base_url = self.config["api"]["base_url"].rstrip('/')
-        self.api_key = self.config["auth"]["api_key"]
-        self.model = self.config["api"]["model"]
+        api_cfg = self.config.get("api", {})
+        auth_cfg = self.config.get("auth", {})
+
+        # 加载配置（以 config 文件为主）
+        self.base_url = api_cfg.get("base_url", "").rstrip("/")
+        self.api_key = auth_cfg.get("api_key", "")
+        self.model = api_cfg.get("model")
         
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-        self.timeout = self.config["api"]["timeout"]
-        self.max_retries = self.config["api"]["max_retries"]
+        self.timeout = api_cfg.get("timeout", 120)
+        self.max_retries = api_cfg.get("max_retries", 3)
 
     def _load_config(self, config_path: str) -> Dict:
         try:
@@ -74,14 +78,163 @@ class ImageGenerator:
             print(f"❌ 请求异常: {e}")
             return None
 
+    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None) -> Optional[str]:
+        """通过 Chat API 生成图片 (针对 Gemini 等模型)"""
+        
+        # 针对 Gemini 的 Prompt 增强: 注入画幅比例指令
+        final_prompt = prompt
+        
+        # 1. 画幅处理
+        if size:
+            if size == "1792x1024":
+                final_prompt += " --ar 16:9"
+            elif size == "1024x1792":
+                final_prompt += " --ar 9:16"
+        
+        # 2. 画质/分辨率处理 (通过提示词增强)
+        # 虽然物理分辨率受限，但通过指令可以显著提升细节密度
+        if quality:
+            if quality.lower() in ["2k", "high"]:
+                final_prompt += ", (highly detailed, 2k resolution, sharp focus)"
+            elif quality.lower() in ["4k", "ultra"]:
+                final_prompt += ", (ultra detailed, 4k resolution, 8k, masterpiece, best quality, extreme detail, hyperrealistic)"
+
+        print(f"🎨 Chat生成提示词: {final_prompt}")
+
+        data = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": final_prompt}
+            ],
+            "n": 1
+        }
+        
+        response = self._make_request("/v1/chat/completions", data)
+        
+        if response and "choices" in response and len(response["choices"]) > 0:
+            content = response["choices"][0]["message"]["content"]
+            # 尝试提取 markdown 图片链接或直接返回内容
+            # 格式通常是 ![image](url) 或 ![image](data:image/...)
+            match = re.search(r'!\[.*?\]\((.*?)\)', content)
+            if match:
+                return match.group(1)
+            return content # 如果没找到markdown格式，直接返回内容尝试
+        return None
+
+    def optimize_prompt(self, raw_prompt: str) -> str:
+        """
+        使用 LLM 优化提示词
+        """
+        system_instruction = (
+            "You are an expert prompt engineer for AI image generation. "
+            "Your task is to expand the user's simple input into a detailed, high-quality prompt "
+            "suitable for advanced AI art models (like Midjourney, Gemini, Stable Diffusion). "
+            "Focus on: Lighting, Texture, Composition, Style, and Atmosphere. "
+            "Output ONLY the optimized prompt, no explanations."
+        )
+        
+        data = {
+            "model": self.model, # Use the same model for text
+            "messages": [
+                {"role": "system", "content": system_instruction},
+                {"role": "user", "content": f"Optimize this prompt: {raw_prompt}"}
+            ],
+            "temperature": 0.7
+        }
+        
+        print(f"✨ 正在优化提示词: {raw_prompt}")
+        response = self._make_request("/v1/chat/completions", data)
+        
+        if response and "choices" in response and len(response["choices"]) > 0:
+            optimized = response["choices"][0]["message"]["content"].strip()
+            print(f"✨ 优化完成: {optimized[:50]}...")
+            return optimized
+        
+        return raw_prompt
+
+    def generate_modified_image(self, prompt: str, base_image_paths: list[str]) -> Optional[str]:
+        """
+        基于原图(多图)进行修改 (Image-to-Image / Vision)
+        """
+        if not base_image_paths:
+            return None
+
+        try:
+            content_list = [
+                {
+                    "type": "text",
+                    "text": f"{prompt} (Return the modified image URL only)"
+                }
+            ]
+
+            for img_path in base_image_paths:
+                if not os.path.exists(img_path):
+                    print(f"⚠️ 跳过不存在的图片: {img_path}")
+                    continue
+                    
+                # 确定MIME类型
+                mime_type = "image/png"
+                if img_path.lower().endswith(".jpg") or img_path.lower().endswith(".jpeg"):
+                    mime_type = "image/jpeg"
+                
+                # 读取并编码
+                with open(img_path, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                
+                content_list.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{mime_type};base64,{encoded_string}"
+                    }
+                })
+
+            print(f"🎨 正在修改图片 ({len(base_image_paths)} refs), 提示词: {prompt}")
+
+            # 2. 构建多模态请求 (OpenAI Vision 格式)
+            data = {
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": content_list
+                    }
+                ],
+                "n": 1
+            }
+
+            response = self._make_request("/v1/chat/completions", data)
+
+            if response and "choices" in response and len(response["choices"]) > 0:
+                content = response["choices"][0]["message"]["content"]
+                # 尝试提取 markdown 图片链接
+                match = re.search(r'!\[.*?\]\((.*?)\)', content)
+                if match:
+                    return match.group(1)
+                # 假如直接返回了URL文本
+                if content.startswith("http"):
+                    return content
+                return content
+            return None
+
+        except Exception as e:
+            print(f"❌ 图片修改失败: {e}")
+            return None
+
     def generate_image(self, prompt: str, size: str = None, quality: str = None, style: str = None) -> Optional[str]:
         """
         生成图片
-        Returns: 图片 URL
+        Returns: 图片 URL 或 Base64 Data URI
         """
         # 使用默认参数
-        if size is None: size = self.config["image"]["size"]
+        if size is None: size = self.config["image"].get("size")
+        if quality is None: quality = self.config["image"].get("quality")
+        if style is None: style = self.config["image"].get("style")
         
+        # 针对 Gemini-3-pro-image-preview 模型的特殊处理
+        if "gemini-3-pro-image-preview" in self.model:
+            print(f"🤖 检测到 Gemini 绘图模型，切换到 Chat 接口...")
+            return self._generate_image_via_chat(prompt, size, quality)
+
         # 构建请求数据 (OpenAI 兼容格式)
         data = {
             "model": self.model,
@@ -102,14 +255,30 @@ class ImageGenerator:
             return None
 
     def download_image(self, image_url: str, save_path: str) -> bool:
-        """下载图片到本地"""
+        """下载图片到本地 (支持 URL 和 Base64 Data URI)"""
         try:
-            print(f"📥 下载图片到: {save_path}")
+            print(f"📥 准备保存图片到: {save_path}")
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+            # 处理 Base64 Data URI
+            if image_url.startswith("data:image"):
+                try:
+                    # 格式: data:image/png;base64,.....
+                    header, encoded = image_url.split(",", 1)
+                    data = base64.b64decode(encoded)
+                    with open(save_path, 'wb') as f:
+                        f.write(data)
+                    print(f"✅ Base64图片解码并保存成功")
+                    return True
+                except Exception as e:
+                    print(f"❌ Base64解码失败: {e}")
+                    return False
+
+            # 处理普通 URL
             # 有些 URL 需要代理，有些不需要，这里直接请求
             response = requests.get(image_url, timeout=60)
 
             if response.status_code == 200:
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
                 with open(save_path, 'wb') as f:
                     f.write(response.content)
                 print(f"✅ 下载成功")

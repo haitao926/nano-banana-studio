@@ -1,0 +1,12 @@
+{
+  "prompt": "帮我生成《红楼梦》中的主要人物关系图，用中文标注",
+  "enhanced_prompt": "帮我生成《红楼梦》中的主要人物关系图，用中文标注 (Subject: math, Target Audience: middle students)",
+  "subject": "math",
+  "grade": "middle",
+  "size": "1024x1024",
+  "quality": "standard",
+  "style": "vivid",
+  "timestamp": 1766588905,
+  "ip": "127.0.0.1",
+  "featured": false
+}
