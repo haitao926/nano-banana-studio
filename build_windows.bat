@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-echo 🍌 Building Nano Banana Studio (Windows EXE) ...
+echo 🍌 Building ReOpenInnoLab-教学绘画 (Windows EXE) ...
 
 REM 1. 构建前端
 echo 🏗️  Building Frontend...
@@ -33,7 +33,7 @@ REM --add-data 语法: 源路径;目标路径 (Windows 分隔符是 ;)
 REM 我们把前端构建产物放入 exe 内部的 'dist' 目录
 REM main.py 是入口
 pyinstaller --noconfirm --onefile --windowed ^
-    --name "NanoBananaStudio" ^
+    --name "ReOpenInnoLab" ^
     --add-data "../frontend/dist;dist" ^
     --hidden-import "uvicorn.logging" ^
     --hidden-import "uvicorn.loops" ^
@@ -54,18 +54,18 @@ if %errorlevel% neq 0 (
 REM 4. 移动成品
 echo ✅ Build Success!
 echo Moving executable to root...
-move dist\NanoBananaStudio.exe ..\NanoBananaStudio.exe
+move dist\ReOpenInnoLab.exe ..\ReOpenInnoLab.exe
 
 REM 清理
 echo Cleaning up...
 rmdir /s /q build
 rmdir /s /q dist
-del NanoBananaStudio.spec
+del ReOpenInnoLab.spec
 
 echo.
 echo ========================================================
 echo 🎉 DONE! 
-echo Portable executable is ready: NanoBananaStudio.exe
+echo Portable executable is ready: ReOpenInnoLab.exe
 echo.
 echo IMPORTANT: 
 echo This EXE expects 'static' and 'data' folders to exist next to it 
