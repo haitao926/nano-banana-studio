@@ -180,7 +180,7 @@
              <div v-if="latestSingleTask" class="relative w-full h-full p-4">
              <div v-if="latestSingleTask.status === 'processing' || latestSingleTask.status === 'pending'" class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-gray-800/80 backdrop-blur z-10">
                 <div class="text-6xl animate-bounce mb-4">🍌</div>
-                <p class="font-bold text-gray-500">生成中，预计 30 秒左右，请稍候...</p>
+                <p class="font-bold text-gray-500">{{ latestSingleTask.statusMsg || '生成中，预计 30 秒左右，请稍候...' }}</p>
              </div>
              <img 
                v-if="latestSingleTask.resultUrl" 
@@ -559,24 +559,43 @@ const handleModify = async () => {
   }
   singleTasks.value.push(newTask)
   
-  try {
-    const res = await axios.post('/api/generate/modify', {
-      prompt: modPrompt,
-      original_image_url: currentTask.resultUrl
-    })
-    
-    if (res.data.success) {
-      newTask.status = 'done'
-      newTask.resultUrl = res.data.url
-      message.success('修改成功！')
-      addToGallery(newTask)
-    }
-  } catch (err) {
-    newTask.status = 'failed'
-    message.error('修改失败: ' + (err.response?.data?.detail || err.message))
-  } finally {
-    processing.value = false
+  const runModify = async () => {
+      try {
+        const res = await axios.post('/api/generate/modify', {
+          prompt: modPrompt,
+          original_image_url: currentTask.resultUrl
+        })
+        
+        if (res.data.success) {
+          newTask.status = 'done'
+          newTask.resultUrl = res.data.url
+          message.success('修改成功！请及时保存')
+          addToGallery(newTask)
+        }
+      } catch (err) {
+        if (err.response && err.response.status === 429) {
+            const msg = err.response.data.detail || ''
+            const match = msg.match(/(\d+)\s*秒/)
+            const waitSeconds = match ? parseInt(match[1]) : 30
+            
+            newTask.status = 'pending'
+            for (let i = waitSeconds; i > 0; i--) {
+                newTask.statusMsg = `排队中... ${i}s 后重试`
+                await new Promise(r => setTimeout(r, 1000))
+            }
+            newTask.statusMsg = '正在重试...'
+            newTask.status = 'processing'
+            await runModify()
+            return
+        }
+        
+        newTask.status = 'failed'
+        message.error('修改失败: ' + (err.response?.data?.detail || err.message))
+      }
   }
+
+  await runModify()
+  processing.value = false
 }
 
 const galleryFilter = ref('all')
@@ -899,10 +918,35 @@ const closeModal = () => {
   selectedImage.value = null
 }
 
-const copyPrompt = () => {
-  if (selectedImage.value && selectedImage.value.prompt) {
-    navigator.clipboard.writeText(selectedImage.value.prompt)
+const copyPrompt = async () => {
+  if (!selectedImage.value || !selectedImage.value.prompt) return
+  
+  const text = selectedImage.value.prompt
+  
+  try {
+    // 优先尝试标准 API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+       await navigator.clipboard.writeText(text)
+       message.success('提示词已复制！')
+       return
+    }
+  } catch (e) {
+    console.warn('Clipboard API failed, trying fallback...')
+  }
+  
+  // 降级方案 (兼容 HTTP)
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.position = 'fixed' // 避免滚动
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textarea)
     message.success('提示词已复制！')
+  } catch (e) {
+    message.error('复制失败，请手动复制')
   }
 }
 
@@ -952,39 +996,68 @@ const toggleFeature = async (img) => {
 
 const executeTask = async (task) => {
   task.status = 'processing'
-  message.info('生成中，预计 30 秒左右，请稍候...', { duration: 5 })
+  // message.info('生成中，预计 30 秒左右，请稍候...', { duration: 5 }) // 减少干扰
+  
   const mapAspectToSize = (ratio) => {
     if (ratio === '16:9') return '1792x1024'
     if (ratio === '9:16') return '1024x1792'
     return '1024x1024'
   }
 
-  try {
-    const payload = {
-      prompt: task.prompt,
-      size: mapAspectToSize(task.settings.aspectRatio),
-      quality: task.settings.quality || 'standard',
-      style: task.settings.style || 'vivid',
-      subject: task.settings.subject || 'general',
-      grade: task.settings.grade || 'general',
-      reference_image_urls: refImageUrls.value // Send list
-    }
-
-    const res = await axios.post('/api/generate/single', payload)
-    task.status = 'done'
-    task.resultUrl = res.data.url
-
-    const remaining = res.data.remaining_quota ?? quota.value.remaining
-    const max = res.data.max ?? quota.value.max
-    quota.value = { remaining, max }
-
-    addToGallery(task)
-    message.success('生成完成')
-  } catch (e) {
-    task.status = 'failed'
-    const detail = e?.response?.data?.detail || '生成失败，请稍后重试'
-    message.error(detail)
+  const payload = {
+    prompt: task.prompt,
+    size: mapAspectToSize(task.settings.aspectRatio),
+    quality: task.settings.quality || 'standard',
+    style: task.settings.style || 'vivid',
+    subject: task.settings.subject || 'general',
+    grade: task.settings.grade || 'general',
+    reference_image_urls: refImageUrls.value
   }
+
+  const runRequest = async () => {
+      try {
+        const res = await axios.post('/api/generate/single', payload)
+        task.status = 'done'
+        task.resultUrl = res.data.url
+        
+        const remaining = res.data.remaining_quota ?? quota.value.remaining
+        const max = res.data.max ?? quota.value.max
+        quota.value = { remaining, max }
+
+        addToGallery(task)
+        message.success('生成完成！请及时保存图片') // 提示下载
+        
+      } catch (e) {
+        if (e.response && e.response.status === 429) {
+            // 触发排队机制
+            const msg = e.response.data.detail || ''
+            // 尝试提取秒数 "请休息 34 秒"
+            const match = msg.match(/(\d+)\s*秒/)
+            const waitSeconds = match ? parseInt(match[1]) : 30
+            
+            console.log(`Rate limit hit, waiting ${waitSeconds}s...`)
+            task.status = 'pending' // 保持 pending 状态或者新增 queued
+            
+            // 倒计时逻辑
+            for (let i = waitSeconds; i > 0; i--) {
+                task.statusMsg = `排队中... ${i}s 后重试`
+                await new Promise(r => setTimeout(r, 1000))
+                // 如果用户手动取消任务，需要跳出（目前还没做取消按钮，先忽略）
+            }
+            
+            task.statusMsg = '正在重试...'
+            task.status = 'processing'
+            await runRequest() # 递归重试
+            return
+        }
+        
+        task.status = 'failed'
+        const detail = e?.response?.data?.detail || '生成失败，请稍后重试'
+        message.error(detail)
+      }
+  }
+
+  await runRequest()
 }
 
 onMounted(() => {

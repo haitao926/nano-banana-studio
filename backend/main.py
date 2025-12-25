@@ -24,11 +24,34 @@ from core.rate_limiter import RateLimiter
 
 app = FastAPI(title="Nano Banana API")
 
+# --- 路径配置 (适配 PyInstaller 打包) ---
+if getattr(sys, 'frozen', False):
+    # PyInstaller 打包模式
+    # BUNDLE_DIR: 临时解压目录 (放代码、前端网页、内置资源) -> 只读
+    BUNDLE_DIR = sys._MEIPASS
+    # EXEC_DIR: exe 所在目录 (放生成的图片、数据库) -> 可读写
+    EXEC_DIR = os.path.dirname(sys.executable)
+else:
+    # 开发模式
+    BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
+    EXEC_DIR = BUNDLE_DIR
+
+# 确保能导入 core 模块 (从 BUNDLE_DIR 找代码)
+if BUNDLE_DIR not in sys.path:
+    sys.path.insert(0, BUNDLE_DIR)
+
+# 动态配置: 优先读取 exe 同级目录的 config，如果没有则读取内置的
+# 这里 core 模块已经在上面导入了
+
+from core.image_generator import ImageGenerator
+from core.batch_image_generator import BatchImageGenerator
+from core.rate_limiter import RateLimiter
+
 # --- CORS 设置 ---
 def _parse_origins(raw: str) -> List[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
-DEFAULT_ORIGINS = "http://localhost:5173"
+DEFAULT_ORIGINS = "http://localhost:5173,http://localhost:6060"
 ALLOWED_ORIGINS = _parse_origins(os.getenv("ALLOWED_ORIGINS", DEFAULT_ORIGINS)) or ["*"]
 
 app.add_middleware(
@@ -39,9 +62,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 路径配置 (使用绝对路径) ---
-# 定义 static 目录的绝对路径: backend/static
-STATIC_DIR = os.path.join(BASE_DIR, "static")
+# --- 静态资源路径 (使用 EXEC_DIR 以便持久化) ---
+# 定义 static 目录: 放在 exe 同级目录下，确保用户数据不丢失
+STATIC_DIR = os.path.join(EXEC_DIR, "static")
 GENERATED_DIR = os.path.join(STATIC_DIR, "generated")
 BATCH_DIR = os.path.join(STATIC_DIR, "batch")
 UPLOAD_DIR = os.path.join(STATIC_DIR, "uploads")
@@ -55,9 +78,22 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # --- 初始化核心类 ---
+# 确保 data 目录存在
+DATA_DIR = os.path.join(EXEC_DIR, "data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
 img_gen = ImageGenerator()
 batch_gen = BatchImageGenerator()
-rate_limiter = RateLimiter()
+# 显式指定 DB 路径，防止写入临时目录
+rate_limiter = RateLimiter(db_path=os.path.join(DATA_DIR, "rate_limit.db"))
+
+@app.on_event("startup")
+async def startup_event():
+    """服务启动后的提示信息"""
+    print("\n" + "="*50)
+    print("🍌 Nano Banana Studio is READY!")
+    print("👉 Open in Browser: http://localhost:6060")
+    print("="*50 + "\n")
 
 # --- 数据模型 ---
 class SingleGenRequest(BaseModel):
@@ -482,11 +518,17 @@ async def get_gallery():
 
 # --- 前端托管配置 (生产环境模式) ---
 # 这部分必须放在所有 API 路由之后
-FRONTEND_DIST_DIR = os.path.join(BASE_DIR, "..", "frontend", "dist")
+if getattr(sys, 'frozen', False):
+    # 打包模式: 前端资源被打入 exe 内部的 dist 目录
+    FRONTEND_DIST_DIR = os.path.join(BUNDLE_DIR, "dist")
+else:
+    # 开发模式
+    FRONTEND_DIST_DIR = os.path.join(BUNDLE_DIR, "..", "frontend", "dist")
+
 FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 
 if os.path.exists(FRONTEND_DIST_DIR):
-    print("📦 Found frontend build, enabling static serving...")
+    print(f"📦 Found frontend build at {FRONTEND_DIST_DIR}, enabling static serving...")
     
     # 1. 挂载 assets 目录 (CSS/JS/Images)
     if os.path.exists(FRONTEND_ASSETS_DIR):
