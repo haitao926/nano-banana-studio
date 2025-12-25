@@ -1,0 +1,13 @@
+{
+  "prompt": "我想要一副图，来解释声音是如何被识别成文字的",
+  "enhanced_prompt": "我想要一副图，来解释声音是如何被识别成文字的 (Subject: it_ai, Target Audience: middle students), (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "it_ai",
+  "grade": "middle",
+  "size": "1792x1024",
+  "quality": "4k",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766627831,
+  "ip": "10.20.228.52",
+  "featured": false
+}
