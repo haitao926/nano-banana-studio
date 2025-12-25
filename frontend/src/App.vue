@@ -8,8 +8,8 @@
           <div class="flex items-center gap-3">
             <img src="/logo.png" class="h-8 w-auto object-contain" />
             <div>
-              <h1 class="font-bold text-lg tracking-tight leading-none">智能绘图工作室</h1>
-              <div class="text-[10px] font-bold text-yellow-600 tracking-widest uppercase">Smart AI Studio</div>
+              <h1 class="font-bold text-lg tracking-tight leading-none">ReOpenInnoLab-教学绘画</h1>
+              <div class="text-[10px] font-bold text-yellow-600 tracking-widest uppercase">AI Teaching Assistant</div>
             </div>
           </div>
 

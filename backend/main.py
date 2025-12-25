@@ -22,7 +22,7 @@ from core.image_generator import ImageGenerator
 from core.batch_image_generator import BatchImageGenerator
 from core.rate_limiter import RateLimiter
 
-app = FastAPI(title="Nano Banana API")
+app = FastAPI(title="ReOpenInnoLab API")
 
 # --- 路径配置 (适配 PyInstaller 打包) ---
 if getattr(sys, 'frozen', False):
@@ -91,7 +91,7 @@ rate_limiter = RateLimiter(db_path=os.path.join(DATA_DIR, "rate_limit.db"))
 async def startup_event():
     """服务启动后的提示信息"""
     print("\n" + "="*50)
-    print("🍌 Nano Banana Studio is READY!")
+    print("🍌 ReOpenInnoLab-教学绘画 is READY!")
     print("👉 Open in Browser: http://localhost:6060")
     print("="*50 + "\n")
 

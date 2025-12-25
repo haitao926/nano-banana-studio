@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🍌 Building Nano Banana Studio for Production..."
+echo "🍌 Building ReOpenInnoLab-教学绘画 for Production..."
 
 # 1. 构建前端
 echo "🏗️  Building Frontend..."
