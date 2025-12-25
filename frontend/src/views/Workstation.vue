@@ -1062,7 +1062,7 @@ const executeTask = async (task) => {
             
             task.statusMsg = '正在重试...'
             task.status = 'processing'
-            await runRequest() # 递归重试
+            await runRequest() // 递归重试
             return
         }
         
