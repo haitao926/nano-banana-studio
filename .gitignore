@@ -15,3 +15,5 @@ nano_test.png
 
 # Streamlit local state
 .streamlit/
+backend/data/rate_limit.db
+backend/venv/
