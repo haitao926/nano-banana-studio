@@ -860,10 +860,25 @@ const handleGenerateBatch = async () => {
 const processBatchQueue = async () => {
   if (processing.value) return
   processing.value = true
+  
   while (true) {
     const nextTask = batchQueue.value.find(t => t.status === 'pending')
     if (!nextTask) break
+    
     await executeTask(nextTask)
+    
+    // 如果任务成功，且队列里还有任务，主动等待，避免立刻触发 429
+    // 后端限制已改为 12s，这里我们设置 15s 的安全间隔
+    const hasMore = batchQueue.value.some(t => t.status === 'pending')
+    if (nextTask.status === 'done' && hasMore) {
+        for (let i = 15; i > 0; i--) {
+            // 这里我们需要一种方式通知 UI 正在冷却，但又不占用 specific task 的 status
+            // 简单起见，我们借用 message 或者一个全局状态，或者直接在下一个任务上显示？
+            // 更好的体验：直接等待即可，让下一个任务开始时去处理（或者预先显示等待）
+            // 咱们简单 sleep，但在控制台或界面上也许看不出来
+            await new Promise(r => setTimeout(r, 1000))
+        }
+    }
   }
   processing.value = false
 }
@@ -1025,7 +1040,7 @@ const executeTask = async (task) => {
         quota.value = { remaining, max }
 
         addToGallery(task)
-        message.success('生成完成！请及时保存图片') // 提示下载
+        message.success('🎉 生成完成！请点击图片及时下载保存', { duration: 5000 }) 
         
       } catch (e) {
         if (e.response && e.response.status === 429) {

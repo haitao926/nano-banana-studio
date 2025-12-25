@@ -1,0 +1,13 @@
+{
+  "prompt": "A glowing paper airplane gliding through a futuristic classroom, leaving a light trail, 3d render, cinematic lighting",
+  "enhanced_prompt": "A glowing paper airplane gliding through a futuristic classroom, leaving a light trail, 3d render, cinematic lighting (Subject: intro_challenge), (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "intro_challenge",
+  "grade": "general",
+  "size": "1792x1024",
+  "quality": "4k",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766633964,
+  "ip": "10.20.219.93",
+  "featured": false
+}

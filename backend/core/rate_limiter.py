@@ -50,8 +50,8 @@ class RateLimiter:
             )
             last_time = cursor.fetchone()[0]
             
-            if last_time and (now - last_time < 60):
-                remaining = int(60 - (now - last_time))
+            if last_time and (now - last_time < 12):
+                remaining = int(12 - (now - last_time))
                 return False, f"太频繁啦！灵感需要沉淀，请休息 {remaining} 秒后再试。\n趁这段时间好好构思一下更完美的提示词吧！"
 
             # 2. 检查每周限制 (20张/周)

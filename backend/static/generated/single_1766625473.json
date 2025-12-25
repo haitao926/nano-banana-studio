@@ -1,0 +1,13 @@
+{
+  "prompt": "一个帅气的邱老师在跳舞",
+  "enhanced_prompt": "一个帅气的邱老师在跳舞 (Subject: it_ai, Target Audience: middle students), (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "it_ai",
+  "grade": "middle",
+  "size": "1024x1792",
+  "quality": "4k",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766625473,
+  "ip": "10.20.227.45",
+  "featured": false
+}
