@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import os
@@ -534,20 +534,23 @@ if os.path.exists(FRONTEND_DIST_DIR):
     if os.path.exists(FRONTEND_ASSETS_DIR):
         app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="assets")
 
-    # 2. 挂载根路径和其他前端路由 -> 返回 index.html
+    # 2. 挂载根路径和其他前端路由
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # 如果请求的是 API 或 已有的 static 资源，FastAPI 会在上面优先匹配
-        # 这里只处理剩下的路径，即前端页面路由
-        
-        # 排除已知的 API 前缀 (双重保险)
+        # 排除已知的 API 前缀
         if full_path.startswith("api/") or full_path.startswith("static/"):
             raise HTTPException(status_code=404)
+        
+        # 1. 尝试直接从 dist 根目录服务静态文件 (如 logo.png, favicon.ico)
+        file_path = os.path.join(FRONTEND_DIST_DIR, full_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
             
+        # 2. 否则返回 index.html (SPA 路由)
         index_path = os.path.join(FRONTEND_DIST_DIR, "index.html")
         if os.path.exists(index_path):
-            with open(index_path, "r", encoding="utf-8") as f:
-                return HTMLResponse(content=f.read())
+            return FileResponse(index_path)
+            
         return {"error": "Frontend build not found"}
 else:
     print("⚠️ Frontend dist not found. Run 'npm run build' in frontend/ first.")
