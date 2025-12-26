@@ -6,7 +6,7 @@
         <!-- 顶部导航栏 -->
         <header class="fixed top-0 left-0 right-0 h-16 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 z-50 flex items-center justify-between px-6">
           <div class="flex items-center gap-3">
-            <img src="/logo.png" class="h-8 w-auto object-contain" />
+            <img src="/logo.png" class="h-8 w-auto object-contain invert dark:invert-0" />
             <div>
               <h1 class="font-bold text-lg tracking-tight leading-none">ReOpenInnoLab-教学绘画</h1>
               <div class="text-[10px] font-bold text-yellow-600 tracking-widest uppercase">AI Teaching Assistant</div>
