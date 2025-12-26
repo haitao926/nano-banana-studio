@@ -67,7 +67,7 @@
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
               <!-- 学科 -->
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Subject</label>
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">学科 (Subject)</label>
                 <n-popselect v-model:value="settings.subject" :options="subjectOptions" trigger="click">
                   <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-yellow-50 transition-colors truncate">
                     <span>{{ getSubjectLabel(settings.subject) }}</span>
@@ -78,7 +78,7 @@
 
               <!-- 年级 -->
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Grade</label>
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">年级 (Grade)</label>
                 <n-popselect v-model:value="settings.grade" :options="gradeOptions" trigger="click">
                   <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-green-50 transition-colors truncate">
                     <span>{{ getGradeLabel(settings.grade) }}</span>
@@ -89,7 +89,7 @@
 
               <!-- 画幅 -->
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ratio</label>
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">画幅 (Ratio)</label>
                  <n-popselect v-model:value="settings.aspectRatio" :options="ratioOptions" trigger="click">
                   <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors truncate">
                     <span>{{ settings.aspectRatio }}</span>
@@ -100,7 +100,7 @@
 
               <!-- 画质 -->
               <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Quality</label>
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">画质 (Quality)</label>
                  <n-popselect v-model:value="settings.quality" :options="qualityOptions" trigger="click">
                   <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors truncate">
                     <span>{{ getQualityLabel(settings.quality).split(' ')[0] }}</span>
@@ -113,8 +113,8 @@
             <!-- 参考图上传 (多图) -->
             <div class="space-y-1">
                 <div class="flex justify-between items-center">
-                   <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Reference Images ({{ refImageUrls.length }}/4)</label>
-                   <button v-if="refImageUrls.length > 0" @click="refImageUrls = []" class="text-[10px] text-red-400 hover:underline">Clear All</button>
+                   <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">参考图 (Reference Images) {{ refImageUrls.length }}/4</label>
+                   <button v-if="refImageUrls.length > 0" @click="refImageUrls = []" class="text-[10px] text-red-400 hover:underline">清空 (Clear)</button>
                 </div>
                 <n-upload
                   action="/api/upload"
@@ -127,7 +127,7 @@
                 >
                   <div class="flex flex-col items-center justify-center text-gray-400 text-xs gap-1">
                     <span class="text-lg">📸</span>
-                    <span class="scale-90">Add Ref</span>
+                    <span class="scale-90">上传图片</span>
                   </div>
                 </n-upload>
             </div>
@@ -135,13 +135,13 @@
             <!-- 输入框 -->
                         <div class="space-y-2">
                            <div class="flex justify-between items-center">
-                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">提示词</label>
+                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">提示词 (Prompt)</label>
                              <button 
                                @click="handleOptimizePrompt" 
                                class="text-xs flex items-center gap-1 text-purple-600 hover:text-purple-800 font-bold transition-colors disabled:opacity-50"
                                :disabled="!inputText.trim() || processing"
                              >
-                               <span>🪄</span> Magic Optimize
+                               <span>🪄</span> 魔法润色
                              </button>
                            </div>
                            <textarea
@@ -158,13 +158,13 @@
                               :disabled="!inputText.trim() || processing || quota.remaining <= 0"
                               class="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <span v-if="processing">Drawing...</span>
-                              <span v-else-if="quota.remaining <= 0">No Quota Left</span>
-                              <span v-else>Generate Image</span>
+                              <span v-if="processing">绘制中...</span>
+                              <span v-else-if="quota.remaining <= 0">额度耗尽</span>
+                              <span v-else>开始绘制</span>
                             </button>
                                                             <div class="flex justify-between text-xs text-gray-400 px-1 mt-2">
-                                                               <span>Weekly Quota: {{ quota.remaining }} / {{ quota.max }}</span>
-                                                               <span v-if="quota.remaining < 5" class="text-red-400 font-bold">Low Quota!</span>
+                                                               <span>本周额度: {{ quota.remaining }} / {{ quota.max }}</span>
+                                                               <span v-if="quota.remaining < 5" class="text-red-400 font-bold">额度告急!</span>
                                                             </div>
                                                             <!-- 常驻联系信息 -->
                                                             <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-center">
@@ -228,7 +228,7 @@
         <section class="max-w-6xl mx-auto space-y-6">
            <div class="text-center space-y-2">
             <h2 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
-              Batch Factory
+              批量工坊 (Batch Factory)
             </h2>
             <p class="text-gray-400">文本输入 或 JSON导入，灵活满足大规模生产。</p>
           </div>
@@ -245,8 +245,8 @@
                />
                <div class="text-4xl">📂</div>
                <div>
-                  <h3 class="font-bold text-blue-800 dark:text-blue-300">Import JSON</h3>
-                  <p class="text-xs text-blue-600 dark:text-gray-400 mt-1">Drag & Drop or Click</p>
+                  <h3 class="font-bold text-blue-800 dark:text-blue-300">导入 JSON (Import JSON)</h3>
+                  <p class="text-xs text-blue-600 dark:text-gray-400 mt-1">拖拽或点击上传</p>
                </div>
                <button @click.stop="downloadTemplate" class="text-xs text-gray-500 underline hover:text-blue-600 z-10 relative">下载模板 (Template)</button>
             </div>
@@ -254,7 +254,7 @@
             <!-- 右侧：文本输入区 -->
             <div class="md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden flex flex-col">
                <div class="flex items-center gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                  <span class="text-sm font-bold text-gray-500">Default Settings:</span>
+                  <span class="text-sm font-bold text-gray-500">默认设置 (Default):</span>
                   <n-popselect v-model:value="settings.subject" :options="subjectOptions" trigger="click">
                     <button class="px-3 py-1 bg-white dark:bg-gray-700 rounded-md text-sm border hover:border-blue-400 transition-colors">
                       🏷️ {{ getSubjectLabel(settings.subject) }}
@@ -280,8 +280,8 @@
                       :disabled="!batchInputText.trim() || processing"
                       class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50"
                     >
-                      <span v-if="processing">Processing...</span>
-                      <span v-else>🚀 Run Batch Text</span>
+                      <span v-if="processing">处理中...</span>
+                      <span v-else>🚀 开始批量生成</span>
                     </button>
                   </div>
                </div>
@@ -292,8 +292,8 @@
         <!-- 批量任务流 -->
         <section v-if="batchQueue.length > 0" class="max-w-[1600px] mx-auto px-6">
            <div class="flex items-center justify-between mb-4">
-              <h3 class="font-bold text-gray-500">Task Queue ({{ batchQueue.filter(t=>t.status==='done').length }}/{{ batchQueue.length }})</h3>
-              <button @click="batchQueue = []" class="text-xs text-red-400 hover:underline">Clear All</button>
+              <h3 class="font-bold text-gray-500">任务队列 (Task Queue) ({{ batchQueue.filter(t=>t.status==='done').length }}/{{ batchQueue.length }})</h3>
+              <button @click="batchQueue = []" class="text-xs text-red-400 hover:underline">清空 (Clear All)</button>
            </div>
            
            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -327,13 +327,13 @@
     <Transition name="fade" mode="out-in">
       <div v-if="currentTab === 'gallery'" class="flex gap-8 max-w-[1600px] mx-auto min-h-[600px]">
         <aside class="w-64 flex-shrink-0 space-y-2">
-          <h3 class="font-bold text-gray-400 px-4 mb-4 text-xs uppercase tracking-wider">Subjects</h3>
+          <h3 class="font-bold text-gray-400 px-4 mb-4 text-xs uppercase tracking-wider">学科分类 (Subjects)</h3>
           <button 
             @click="galleryFilter = 'all'"
             class="w-full text-left px-4 py-3 rounded-xl font-medium transition-colors flex justify-between items-center"
             :class="galleryFilter === 'all' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-600'"
           >
-            <span>全部图片</span>
+            <span>全部图片 (All)</span>
             <span class="opacity-60 text-xs">{{ galleryImages.length }}</span>
           </button>
           <button 
@@ -402,14 +402,14 @@
             <div class="flex-1 bg-black/5 dark:bg-black flex items-center justify-center p-4 overflow-hidden relative group">
                <img :src="selectedImage.url" class="max-w-full max-h-full object-contain shadow-sm" />
                <a :href="selectedImage.url" target="_blank" download class="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 bg-white/90 text-black px-4 py-2 rounded-lg text-sm font-bold shadow transition-opacity">
-                  Download Original
+                  下载原图 (Download)
                </a>
             </div>
 
             <!-- 右侧：信息面板 -->
             <div class="w-full md:w-96 p-8 flex flex-col border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
                <div class="mb-6">
-                  <h3 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white">Image Details</h3>
+                  <h3 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white">图片详情</h3>
                   <div class="flex flex-wrap gap-2">
                      <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-bold uppercase tracking-wide">
                         {{ getSubjectLabel(selectedImage.subject) }}
@@ -424,7 +424,7 @@
                </div>
 
                <div class="flex-1 overflow-y-auto mb-6 pr-2 custom-scrollbar">
-                  <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">Prompt</label>
+                  <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">提示词 (Prompt)</label>
                   <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap font-mono bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
                      {{ selectedImage.prompt }}
                   </p>
@@ -435,7 +435,7 @@
                     @click="copyPrompt"
                     class="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                   >
-                     <span>📋</span> Copy Prompt
+                     <span>📋</span> 复制提示词
                   </button>
                </div>
             </div>
