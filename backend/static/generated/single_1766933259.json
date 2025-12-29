@@ -1,0 +1,13 @@
+{
+  "prompt": "Visualizing Affine Transformation. A distorted, warped wireframe grid (representing a skewed document) floating in void space. Glowing digital guide lines connect the three       │\n│    corners of the warped grid to a perfect, glowing green rectangular grid in the background. Mathematical formulas (matrices) floating faintly in the air. The transition from chaos to order. 3D     │\n│    holographic projection style, cybernetic visuals.\",                                                                                                                                                 │\n│ 28 +     \"subject\": \"Geometric Rectification Mathematics\",                                                                                                                                             │\n│ 29 +     \"aspectRatio\": \"16:9\",",
+  "enhanced_prompt": "Visualizing Affine Transformation. A distorted, warped wireframe grid (representing a skewed document) floating in void space. Glowing digital guide lines connect the three       │\n│    corners of the warped grid to a perfect, glowing green rectangular grid in the background. Mathematical formulas (matrices) floating faintly in the air. The transition from chaos to order. 3D     │\n│    holographic projection style, cybernetic visuals.\",                                                                                                                                                 │\n│ 28 +     \"subject\": \"Geometric Rectification Mathematics\",                                                                                                                                             │\n│ 29 +     \"aspectRatio\": \"16:9\",, (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "general",
+  "grade": "general",
+  "size": "1024x1024",
+  "quality": "standard",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766933259,
+  "ip": "127.0.0.1",
+  "featured": false
+}

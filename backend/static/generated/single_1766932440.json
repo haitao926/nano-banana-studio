@@ -1,0 +1,13 @@
+{
+  "prompt": "     \"id\": \"slide_1_cover\",\n      \"purpose\": \"课程封面\",\n      \"description\": \"展示'机器之眼'的概念。一只巨大的、由发光的数字代码组成的机械眼睛，正在扫描一张漂浮的试卷。\",\n      \"prompt\": \"A giant, glowing mechanical eye made of digital binary code matrix, hovering in a dark cyberspace. The eye is scanning a floating exam paper with a red laser beam. Cyberpunk style, volumetric lighting, high detail, 8k resolution, deep blue and cyan neon tones.\",\n      \"aspect_ratio\": \"16:9\"",
+  "enhanced_prompt": "     \"id\": \"slide_1_cover\",\n      \"purpose\": \"课程封面\",\n      \"description\": \"展示'机器之眼'的概念。一只巨大的、由发光的数字代码组成的机械眼睛，正在扫描一张漂浮的试卷。\",\n      \"prompt\": \"A giant, glowing mechanical eye made of digital binary code matrix, hovering in a dark cyberspace. The eye is scanning a floating exam paper with a red laser beam. Cyberpunk style, volumetric lighting, high detail, 8k resolution, deep blue and cyan neon tones.\",\n      \"aspect_ratio\": \"16:9\", (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "general",
+  "grade": "general",
+  "size": "1024x1024",
+  "quality": "standard",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766932440,
+  "ip": "127.0.0.1",
+  "featured": false
+}

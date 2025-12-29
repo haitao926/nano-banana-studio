@@ -1,0 +1,13 @@
+{
+  "prompt": "Split screen visualization. Left side: A macro photo of a pencil mark on paper texture. Right side: The same image transforming into a grid of glowing green digital numbers (0-255) matrix. A magnifying glass effect showing the transition from analog ink to digital data. The Matrix code style, isometric view, scientific illustration, high contrast.",
+  "enhanced_prompt": "Split screen visualization. Left side: A macro photo of a pencil mark on paper texture. Right side: The same image transforming into a grid of glowing green digital numbers (0-255) matrix. A magnifying glass effect showing the transition from analog ink to digital data. The Matrix code style, isometric view, scientific illustration, high contrast. (Subject: Image Digitization Matrix Principle), (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "Image Digitization Matrix Principle",
+  "grade": "general",
+  "size": "1024x1024",
+  "quality": "4k",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766932817,
+  "ip": "127.0.0.1",
+  "featured": false
+}

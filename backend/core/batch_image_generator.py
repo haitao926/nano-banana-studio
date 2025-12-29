@@ -138,7 +138,7 @@ class BatchImageGenerator:
             print(f"  {i+1}. {prompt}")
 
     def generate_batch(self, system_key: str = None, requirement_indices: List[int] = None,
-                      custom_combinations: List[Dict] = None) -> Dict[str, Any]:
+                      custom_combinations: List[Dict] = None, output_dir: str = "batch_images") -> Dict[str, Any]:
         """
         批量生成图片
 
@@ -146,6 +146,7 @@ class BatchImageGenerator:
             system_key: 系统提示词键名，None表示使用所有系统提示词
             requirement_indices: 需求提示词索引列表，None表示使用所有需求提示词
             custom_combinations: 自定义组合列表 [{"system_key": "xxx", "requirement_index": 0}, ...]
+            output_dir: 输出目录
 
         Returns:
             Dict: 生成结果
@@ -153,7 +154,7 @@ class BatchImageGenerator:
         print("\n开始批量生成图片...")
 
         # 生成任务列表
-        tasks = self._create_tasks(system_key, requirement_indices, custom_combinations)
+        tasks = self._create_tasks(system_key, requirement_indices, custom_combinations, output_dir)
 
         if not tasks:
             print("没有找到匹配的生成任务")
@@ -228,8 +229,19 @@ class BatchImageGenerator:
 
         return results
 
+    def _sanitize_filename(self, text: str) -> str:
+        """根据文本生成安全的文件名"""
+        import re
+        # 移除特殊字符，只保留中英文、数字、下划线
+        # clean_text = re.sub(r'[^\w\u4e00-\u9fa5]', '_', text)
+        # 简单处理：空格变下划线
+        clean_text = text.replace(" ", "_")
+        # 移除路径相关字符
+        clean_text = re.sub(r'[\\/:*?"<>|]', '', clean_text)
+        return clean_text[:50]  # 限制长度
+
     def _create_tasks(self, system_key: str = None, requirement_indices: List[int] = None,
-                     custom_combinations: List[Dict] = None) -> List[GenerationTask]:
+                     custom_combinations: List[Dict] = None, output_dir: str = "batch_images") -> List[GenerationTask]:
         """创建生成任务列表"""
         tasks = []
 
@@ -242,11 +254,20 @@ class BatchImageGenerator:
                 if (sys_key in self.system_prompts and
                     0 <= req_index < len(self.requirement_prompts)):
 
+                    req_prompt = self.requirement_prompts[req_index]
+                    sys_prompt = self.system_prompts[sys_key]
+                    
+                    # 生成更有意义的文件名
+                    # 组合系统Key和需求Prompt的前几个字
+                    clean_req = self._sanitize_filename(req_prompt)
+                    filename = f"{sys_key}_{clean_req}_{int(time.time())}.png"
+
                     task = GenerationTask(
                         id=f"{sys_key}_{req_index}",
-                        system_prompt=self.system_prompts[sys_key],
-                        requirement_prompt=self.requirement_prompts[req_index],
-                        filename=f"{sys_key}_{req_index}.png"
+                        system_prompt=sys_prompt,
+                        requirement_prompt=req_prompt,
+                        filename=filename,
+                        folder=output_dir
                     )
                     tasks.append(task)
         else:
@@ -264,11 +285,19 @@ class BatchImageGenerator:
             # 生成笛卡尔积
             for sys_key in system_keys:
                 for req_index in req_indices:
+                    req_prompt = self.requirement_prompts[req_index]
+                    sys_prompt = self.system_prompts[sys_key]
+                    
+                    clean_req = self._sanitize_filename(req_prompt)
+                    # 增加时间戳防止覆盖
+                    filename = f"{sys_key}_{clean_req}_{int(time.time())}.png"
+
                     task = GenerationTask(
                         id=f"{sys_key}_{req_index}",
-                        system_prompt=self.system_prompts[sys_key],
-                        requirement_prompt=self.requirement_prompts[req_index],
-                        filename=f"{sys_key}_{req_index}.png"
+                        system_prompt=sys_prompt,
+                        requirement_prompt=req_prompt,
+                        filename=filename,
+                        folder=output_dir
                     )
                     tasks.append(task)
 

@@ -23,8 +23,25 @@ class ImageGenerator:
             
         self.config_path = config_path
         self.config = self._load_config(config_path)
-        api_cfg = self.config.get("api", {})
-        auth_cfg = self.config.get("auth", {})
+        self._apply_config(self.config)
+
+    def _load_config(self, config_path: str) -> Dict:
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"配置文件加载失败: {e}")
+            return {}
+
+    def _apply_config(self, config: Dict):
+        """将配置字典应用到实例属性"""
+        if not isinstance(config, dict):
+            config = {}
+        self.config = config
+        api_cfg = self.config.get("api", {}) or {}
+        auth_cfg = self.config.get("auth", {}) or {}
+        # 确保 image 节点存在，避免下游 KeyError
+        self.config.setdefault("image", {})
 
         # 加载配置（以 config 文件为主）
         self.base_url = api_cfg.get("base_url", "").rstrip("/")
@@ -38,13 +55,39 @@ class ImageGenerator:
         self.timeout = api_cfg.get("timeout", 120)
         self.max_retries = api_cfg.get("max_retries", 3)
 
-    def _load_config(self, config_path: str) -> Dict:
+    def save_config(self):
+        """持久化当前配置"""
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                json.dump(self.config, f, ensure_ascii=False, indent=2)
+            return True
         except Exception as e:
-            print(f"配置文件加载失败: {e}")
-            return {}
+            print(f"配置文件保存失败: {e}")
+            return False
+
+    def reload_config(self):
+        """从磁盘重新加载配置"""
+        self.config = self._load_config(self.config_path)
+        self._apply_config(self.config)
+
+    def update_config(self, base_url: Optional[str] = None, model: Optional[str] = None, api_key: Optional[str] = None):
+        """更新并保存配置"""
+        if not isinstance(self.config, dict):
+            self.config = {}
+        self.config.setdefault("api", {})
+        self.config.setdefault("auth", {})
+        self.config.setdefault("image", {})
+
+        if base_url is not None:
+            self.config["api"]["base_url"] = base_url.rstrip("/")
+        if model is not None:
+            self.config["api"]["model"] = model
+        if api_key is not None:
+            self.config["auth"]["api_key"] = api_key
+
+        self._apply_config(self.config)
+        self.save_config()
 
     def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0) -> Optional[Dict]:
         """发送API请求"""

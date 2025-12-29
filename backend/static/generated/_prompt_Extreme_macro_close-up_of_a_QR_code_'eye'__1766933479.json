@@ -1,0 +1,13 @@
+{
+  "prompt": " \"prompt\": \"Extreme macro close-up of a QR code 'eye' (position detection pattern). The black and white squares are built from futuristic cubic blocks with metallic texture. A glowing orange digital ruler overlays the image, measuring the black and white widths with indicators showing the ratio '1:1:3:1:1'. Engineering blueprint style, shallow depth of field, tech overlay.\",\n    \"subject\": \"QR Code Finder Pattern Geometry\",\n    \"aspectRatio\": \"1:1\",\n    \"quality\": \"high detail\"",
+  "enhanced_prompt": " \"prompt\": \"Extreme macro close-up of a QR code 'eye' (position detection pattern). The black and white squares are built from futuristic cubic blocks with metallic texture. A glowing orange digital ruler overlays the image, measuring the black and white widths with indicators showing the ratio '1:1:3:1:1'. Engineering blueprint style, shallow depth of field, tech overlay.\",\n    \"subject\": \"QR Code Finder Pattern Geometry\",\n    \"aspectRatio\": \"1:1\",\n    \"quality\": \"high detail\", (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "general",
+  "grade": "general",
+  "size": "1024x1024",
+  "quality": "standard",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766933479,
+  "ip": "127.0.0.1",
+  "featured": false
+}

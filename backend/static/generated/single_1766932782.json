@@ -1,0 +1,13 @@
+{
+  "prompt": "A giant, glowing mechanical eye made of digital binary code matrix, hovering in a dark cyberspace. The eye is scanning a floating exam paper with a red laser beam. Cyberpunk style, volumetric lighting, high detail, 8k resolution, deep blue and cyan neon tones, cinematic composition.",
+  "enhanced_prompt": "A giant, glowing mechanical eye made of digital binary code matrix, hovering in a dark cyberspace. The eye is scanning a floating exam paper with a red laser beam. Cyberpunk style, volumetric lighting, high detail, 8k resolution, deep blue and cyan neon tones, cinematic composition. (Subject: AI Computer Vision Course Cover), (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "AI Computer Vision Course Cover",
+  "grade": "general",
+  "size": "1792x1024",
+  "quality": "high detail",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766932782,
+  "ip": "127.0.0.1",
+  "featured": false
+}

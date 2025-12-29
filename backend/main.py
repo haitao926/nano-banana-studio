@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 import os
@@ -11,6 +11,9 @@ import json
 import secrets
 import shutil
 from urllib.parse import quote
+import zipfile
+import io
+import re
 
 # 确保能导入 core 模块
 # 获取当前文件 (main.py) 所在目录 (backend/)
@@ -95,6 +98,17 @@ async def startup_event():
     print("👉 Open in Browser: http://localhost:6060")
     print("="*50 + "\n")
 
+# --- 辅助函数 ---
+def sanitize_filename(text: str) -> str:
+    """根据文本生成安全的文件名"""
+    # 移除特殊字符，只保留中英文、数字、下划线
+    # clean_text = re.sub(r'[^\w\u4e00-\u9fa5]', '_', text)
+    # 简单处理：空格变下划线
+    clean_text = text.replace(" ", "_")
+    # 移除路径相关字符
+    clean_text = re.sub(r'[\\/:*?"<>|]', '', clean_text)
+    return clean_text[:50]  # 限制长度
+
 # --- 数据模型 ---
 class SingleGenRequest(BaseModel):
     prompt: str
@@ -110,6 +124,9 @@ class BatchGenRequest(BaseModel):
     system_keys: List[str]
     requirement_indices: List[int]
 
+class DownloadBatchRequest(BaseModel):
+    filenames: List[str]
+
 class ModifyGenRequest(BaseModel):
     prompt: str
     original_image_url: str
@@ -123,6 +140,11 @@ class AdminLoginRequest(BaseModel):
 class FeatureRequest(BaseModel):
     filename: str
     featured: bool
+
+class ApiSettingsRequest(BaseModel):
+    base_url: str
+    model: str
+    api_key: Optional[str] = None
 
 # --- API 接口 ---
 
@@ -220,6 +242,55 @@ async def optimize_prompt_endpoint(req: OptimizePromptRequest):
         print(f"Error optimizing prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/settings/api")
+async def get_api_settings():
+    """获取当前的 API 调用配置（不返回完整密钥）"""
+    try:
+        current_cfg = img_gen.config or {}
+        api_cfg = current_cfg.get("api", {}) or {}
+        auth_cfg = current_cfg.get("auth", {}) or {}
+        api_key = auth_cfg.get("api_key", "")
+        return {
+            "base_url": api_cfg.get("base_url", ""),
+            "model": api_cfg.get("model", ""),
+            "has_api_key": bool(api_key),
+            "api_key_preview": api_key[-4:] if api_key else ""
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/settings/api")
+async def update_api_settings(req: ApiSettingsRequest):
+    """更新 API 调用配置（BASE_URL / MODEL / API KEY）"""
+    try:
+        base_url = req.base_url.strip()
+        model = req.model.strip()
+        if not base_url:
+            raise HTTPException(status_code=400, detail="BASE_URL is required")
+        if not model:
+            raise HTTPException(status_code=400, detail="MODEL is required")
+
+        # 空字符串表示保留原有 key，只有明确填写才更新
+        new_api_key = req.api_key.strip() if req.api_key is not None else None
+        if new_api_key == "":
+            new_api_key = None
+
+        img_gen.update_config(base_url=base_url, model=model, api_key=new_api_key)
+
+        # 批量生成器共用同一配置，更新后重新加载
+        if hasattr(batch_gen, "generator") and batch_gen.generator:
+            batch_gen.generator.reload_config()
+
+        return {
+            "success": True,
+            "base_url": img_gen.base_url,
+            "model": img_gen.model
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/config")
 async def get_config():
     """获取当前的配置（Prompts）"""
@@ -232,6 +303,99 @@ async def get_config():
     except Exception as e:
         print(f"Error loading config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/generate/batch")
+async def generate_batch_endpoint(req: BatchGenRequest, request: Request):
+    """批量生成"""
+    try:
+        # 简单鉴权/流控
+        client_ip = request.client.host
+        
+        custom_combinations = []
+        target_systems = req.system_keys
+        # 如果未指定，默认全部
+        if not target_systems:
+             target_systems = list(batch_gen.system_prompts.keys())
+             
+        target_reqs = req.requirement_indices
+        if not target_reqs:
+             target_reqs = list(range(len(batch_gen.requirement_prompts)))
+             
+        for sys_key in target_systems:
+            for req_idx in target_reqs:
+                custom_combinations.append({
+                    "system_key": sys_key,
+                    "requirement_index": req_idx
+                })
+        
+        print(f"🧩 Batch request: {len(custom_combinations)} tasks")
+
+        # 调用 generate_batch
+        results = batch_gen.generate_batch(
+            custom_combinations=custom_combinations,
+            output_dir=BATCH_DIR
+        )
+        
+        # 构造返回
+        generated_files = []
+        for task_id, path in results.get("files", {}).items():
+            filename = os.path.basename(path)
+            # 编码 URL
+            url = f"/static/batch/{quote(filename)}"
+            generated_files.append({
+                "id": task_id,
+                "url": url,
+                "filename": filename
+            })
+            
+        return {
+            "success": True,
+            "results": generated_files,
+            "total": results["total_tasks"],
+            "successful": results["successful"]
+        }
+
+    except Exception as e:
+        print(f"Error generating batch: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/download/batch")
+async def download_batch_endpoint(req: DownloadBatchRequest):
+    """打包下载"""
+    try:
+        if not req.filenames:
+            raise HTTPException(status_code=400, detail="No files specified")
+            
+        import time
+        # 创建内存 ZIP
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            for filename in req.filenames:
+                # 尝试在 BATCH_DIR 和 GENERATED_DIR 找
+                p1 = os.path.join(BATCH_DIR, filename)
+                p2 = os.path.join(GENERATED_DIR, filename)
+                
+                target_path = None
+                if os.path.exists(p1): target_path = p1
+                elif os.path.exists(p2): target_path = p2
+                
+                if target_path:
+                    zf.write(target_path, filename)
+                else:
+                    print(f"⚠️ File not found for zip: {filename}")
+        
+        zip_buffer.seek(0)
+        
+        # 返回流
+        zip_filename = f"batch_download_{int(time.time())}.zip"
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]), 
+            media_type="application/zip", 
+            headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
+        )
+    except Exception as e:
+         print(f"Error zipping: {e}")
+         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate/modify")
 async def generate_modify(req: ModifyGenRequest, request: Request):
@@ -257,8 +421,9 @@ async def generate_modify(req: ModifyGenRequest, request: Request):
         # 3. 生成新文件名
         import time
         timestamp = int(time.time())
-        new_filename = f"modified_{timestamp}.png"
-        new_meta_filename = f"modified_{timestamp}.json"
+        safe_prompt = sanitize_filename(req.prompt)
+        new_filename = f"modified_{safe_prompt}_{timestamp}.png"
+        new_meta_filename = f"modified_{safe_prompt}_{timestamp}.json"
         
         # 4. 调用修改生成
         # 临时借用 generate_and_download 里的 download 逻辑，但这里我们直接调 img_gen.generate_modified_image
@@ -331,8 +496,10 @@ async def generate_single(req: SingleGenRequest, request: Request):
 
         import time
         timestamp = int(time.time())
-        filename = f"single_{timestamp}.png"
-        meta_filename = f"single_{timestamp}.json"
+        # 使用 Prompt 作为文件名一部分
+        safe_prompt = sanitize_filename(req.prompt)
+        filename = f"{safe_prompt}_{timestamp}.png"
+        meta_filename = f"{safe_prompt}_{timestamp}.json"
         
         # --- 智能提示词增强 ---
         # 根据学科和年级，自动调整提示词，让生成结果更贴合场景

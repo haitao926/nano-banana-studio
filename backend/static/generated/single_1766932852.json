@@ -1,0 +1,13 @@
+{
+  "prompt": "Abstract data visualization. A chaotic cloud of black and white spheres floating in a dark 3D void. A sharp, glowing red laser plane cuts horizontally through the cloud, perfectly separating the dark spheres (below) from the light spheres (above). Text label 'THRESHOLD' glowing in neon red near the plane. Minimalist sci-fi style, clean lines.",
+  "enhanced_prompt": "Abstract data visualization. A chaotic cloud of black and white spheres floating in a dark 3D void. A sharp, glowing red laser plane cuts horizontally through the cloud, perfectly separating the dark spheres (below) from the light spheres (above). Text label 'THRESHOLD' glowing in neon red near the plane. Minimalist sci-fi style, clean lines. (Subject: Data Thresholding Algorithm Visualization), (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "Data Thresholding Algorithm Visualization",
+  "grade": "general",
+  "size": "1024x1024",
+  "quality": "4k",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766932852,
+  "ip": "127.0.0.1",
+  "featured": false
+}

@@ -1,0 +1,13 @@
+{
+  "prompt": "   \"id\": \"slide_3_matrix\",\n      \"purpose\": \"知识点：图像矩阵化\",\n      \"description\": \"展示一张普通的照片如何逐渐分解为像素网格，每个网格里都是数字。\",\n      \"prompt\": \"Split screen visualization. Left side: A realistic photo of a pencil mark on paper. Right side: The same image turning into a grid of green digital numbers (0-255) matrix. A magnifying glass effect showing the transition from analog ink to digital data. Matrix code style, isometric view, scientific illustration.\",\n      \"aspect_ratio\": \"4:3\"",
+  "enhanced_prompt": "   \"id\": \"slide_3_matrix\",\n      \"purpose\": \"知识点：图像矩阵化\",\n      \"description\": \"展示一张普通的照片如何逐渐分解为像素网格，每个网格里都是数字。\",\n      \"prompt\": \"Split screen visualization. Left side: A realistic photo of a pencil mark on paper. Right side: The same image turning into a grid of green digital numbers (0-255) matrix. A magnifying glass effect showing the transition from analog ink to digital data. Matrix code style, isometric view, scientific illustration.\",\n      \"aspect_ratio\": \"4:3\", (text in image must be in Chinese, text must be clear and legible, high quality typography)",
+  "subject": "general",
+  "grade": "general",
+  "size": "1024x1024",
+  "quality": "standard",
+  "style": "vivid",
+  "reference_images": [],
+  "timestamp": 1766932496,
+  "ip": "127.0.0.1",
+  "featured": false
+}
