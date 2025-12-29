@@ -17,3 +17,4 @@ nano_test.png
 .streamlit/
 backend/data/rate_limit.db
 backend/venv/
+verify_native_api.py
