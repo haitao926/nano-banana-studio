@@ -30,6 +30,16 @@
         >
           <span>🖼️</span> 学科画廊
         </button>
+
+        <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
+
+        <button 
+          @click="currentTab = 'settings'"
+          class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+          :class="currentTab === 'settings' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+        >
+          <span>⚙️</span> 设置
+        </button>
         
         <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
 
@@ -293,7 +303,16 @@
         <section v-if="batchQueue.length > 0" class="max-w-[1600px] mx-auto px-6">
            <div class="flex items-center justify-between mb-4">
               <h3 class="font-bold text-gray-500">任务队列 (Task Queue) ({{ batchQueue.filter(t=>t.status==='done').length }}/{{ batchQueue.length }})</h3>
-              <button @click="batchQueue = []" class="text-xs text-red-400 hover:underline">清空 (Clear All)</button>
+              <div class="flex gap-4">
+                 <button 
+                   v-if="batchQueue.some(t => t.status === 'done')"
+                   @click="downloadBatchResults"
+                   class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
+                 >
+                   <span>📦</span> 一键打包下载 (ZIP)
+                 </button>
+                 <button @click="batchQueue = []" class="text-xs text-red-400 hover:underline">清空 (Clear All)</button>
+              </div>
            </div>
            
            <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -381,6 +400,86 @@
              </div>
           </div>
         </main>
+      </div>
+    </Transition>
+
+    <!-- ==================== 页面 4: 设置 ==================== -->
+    <Transition name="fade" mode="out-in">
+      <div v-if="currentTab === 'settings'" class="max-w-4xl mx-auto">
+        <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700 space-y-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-2xl font-bold">接口配置</h2>
+              <p class="text-sm text-gray-500">设置 BASE_URL / MODEL / API KEY，保存后立即生效</p>
+            </div>
+            <button 
+              @click="loadApiSettings" 
+              class="px-4 py-2 rounded-xl text-sm font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"
+              :disabled="apiSettingsLoading || apiSettingsSaving"
+            >
+              刷新
+            </button>
+          </div>
+
+          <div class="space-y-4">
+            <div>
+              <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">BASE_URL</label>
+              <input 
+                v-model="apiSettings.baseUrl" 
+                type="text" 
+                placeholder="https://api.vectorengine.ai" 
+                class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-yellow-400"
+                :disabled="apiSettingsLoading || apiSettingsSaving"
+              />
+              <p class="text-xs text-gray-500 mt-1">例如: https://api.vectorengine.ai</p>
+            </div>
+
+            <div>
+              <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">MODEL</label>
+              <input 
+                v-model="apiSettings.model" 
+                type="text" 
+                placeholder="gemini-3-pro-image-preview" 
+                class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-yellow-400"
+                :disabled="apiSettingsLoading || apiSettingsSaving"
+              />
+            </div>
+
+            <div>
+              <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">API KEY</label>
+              <input 
+                v-model="apiSettings.apiKey" 
+                type="password" 
+                placeholder="输入新的密钥以更新" 
+                class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-yellow-400"
+                :disabled="apiSettingsLoading || apiSettingsSaving"
+              />
+              <div class="text-xs text-gray-500 mt-1">
+                <span v-if="apiKeyPreview">已保存密钥尾号: ****{{ apiKeyPreview }}</span>
+                <span v-else>尚未保存密钥</span>
+                <span class="ml-2 text-gray-400">留空则保留现有密钥</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-3">
+            <button 
+              @click="loadApiSettings" 
+              class="px-4 py-3 rounded-xl text-sm font-bold bg-gray-50 hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-200"
+              :disabled="apiSettingsLoading || apiSettingsSaving"
+            >
+              取消更改
+            </button>
+            <button 
+              @click="saveApiSettings" 
+              :disabled="apiSettingsSaving || apiSettingsLoading"
+              class="px-6 py-3 rounded-xl text-sm font-bold bg-black text-white hover:scale-[1.01] active:scale-[0.99] transition disabled:opacity-50"
+            >
+              <span v-if="apiSettingsSaving">保存中...</span>
+              <span v-else>保存配置</span>
+            </button>
+          </div>
+        </div>
       </div>
     </Transition>
 
@@ -539,7 +638,55 @@ const processing = ref(false)
 const singleTasks = ref([]) 
 const batchQueue = ref([])
 
+// --- 接口配置 ---
+const apiSettings = ref({ baseUrl: '', model: '', apiKey: '' })
+const apiSettingsLoading = ref(false)
+const apiSettingsSaving = ref(false)
+const apiKeyPreview = ref('')
+
 // ... existing code ...
+
+const loadApiSettings = async () => {
+  apiSettingsLoading.value = true
+  try {
+    const res = await axios.get('/api/settings/api')
+    apiSettings.value.baseUrl = res.data.base_url || ''
+    apiSettings.value.model = res.data.model || ''
+    apiKeyPreview.value = res.data.api_key_preview || ''
+    apiSettings.value.apiKey = ''
+  } catch (err) {
+    message.error('加载配置失败')
+  } finally {
+    apiSettingsLoading.value = false
+  }
+}
+
+const saveApiSettings = async () => {
+  if (!apiSettings.value.baseUrl.trim() || !apiSettings.value.model.trim()) {
+    message.error('BASE_URL 和 MODEL 不能为空')
+    return
+  }
+  apiSettingsSaving.value = true
+  try {
+    const payload = {
+      base_url: apiSettings.value.baseUrl.trim(),
+      model: apiSettings.value.model.trim()
+    }
+    if (apiSettings.value.apiKey.trim()) {
+      payload.api_key = apiSettings.value.apiKey.trim()
+    }
+    await axios.post('/api/settings/api', payload)
+    message.success('配置已保存')
+    if (apiSettings.value.apiKey.trim()) {
+      apiKeyPreview.value = apiSettings.value.apiKey.trim().slice(-4)
+      apiSettings.value.apiKey = ''
+    }
+  } catch (err) {
+    message.error('保存失败: ' + (err.response?.data?.detail || err.message))
+  } finally {
+    apiSettingsSaving.value = false
+  }
+}
 
 const handleModify = async () => {
   const currentTask = latestSingleTask.value
@@ -855,6 +1002,35 @@ const handleGenerateBatch = async () => {
   processBatchQueue()
 }
 
+const downloadBatchResults = async () => {
+    const doneTasks = batchQueue.value.filter(t => t.status === 'done' && t.resultUrl)
+    if (doneTasks.length === 0) return
+
+    message.loading('正在打包下载...')
+    try {
+        // Extract filenames from URLs
+        const filenames = doneTasks.map(t => {
+            // resultUrl is like /static/generated/xxx.png
+            return t.resultUrl.split('/').pop()
+        })
+
+        const response = await axios.post('/api/download/batch', { filenames }, {
+            responseType: 'blob'
+        })
+        
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `NanoBanana_Batch_${Date.now()}.zip`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        message.success('下载已开始')
+    } catch (err) {
+        message.error('下载失败: ' + (err.message || 'Unknown error'))
+    }
+}
+
 // executeTask 已移动到下方
 
 const processBatchQueue = async () => {
@@ -1078,6 +1254,7 @@ const executeTask = async (task) => {
 onMounted(() => {
   fetchHistory()
   fetchQuota()
+  loadApiSettings()
 })
 </script>
 
