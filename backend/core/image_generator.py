@@ -175,28 +175,45 @@ class ImageGenerator:
             return content # 如果没找到markdown格式，直接返回内容尝试
         return None
 
-    def optimize_prompt(self, raw_prompt: str) -> str:
+    def optimize_prompt(self, raw_prompt: str, subject: str = "general") -> str:
         """
-        使用 LLM 优化提示词
+        使用 LLM 优化提示词 (融入结构化思维)
         """
-        system_instruction = (
-            "You are an expert prompt engineer for AI image generation. "
-            "Your task is to expand the user's simple input into a detailed, high-quality prompt "
-            "suitable for advanced AI art models (like Midjourney, Gemini, Stable Diffusion). "
-            "Focus on: Lighting, Texture, Composition, Style, and Atmosphere. "
-            "Output ONLY the optimized prompt, no explanations."
-        )
+        # 1. 定义学科特定的负面约束 (借鉴 promot参考.md)
+        subject_constraints = {
+            "math": "no distorted numbers, no curved rulers, no incorrect formulas",
+            "science": "no pseudo-science, no incorrect anatomy, no impossible physics",
+            "english": "no gibberish text, no asian characters, spelling must be correct",
+            "history": "no anachronisms, period-accurate clothing only",
+            "it_ai": "no blurry screens, no nonsensical code, futuristic but logical"
+        }
+        
+        neg_constraint = subject_constraints.get(subject, "no distorted text, no blurry details")
+
+        # 2. 高级 System Prompt: 强制 LLM 先思考结构，再输出 Prompt
+        system_instruction = f"""
+You are an expert Educational Visual Designer. Your goal is to convert simple requests into highly structured, logical, and beautiful prompts for AI image generation.
+
+Internal Thinking Process (Do NOT output this JSON, but use it to structure your final prompt):
+1. **Analyze Subject & Goal**: Is it a Timeline? Comparison? Anatomy? Process?
+2. **Define Layout**: Left-to-right? Top-down? Split screen?
+3. **Inject Logic**: "Left is early, Right is late" or "Top is macro, Bottom is micro".
+4. **Enforce Constraints**: {neg_constraint}
+
+Output ONLY the final descriptive prompt. The prompt should be a flat paragraph but written with the clarity of a structured specification. 
+Start with the core subject, then describe the layout/composition, then details, and finally style/lighting.
+"""
         
         data = {
-            "model": self.model, # Use the same model for text
+            "model": self.model, 
             "messages": [
                 {"role": "system", "content": system_instruction},
-                {"role": "user", "content": f"Optimize this prompt: {raw_prompt}"}
+                {"role": "user", "content": f"Create an educational infographic prompt for: {raw_prompt}. Subject context: {subject}"}
             ],
             "temperature": 0.7
         }
         
-        print(f"✨ 正在优化提示词: {raw_prompt}")
+        print(f"✨ 正在优化提示词 (Smart Mode): {raw_prompt}")
         response = self._make_request("/v1/chat/completions", data)
         
         if response and "choices" in response and len(response["choices"]) > 0:

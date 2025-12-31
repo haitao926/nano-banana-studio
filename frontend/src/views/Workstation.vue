@@ -1080,7 +1080,11 @@ const handleOptimizePrompt = async () => {
   processing.value = true
   try {
     message.loading('✨ AI is optimizing your prompt...')
-    const res = await axios.post('/api/optimize_prompt', { prompt: original })
+    // 传递 subject 上下文
+    const res = await axios.post('/api/optimize_prompt', { 
+        prompt: original,
+        subject: settings.value.subject // 新增
+    })
     if (res.data.success) {
       inputText.value = res.data.optimized_prompt
       message.success('Prompt Optimized!')
