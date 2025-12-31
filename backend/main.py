@@ -90,6 +90,32 @@ batch_gen = BatchImageGenerator()
 # 显式指定 DB 路径，防止写入临时目录
 rate_limiter = RateLimiter(db_path=os.path.join(DATA_DIR, "rate_limit.db"))
 
+# --- 访问控制 ---
+# 读取环境变量中的 Key，默认为 skd-user-key
+USER_ACCESS_KEYS = set([k.strip() for k in os.getenv("USER_ACCESS_KEYS", "skd-user-key").split(",") if k.strip()])
+
+def check_access_permission(request: Request, x_access_key: Optional[str]) -> str:
+    """
+    检查访问权限
+    返回: "lan" (局域网/IP限流模式) 或 "key" (密钥模式)
+    """
+    client_ip = request.client.host
+    # 局域网判断: 10.20.* (用户指定), 127.0.0.1, localhost
+    is_lan = client_ip.startswith("10.20.") or client_ip in ["127.0.0.1", "::1", "localhost"]
+    
+    if is_lan:
+        # 局域网用户: 检查 IP 限流
+        allowed, msg = rate_limiter.check_limit(client_ip)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=f"LAN Rate Limit Exceeded: {msg}")
+        return "lan"
+    else:
+        # 互联网用户: 必须提供 Key
+        if x_access_key and x_access_key in USER_ACCESS_KEYS:
+            return "key"
+        
+        raise HTTPException(status_code=403, detail="Internet access requires a valid 'x-access-key' header. Please provide a valid Key.")
+
 @app.on_event("startup")
 async def startup_event():
     """服务启动后的提示信息"""
@@ -305,10 +331,11 @@ async def get_config():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate/batch")
-async def generate_batch_endpoint(req: BatchGenRequest, request: Request):
+async def generate_batch_endpoint(req: BatchGenRequest, request: Request, x_access_key: Optional[str] = Header(None)):
     """批量生成"""
     try:
-        # 简单鉴权/流控
+        # 鉴权/流控
+        access_type = check_access_permission(request, x_access_key)
         client_ip = request.client.host
         
         custom_combinations = []
@@ -398,14 +425,12 @@ async def download_batch_endpoint(req: DownloadBatchRequest):
          raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate/modify")
-async def generate_modify(req: ModifyGenRequest, request: Request):
+async def generate_modify(req: ModifyGenRequest, request: Request, x_access_key: Optional[str] = Header(None)):
     """基于原图修改"""
     try:
-        # 1. 速率限制检查
+        # 1. 鉴权
+        access_type = check_access_permission(request, x_access_key)
         client_ip = request.client.host
-        allowed, message = rate_limiter.check_limit(client_ip)
-        if not allowed:
-            raise HTTPException(status_code=429, detail=message)
 
         # 2. 解析原图路径
         # URL 格式 /static/generated/filename.png
@@ -483,16 +508,12 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.post("/api/generate/single")
-async def generate_single(req: SingleGenRequest, request: Request):
+async def generate_single(req: SingleGenRequest, request: Request, x_access_key: Optional[str] = Header(None)):
     """单图生成 (支持参考图)"""
     try:
-        # 1. 速率限制检查
+        # 1. 鉴权
+        access_type = check_access_permission(request, x_access_key)
         client_ip = request.client.host
-        allowed, message = rate_limiter.check_limit(client_ip)
-        
-        if not allowed:
-            print(f"⛔️ Rate limit denied for {client_ip}: {message}")
-            raise HTTPException(status_code=429, detail=message)
 
         import time
         timestamp = int(time.time())

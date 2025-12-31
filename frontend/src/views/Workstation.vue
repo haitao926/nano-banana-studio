@@ -618,6 +618,40 @@
       </div>
     </Transition>
 
+    <!-- ==================== 访问密钥输入弹窗 ==================== -->
+    <Transition name="fade">
+      <div v-if="showAccessKeyModal" class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+         <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-scale-in space-y-6 text-center">
+            <div class="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+              🔑
+            </div>
+            <div>
+              <h3 class="text-xl font-bold mb-2">需要访问验证</h3>
+              <p class="text-sm text-gray-500">您当前通过互联网访问，请输入 Access Key 以继续使用。</p>
+            </div>
+            
+            <input 
+              type="text" 
+              v-model="userAccessKeyInput" 
+              placeholder="请输入您的 Access Key..." 
+              class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-yellow-400 text-center font-mono" 
+              @keydown.enter="handleSaveAccessKey" 
+            />
+            
+            <button 
+              @click="handleSaveAccessKey" 
+              class="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all"
+            >
+              验证并保存
+            </button>
+            
+            <p class="text-[10px] text-gray-400">
+               如无密钥，请联系管理员获取
+            </p>
+         </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
@@ -754,6 +788,45 @@ const quota = ref({ remaining: 20, max: 20 })
 // --- 弹窗状态 ---
 const showModal = ref(false)
 const selectedImage = ref(null)
+
+// --- 访问密钥 (Access Key) 状态 ---
+const showAccessKeyModal = ref(false)
+const userAccessKeyInput = ref('')
+
+// --- Axios 拦截器配置 ---
+// 在请求发出前，自动附带 localStorage 中的 Key
+axios.interceptors.request.use(config => {
+    const key = localStorage.getItem('skd_access_key')
+    if (key) {
+        config.headers['x-access-key'] = key
+    }
+    return config
+})
+
+// 在响应出错时，拦截 403
+axios.interceptors.response.use(response => {
+    return response
+}, error => {
+    if (error.response && error.response.status === 403) {
+        // 如果是 403 Forbidden，说明需要 Key 或 Key 无效
+        // 只有当不是在请求 admin 接口时才弹窗 (admin 有自己的逻辑)
+        if (!error.config.url.includes('/api/admin')) {
+             message.warning('当前网络环境需要验证访问密钥 (Access Key)')
+             showAccessKeyModal.value = true
+        }
+    }
+    return Promise.reject(error)
+})
+
+const handleSaveAccessKey = () => {
+    if (!userAccessKeyInput.value.trim()) {
+        message.error('密钥不能为空')
+        return
+    }
+    localStorage.setItem('skd_access_key', userAccessKeyInput.value.trim())
+    showAccessKeyModal.value = false
+    message.success('密钥已保存，请重新尝试操作')
+}
 
 // --- 管理员状态 ---
 const isAdmin = ref(false)

@@ -133,6 +133,8 @@ class ImageGenerator:
                 final_prompt += " --ar 16:9"
             elif size == "1024x1792":
                 final_prompt += " --ar 9:16"
+            elif size == "1024x1024":
+                final_prompt += " --ar 1:1"
         
         # 2. 画质/分辨率处理 (通过提示词增强)
         # 虽然物理分辨率受限，但通过指令可以显著提升细节密度
