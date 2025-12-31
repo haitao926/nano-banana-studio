@@ -94,13 +94,28 @@ rate_limiter = RateLimiter(db_path=os.path.join(DATA_DIR, "rate_limit.db"))
 # 读取环境变量中的 Key，默认为 skd-user-key
 USER_ACCESS_KEYS = set([k.strip() for k in os.getenv("USER_ACCESS_KEYS", "skd-user-key").split(",") if k.strip()])
 
-def check_access_permission(request: Request, x_access_key: Optional[str]) -> str:
+def check_access_permission(request: Request, x_model_key: Optional[str] = None) -> Dict:
     """
     检查访问权限
-    返回: "lan" (局域网/IP限流模式) 或 "key" (密钥模式)
+    
+    返回字典:
+    {
+        "type": "lan" | "custom",
+        "api_key": str | None,   # 仅 custom 模式有值
+        "base_url": str | None   # 仅 custom 模式有值
+    }
     """
     client_ip = request.client.host
-    # 局域网判断: 10.20.* (用户指定), 127.0.0.1, localhost
+    
+    # 1. 优先检查用户自定义的模型 Key (BYOK 模式)
+    if x_model_key:
+        return {
+            "type": "custom",
+            "api_key": x_model_key,
+            # base_url 在外部单独获取，这里只标记类型
+        }
+
+    # 2. 检查局域网权限
     is_lan = client_ip.startswith("10.20.") or client_ip in ["127.0.0.1", "::1", "localhost"]
     
     if is_lan:
@@ -108,13 +123,10 @@ def check_access_permission(request: Request, x_access_key: Optional[str]) -> st
         allowed, msg = rate_limiter.check_limit(client_ip)
         if not allowed:
             raise HTTPException(status_code=429, detail=f"LAN Rate Limit Exceeded: {msg}")
-        return "lan"
-    else:
-        # 互联网用户: 必须提供 Key
-        if x_access_key and x_access_key in USER_ACCESS_KEYS:
-            return "key"
-        
-        raise HTTPException(status_code=403, detail="Internet access requires a valid 'x-access-key' header. Please provide a valid Key.")
+        return {"type": "lan"}
+    
+    # 3. 既无自定义 Key 也非局域网 -> 拒绝
+    raise HTTPException(status_code=403, detail="Internet access requires a valid Model API Key. Please provide it in the popup.")
 
 @app.on_event("startup")
 async def startup_event():
@@ -425,12 +437,23 @@ async def download_batch_endpoint(req: DownloadBatchRequest):
          raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate/modify")
-async def generate_modify(req: ModifyGenRequest, request: Request, x_access_key: Optional[str] = Header(None)):
+async def generate_modify(
+    req: ModifyGenRequest, 
+    request: Request, 
+    x_model_key: Optional[str] = Header(None, alias="x-model-key"),
+    x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url")
+):
     """基于原图修改"""
     try:
         # 1. 鉴权
-        access_type = check_access_permission(request, x_access_key)
+        access_info = check_access_permission(request, x_model_key)
         client_ip = request.client.host
+        
+        runtime_api_key = None
+        runtime_base_url = None
+        if access_info["type"] == "custom":
+            runtime_api_key = access_info["api_key"]
+            runtime_base_url = x_model_base_url
 
         # 2. 解析原图路径
         # URL 格式 /static/generated/filename.png
@@ -451,17 +474,21 @@ async def generate_modify(req: ModifyGenRequest, request: Request, x_access_key:
         new_meta_filename = f"modified_{safe_prompt}_{timestamp}.json"
         
         # 4. 调用修改生成
-        # 临时借用 generate_and_download 里的 download 逻辑，但这里我们直接调 img_gen.generate_modified_image
-        # 然后手动下载
         
         # generate_modified_image 现在接受 list
-        image_url = img_gen.generate_modified_image(req.prompt, [original_path])
+        image_url = img_gen.generate_modified_image(
+            req.prompt, 
+            [original_path],
+            base_url=runtime_base_url,
+            api_key=runtime_api_key
+        )
         
         if image_url:
             save_path = os.path.join(GENERATED_DIR, new_filename)
             if img_gen.download_image(image_url, save_path):
-                # 记录使用
-                rate_limiter.record_usage(client_ip)
+                # 记录使用 (仅 LAN)
+                if access_info["type"] == "lan":
+                    rate_limiter.record_usage(client_ip)
                 remaining = rate_limiter.get_remaining_quota(client_ip)
                 
                 # 保存元数据
@@ -508,12 +535,29 @@ async def upload_file(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @app.post("/api/generate/single")
-async def generate_single(req: SingleGenRequest, request: Request, x_access_key: Optional[str] = Header(None)):
+async def generate_single(
+    req: SingleGenRequest, 
+    request: Request, 
+    x_model_key: Optional[str] = Header(None, alias="x-model-key"),
+    x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url")
+):
     """单图生成 (支持参考图)"""
     try:
         # 1. 鉴权
-        access_type = check_access_permission(request, x_access_key)
+        access_info = check_access_permission(request, x_model_key)
         client_ip = request.client.host
+        
+        # 提取运行时配置
+        runtime_api_key = None
+        runtime_base_url = None
+        
+        if access_info["type"] == "custom":
+            runtime_api_key = access_info["api_key"]
+            runtime_base_url = x_model_base_url # 允许为空，为空则用系统默认或ImageGenerator默认
+            print(f"🔑 Using Custom Key from {client_ip}")
+        else:
+            # LAN 模式，不传递 runtime 参数，使用 img_gen 默认配置
+            pass
 
         import time
         timestamp = int(time.time())
@@ -587,7 +631,12 @@ async def generate_single(req: SingleGenRequest, request: Request, x_access_key:
             
             if ref_paths:
                 # 使用 modify 的逻辑（传入路径列表）
-                image_url = img_gen.generate_modified_image(enhanced_prompt, ref_paths)
+                image_url = img_gen.generate_modified_image(
+                    enhanced_prompt, 
+                    ref_paths,
+                    base_url=runtime_base_url,
+                    api_key=runtime_api_key
+                )
                 if image_url:
                     save_path = os.path.join(GENERATED_DIR, filename)
                     if img_gen.download_image(image_url, save_path):
@@ -601,15 +650,18 @@ async def generate_single(req: SingleGenRequest, request: Request, x_access_key:
              final_path = img_gen.generate_and_download(
                 enhanced_prompt,
                 filename,
-                folder=GENERATED_DIR 
+                folder=GENERATED_DIR,
+                base_url=runtime_base_url,
+                api_key=runtime_api_key
             )
         
         # 恢复配置
         img_gen.config = original_config
         
         if final_path:
-            # 2. 成功生成后记录使用
-            rate_limiter.record_usage(client_ip)
+            # 2. 成功生成后记录使用 (仅限 LAN 模式，Custom 模式不消耗系统额度，但仍记录日志)
+            if access_info["type"] == "lan":
+                rate_limiter.record_usage(client_ip)
             
             # 3. 保存元数据 (Metadata)
             meta_data = {

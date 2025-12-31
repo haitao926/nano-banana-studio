@@ -89,9 +89,18 @@ class ImageGenerator:
         self._apply_config(self.config)
         self.save_config()
 
-    def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0) -> Optional[Dict]:
+    def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0, base_url: str = None, api_key: str = None) -> Optional[Dict]:
         """发送API请求"""
-        url = f"{self.base_url}{endpoint}"
+        # 使用传入的 base_url 或 实例的 base_url
+        current_base_url = (base_url or self.base_url).rstrip("/")
+        current_api_key = api_key or self.api_key
+        
+        url = f"{current_base_url}{endpoint}"
+        
+        headers = {
+            "Authorization": f"Bearer {current_api_key}",
+            "Content-Type": "application/json"
+        }
 
         try:
             print(f"🚀 发送请求到: {url}")
@@ -99,7 +108,7 @@ class ImageGenerator:
             
             response = requests.post(
                 url,
-                headers=self.headers,
+                headers=headers,
                 json=data,
                 timeout=self.timeout
             )
@@ -114,14 +123,14 @@ class ImageGenerator:
                 if response.status_code in [500, 502, 503, 504] and retry_count < self.max_retries:
                     print(f"🔄 正在重试 ({retry_count + 1}/{self.max_retries})...")
                     time.sleep(2)
-                    return self._make_request(endpoint, data, retry_count + 1)
+                    return self._make_request(endpoint, data, retry_count + 1, base_url=base_url, api_key=api_key)
                 return None
 
         except Exception as e:
             print(f"❌ 请求异常: {e}")
             return None
 
-    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None) -> Optional[str]:
+    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None) -> Optional[str]:
         """通过 Chat API 生成图片 (针对 Gemini 等模型)"""
         
         # 针对 Gemini 的 Prompt 增强: 注入画幅比例指令
@@ -154,7 +163,7 @@ class ImageGenerator:
             "n": 1
         }
         
-        response = self._make_request("/v1/chat/completions", data)
+        response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key)
         
         if response and "choices" in response and len(response["choices"]) > 0:
             content = response["choices"][0]["message"]["content"]
@@ -197,7 +206,7 @@ class ImageGenerator:
         
         return raw_prompt
 
-    def generate_modified_image(self, prompt: str, base_image_paths: list[str]) -> Optional[str]:
+    def generate_modified_image(self, prompt: str, base_image_paths: list[str], base_url: str = None, api_key: str = None) -> Optional[str]:
         """
         基于原图(多图)进行修改 (Image-to-Image / Vision)
         """
@@ -247,7 +256,7 @@ class ImageGenerator:
                 "n": 1
             }
 
-            response = self._make_request("/v1/chat/completions", data)
+            response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key)
 
             if response and "choices" in response and len(response["choices"]) > 0:
                 content = response["choices"][0]["message"]["content"]
@@ -265,7 +274,7 @@ class ImageGenerator:
             print(f"❌ 图片修改失败: {e}")
             return None
 
-    def generate_image(self, prompt: str, size: str = None, quality: str = None, style: str = None) -> Optional[str]:
+    def generate_image(self, prompt: str, size: str = None, quality: str = None, style: str = None, base_url: str = None, api_key: str = None) -> Optional[str]:
         """
         生成图片
         Returns: 图片 URL 或 Base64 Data URI
@@ -278,7 +287,7 @@ class ImageGenerator:
         # 针对 Gemini-3-pro-image-preview 模型的特殊处理
         if "gemini-3-pro-image-preview" in self.model:
             print(f"🤖 检测到 Gemini 绘图模型，切换到 Chat 接口...")
-            return self._generate_image_via_chat(prompt, size, quality)
+            return self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key)
 
         # 构建请求数据 (OpenAI 兼容格式)
         data = {
@@ -289,7 +298,7 @@ class ImageGenerator:
         }
 
         # 大多数中转商使用标准的 OpenAI 图片接口
-        response = self._make_request("/v1/images/generations", data)
+        response = self._make_request("/v1/images/generations", data, base_url=base_url, api_key=api_key)
 
         if response and "data" in response and len(response["data"]) > 0:
             image_url = response["data"][0]["url"]
@@ -335,9 +344,9 @@ class ImageGenerator:
             print(f"❌ 下载异常: {e}")
             return False
 
-    def generate_and_download(self, prompt: str, filename: str, folder: str = "generated_images") -> Optional[str]:
+    def generate_and_download(self, prompt: str, filename: str, folder: str = "generated_images", base_url: str = None, api_key: str = None) -> Optional[str]:
         """生成并下载"""
-        image_url = self.generate_image(prompt)
+        image_url = self.generate_image(prompt, base_url=base_url, api_key=api_key)
         
         if image_url:
             save_path = os.path.join(folder, filename)

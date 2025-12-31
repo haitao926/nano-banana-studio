@@ -621,33 +621,44 @@
     <!-- ==================== 访问密钥输入弹窗 ==================== -->
     <Transition name="fade">
       <div v-if="showAccessKeyModal" class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-         <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-scale-in space-y-6 text-center">
-            <div class="w-16 h-16 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center mx-auto text-3xl">
-              🔑
+         <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-scale-in space-y-4 text-center">
+            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto text-3xl">
+              🌐
             </div>
             <div>
-              <h3 class="text-xl font-bold mb-2">需要访问验证</h3>
-              <p class="text-sm text-gray-500">您当前通过互联网访问，请输入 Access Key 以继续使用。</p>
+              <h3 class="text-xl font-bold mb-2">配置模型服务</h3>
+              <p class="text-xs text-gray-500 text-left mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                 您当前通过互联网访问，请输入您自己的模型 API 配置以使用。<br>
+                 <span class="text-red-400 font-bold">* 您的密钥仅保存在本地浏览器，我们无法查看。</span>
+              </p>
             </div>
             
-            <input 
-              type="text" 
-              v-model="userAccessKeyInput" 
-              placeholder="请输入您的 Access Key..." 
-              class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-yellow-400 text-center font-mono" 
-              @keydown.enter="handleSaveAccessKey" 
-            />
+            <div class="text-left space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Model API Key <span class="text-red-500">*</span></label>
+                <input 
+                  type="password" 
+                  v-model="userModelKeyInput" 
+                  placeholder="sk-..." 
+                  class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm" 
+                />
+            </div>
+
+            <div class="text-left space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Model Base URL (可选)</label>
+                <input 
+                  type="text" 
+                  v-model="userModelBaseUrlInput" 
+                  placeholder="https://api.openai.com/v1" 
+                  class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm" 
+                />
+            </div>
             
             <button 
               @click="handleSaveAccessKey" 
-              class="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all"
+              class="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all mt-2"
             >
-              验证并保存
+              保存并继续
             </button>
-            
-            <p class="text-[10px] text-gray-400">
-               如无密钥，请联系管理员获取
-            </p>
          </div>
       </div>
     </Transition>
@@ -791,14 +802,20 @@ const selectedImage = ref(null)
 
 // --- 访问密钥 (Access Key) 状态 ---
 const showAccessKeyModal = ref(false)
-const userAccessKeyInput = ref('')
+const userModelKeyInput = ref('')
+const userModelBaseUrlInput = ref('')
 
 // --- Axios 拦截器配置 ---
 // 在请求发出前，自动附带 localStorage 中的 Key
 axios.interceptors.request.use(config => {
-    const key = localStorage.getItem('skd_access_key')
+    const key = localStorage.getItem('user_model_key')
+    const baseUrl = localStorage.getItem('user_model_base_url')
+    
     if (key) {
-        config.headers['x-access-key'] = key
+        config.headers['x-model-key'] = key
+        if (baseUrl) {
+             config.headers['x-model-base-url'] = baseUrl
+        }
     }
     return config
 })
@@ -811,7 +828,10 @@ axios.interceptors.response.use(response => {
         // 如果是 403 Forbidden，说明需要 Key 或 Key 无效
         // 只有当不是在请求 admin 接口时才弹窗 (admin 有自己的逻辑)
         if (!error.config.url.includes('/api/admin')) {
-             message.warning('当前网络环境需要验证访问密钥 (Access Key)')
+             message.warning('互联网络访问需要配置模型服务密钥')
+             // 预填充
+             userModelKeyInput.value = localStorage.getItem('user_model_key') || ''
+             userModelBaseUrlInput.value = localStorage.getItem('user_model_base_url') || ''
              showAccessKeyModal.value = true
         }
     }
@@ -819,13 +839,21 @@ axios.interceptors.response.use(response => {
 })
 
 const handleSaveAccessKey = () => {
-    if (!userAccessKeyInput.value.trim()) {
-        message.error('密钥不能为空')
+    if (!userModelKeyInput.value.trim()) {
+        message.error('密钥 (API Key) 不能为空')
         return
     }
-    localStorage.setItem('skd_access_key', userAccessKeyInput.value.trim())
+    
+    localStorage.setItem('user_model_key', userModelKeyInput.value.trim())
+    
+    if (userModelBaseUrlInput.value.trim()) {
+        localStorage.setItem('user_model_base_url', userModelBaseUrlInput.value.trim())
+    } else {
+        localStorage.removeItem('user_model_base_url')
+    }
+    
     showAccessKeyModal.value = false
-    message.success('密钥已保存，请重新尝试操作')
+    message.success('配置已保存，请重新尝试操作')
 }
 
 // --- 管理员状态 ---
