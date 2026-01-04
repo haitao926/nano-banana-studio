@@ -965,13 +965,22 @@ const handleRemoveWithStore = ({ file }) => {
 // ... 
 
 const subjectOptions = [
-  { label: '信息科技与AI', value: 'it_ai', icon: '🤖' },
   { label: '通用', value: 'general', icon: '🌐' },
+  { label: '信息科技与AI', value: 'it_ai', icon: '🤖' },
   { label: '数学', value: 'math', icon: '📐' },
-  { label: '科学', value: 'science', icon: '🔬' },
-  { label: '英语', value: 'english', icon: 'abc' },
-  { label: '艺术', value: 'art', icon: '🎨' },
-  { label: '历史', value: 'history', icon: '🏛️' }
+  { label: '物理', value: 'physics', icon: '🧪' },
+  { label: '化学', value: 'chemistry', icon: '⚗️' },
+  { label: '生物', value: 'biology', icon: '🧬' },
+  { label: '地理', value: 'geography', icon: '🌍' },
+  { label: '语文', value: 'chinese', icon: '📖' },
+  { label: '英语', value: 'english', icon: '🔡' },
+  { label: '历史', value: 'history', icon: '📜' },
+  { label: '道德与法治', value: 'politics', icon: '⚖️' },
+  { label: '美术', value: 'art', icon: '🎨' },
+  { label: '音乐', value: 'music', icon: '🎵' },
+  { label: '体育', value: 'pe', icon: '🏃' },
+  { label: '心理', value: 'psychology', icon: '🧠' },
+  { label: '综合实践', value: 'practice', icon: '🛠️' }
 ]
 
 const gradeOptions = [
