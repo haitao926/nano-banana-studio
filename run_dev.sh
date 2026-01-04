@@ -11,7 +11,7 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-echo "🍌 Starting ReOpenInnoLab-教学绘画..."
+echo "🍌 Starting ReOpenInnoLab-智绘工坊..."
 
 # 1. Start Backend
 echo "Starting Backend..."

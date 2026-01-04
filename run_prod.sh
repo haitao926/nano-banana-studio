@@ -80,7 +80,7 @@ if [ "$1" == "--install-startup" ]; then
     exit 0
 fi
 
-echo "🍌 Building ReOpenInnoLab-教学绘画 for Production..."
+echo "🍌 Building ReOpenInnoLab-智绘工坊 for Production..."
 
 # 1. 构建前端
 if [ "$SKIP_BUILD" != "true" ]; then

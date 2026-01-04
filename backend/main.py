@@ -25,7 +25,7 @@ from core.image_generator import ImageGenerator
 from core.batch_image_generator import BatchImageGenerator
 from core.rate_limiter import RateLimiter
 
-app = FastAPI(title="ReOpenInnoLab API")
+app = FastAPI(title="智绘工坊 API")
 
 # --- 路径配置 (适配 PyInstaller 打包) ---
 if getattr(sys, 'frozen', False):
@@ -132,7 +132,7 @@ def check_access_permission(request: Request, x_model_key: Optional[str] = None)
 async def startup_event():
     """服务启动后的提示信息"""
     print("\n" + "="*50)
-    print("🍌 ReOpenInnoLab-教学绘画 is READY!")
+    print("🍌 ReOpenInnoLab-智绘工坊 is READY!")
     print("👉 Open in Browser: http://localhost:6060")
     print("="*50 + "\n")
 
@@ -173,7 +173,26 @@ class OptimizePromptRequest(BaseModel):
     prompt: str
     subject: str = "general"
 
-# ... (skip to endpoint)
+class ApiSettingsRequest(BaseModel):
+    base_url: str
+    model: str
+    api_key: Optional[str] = None
+
+class AdminLoginRequest(BaseModel):
+    password: str
+
+@app.get("/api/quota")
+async def get_quota_endpoint(request: Request):
+    """获取当前 IP 的额度信息"""
+    client_ip = request.client.host
+    try:
+        remaining = rate_limiter.get_remaining_quota(client_ip)
+    except Exception:
+        remaining = 0
+    return {
+        "remaining": remaining,
+        "max": 20
+    }
 
 @app.post("/api/optimize_prompt")
 async def optimize_prompt_endpoint(
