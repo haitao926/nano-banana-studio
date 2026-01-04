@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header, UploadFile, File
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Header, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
@@ -14,9 +14,10 @@ from urllib.parse import quote
 import zipfile
 import io
 import re
+import time
+from PIL import Image
 
 # 确保能导入 core 模块
-# 获取当前文件 (main.py) 所在目录 (backend/)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -27,28 +28,21 @@ from core.rate_limiter import RateLimiter
 
 app = FastAPI(title="智绘工坊 API")
 
+# --- 配置 ---
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin888")
+# 简单的 token 存储 (生产环境应使用 Redis 或 JWT)
+ADMIN_TOKENS = set()
+
 # --- 路径配置 (适配 PyInstaller 打包) ---
 if getattr(sys, 'frozen', False):
-    # PyInstaller 打包模式
-    # BUNDLE_DIR: 临时解压目录 (放代码、前端网页、内置资源) -> 只读
     BUNDLE_DIR = sys._MEIPASS
-    # EXEC_DIR: exe 所在目录 (放生成的图片、数据库) -> 可读写
     EXEC_DIR = os.path.dirname(sys.executable)
 else:
-    # 开发模式
     BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
     EXEC_DIR = BUNDLE_DIR
 
-# 确保能导入 core 模块 (从 BUNDLE_DIR 找代码)
 if BUNDLE_DIR not in sys.path:
     sys.path.insert(0, BUNDLE_DIR)
-
-# 动态配置: 优先读取 exe 同级目录的 config，如果没有则读取内置的
-# 这里 core 模块已经在上面导入了
-
-from core.image_generator import ImageGenerator
-from core.batch_image_generator import BatchImageGenerator
-from core.rate_limiter import RateLimiter
 
 # --- CORS 设置 ---
 def _parse_origins(raw: str) -> List[str]:
@@ -65,87 +59,110 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- 静态资源路径 (使用 EXEC_DIR 以便持久化) ---
-# 定义 static 目录: 放在 exe 同级目录下，确保用户数据不丢失
+# --- 静态资源路径 ---
 STATIC_DIR = os.path.join(EXEC_DIR, "static")
 GENERATED_DIR = os.path.join(STATIC_DIR, "generated")
 BATCH_DIR = os.path.join(STATIC_DIR, "batch")
 UPLOAD_DIR = os.path.join(STATIC_DIR, "uploads")
 
-# 确保目录存在
 os.makedirs(GENERATED_DIR, exist_ok=True)
 os.makedirs(BATCH_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# 挂载静态文件
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # --- 初始化核心类 ---
-# 确保 data 目录存在
 DATA_DIR = os.path.join(EXEC_DIR, "data")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 img_gen = ImageGenerator()
 batch_gen = BatchImageGenerator()
-# 显式指定 DB 路径，防止写入临时目录
 rate_limiter = RateLimiter(db_path=os.path.join(DATA_DIR, "rate_limit.db"))
 
+# --- 缩略图工具 ---
+def create_thumbnail(image_path: str):
+    """为指定图片生成缩略图 (.thumb.jpg)"""
+    try:
+        if not os.path.exists(image_path): return None
+        
+        # 构造缩略图路径: name.png -> name.thumb.jpg
+        base, _ = os.path.splitext(image_path)
+        thumb_path = f"{base}.thumb.jpg"
+        
+        if os.path.exists(thumb_path):
+            return thumb_path
+            
+        with Image.open(image_path) as img:
+            # 转换为 RGB (防止 PNG 透明度问题)
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            
+            # 缩略图尺寸: 400x400 (保持比例)
+            img.thumbnail((400, 400))
+            img.save(thumb_path, "JPEG", quality=70)
+            return thumb_path
+    except Exception as e:
+        print(f"Error creating thumbnail for {image_path}: {e}")
+        return None
+
+def scan_and_create_thumbnails():
+    """后台任务：扫描文件夹并补充缺失的缩略图"""
+    print("🔄 Starting background thumbnail generation...")
+    extensions = ["*.png", "*.jpg", "*.jpeg"]
+    count = 0
+    for ext in extensions:
+        # 大小写敏感系统可能需要扫描大写，这里主要针对生成出的 .png
+        files = glob.glob(os.path.join(GENERATED_DIR, ext))
+        for f in files:
+            if f.endswith(".thumb.jpg"): continue
+            
+            # 检查是否有对应 thumb
+            base, _ = os.path.splitext(f)
+            thumb_path = f"{base}.thumb.jpg"
+            if not os.path.exists(thumb_path):
+                create_thumbnail(f)
+                count += 1
+    if count > 0:
+        print(f"✅ Generated {count} missing thumbnails.")
+    else:
+        print("✅ No missing thumbnails found.")
+
 # --- 访问控制 ---
-# 读取环境变量中的 Key，默认为 skd-user-key
 USER_ACCESS_KEYS = set([k.strip() for k in os.getenv("USER_ACCESS_KEYS", "skd-user-key").split(",") if k.strip()])
 
 def check_access_permission(request: Request, x_model_key: Optional[str] = None) -> Dict:
-    """
-    检查访问权限
-    
-    返回字典:
-    {
-        "type": "lan" | "custom",
-        "api_key": str | None,   # 仅 custom 模式有值
-        "base_url": str | None   # 仅 custom 模式有值
-    }
-    """
     client_ip = request.client.host
-    
-    # 1. 优先检查用户自定义的模型 Key (BYOK 模式)
     if x_model_key:
-        return {
-            "type": "custom",
-            "api_key": x_model_key,
-            # base_url 在外部单独获取，这里只标记类型
-        }
-
-    # 2. 检查局域网权限
+        return {"type": "custom", "api_key": x_model_key}
     is_lan = client_ip.startswith("10.20.") or client_ip in ["127.0.0.1", "::1", "localhost"]
-    
     if is_lan:
-        # 局域网用户: 检查 IP 限流
         allowed, msg = rate_limiter.check_limit(client_ip)
         if not allowed:
             raise HTTPException(status_code=429, detail=f"LAN Rate Limit Exceeded: {msg}")
         return {"type": "lan"}
-    
-    # 3. 既无自定义 Key 也非局域网 -> 拒绝
-    raise HTTPException(status_code=403, detail="Access denied. Please input your own API Key. (互联网访问请输入自己的Key)")
+    raise HTTPException(status_code=403, detail="Access denied. Please input your own API Key.")
+
+def check_admin_token(x_admin_token: str = Header(None)):
+    """管理员鉴权依赖"""
+    if not x_admin_token or x_admin_token not in ADMIN_TOKENS:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
+    return x_admin_token
 
 @app.on_event("startup")
 async def startup_event():
-    """服务启动后的提示信息"""
     print("\n" + "="*50)
     print("🍌 ReOpenInnoLab-智绘工坊 is READY!")
     print("👉 Open in Browser: http://localhost:6060")
     print("="*50 + "\n")
+    # 启动后台任务生成缩略图
+    import threading
+    threading.Thread(target=scan_and_create_thumbnails, daemon=True).start()
 
 # --- 辅助函数 ---
 def sanitize_filename(text: str) -> str:
-    """根据文本生成安全的文件名"""
-    # 移除特殊字符，只保留中英文、数字、下划线
-    # clean_text = re.sub(r'[^\w\u4e00-\u9fa5]', '_', text)
-    # 简单处理：空格变下划线
     clean_text = text.replace(" ", "_")
-    # 移除路径相关字符
     clean_text = re.sub(r'[\\/:*?"<>|]', '', clean_text)
-    return clean_text[:50]  # 限制长度
+    return clean_text[:50]
 
 # --- 数据模型 ---
 class SingleGenRequest(BaseModel):
@@ -155,8 +172,8 @@ class SingleGenRequest(BaseModel):
     style: str = "vivid"
     subject: str = "general"
     grade: str = "general"
-    reference_image_url: Optional[str] = None # Deprecated, keep for compat
-    reference_image_urls: List[str] = []      # New standard
+    reference_image_url: Optional[str] = None
+    reference_image_urls: List[str] = []
 
 class BatchGenRequest(BaseModel):
     system_keys: List[str]
@@ -181,18 +198,88 @@ class ApiSettingsRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     password: str
 
+class ToggleFeatureRequest(BaseModel):
+    filename: str
+    featured: bool
+
+# --- Admin API ---
+
+@app.post("/api/admin/login")
+async def admin_login(req: AdminLoginRequest):
+    if req.password == ADMIN_PASSWORD:
+        token = secrets.token_hex(16)
+        ADMIN_TOKENS.add(token)
+        return {"success": True, "token": token}
+    raise HTTPException(status_code=401, detail="Incorrect password")
+
+@app.get("/api/admin/stats")
+async def admin_stats(token: str = Depends(check_admin_token)):
+    # 1. IP Stats
+    ip_stats = rate_limiter.get_all_stats()
+    
+    # 2. Subject & Grade Stats (Scanning JSONs)
+    subject_counts = {}
+    grade_counts = {}
+    
+    # Scan all json files in generated dir
+    json_files = glob.glob(os.path.join(GENERATED_DIR, "*.json"))
+    for jf in json_files:
+        try:
+            with open(jf, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                sub = data.get("subject", "general")
+                grad = data.get("grade", "general")
+                subject_counts[sub] = subject_counts.get(sub, 0) + 1
+                grade_counts[grad] = grade_counts.get(grad, 0) + 1
+        except: pass
+        
+    return {
+        "ip_stats": ip_stats,
+        "subject_counts": subject_counts,
+        "grade_counts": grade_counts
+    }
+
+@app.post("/api/admin/toggle_feature")
+async def toggle_feature(req: ToggleFeatureRequest, token: str = Depends(check_admin_token)):
+    # req.filename 通常是 "abc.png"
+    # 我们需要找到对应的 metadata json
+    # 可能是 "abc.json" (新版) 或 "abc.png.json" (旧版兼容?)
+    # 目前主要是 "abc.json" (name without ext)
+    
+    base_name = os.path.splitext(req.filename)[0]
+    json_path = os.path.join(GENERATED_DIR, f"{base_name}.json")
+    
+    if not os.path.exists(json_path):
+        # 如果不存在 metadata，可能需要创建一个？
+        # 或者尝试找 png 对应的
+        pass
+        
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            data['featured'] = req.featured
+            
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                
+            return {"success": True, "featured": req.featured}
+        except Exception as e:
+             raise HTTPException(status_code=500, detail=str(e))
+    
+    raise HTTPException(status_code=404, detail="Metadata not found")
+
+# --- Normal API ---
+
 @app.get("/api/quota")
 async def get_quota_endpoint(request: Request):
-    """获取当前 IP 的额度信息"""
     client_ip = request.client.host
     try:
         remaining = rate_limiter.get_remaining_quota(client_ip)
     except Exception:
         remaining = 0
-    return {
-        "remaining": remaining,
-        "max": 20
-    }
+    return {"remaining": remaining, "max": 20}
 
 @app.post("/api/optimize_prompt")
 async def optimize_prompt_endpoint(
@@ -201,35 +288,16 @@ async def optimize_prompt_endpoint(
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url")
 ):
-    """优化提示词 (支持学科上下文)"""
     try:
-        # 这里虽然不是生成图片，但也可以复用 BYOK 逻辑来调用 Chat API
-        # 如果用户提供了 Key，则使用用户的 Key 进行优化
         access_info = check_access_permission(request, x_model_key)
-        
-        runtime_api_key = None
-        runtime_base_url = None
-        
-        if access_info["type"] == "custom":
-            runtime_api_key = access_info["api_key"]
-            runtime_base_url = x_model_base_url
-
-        # 现在 optimize_prompt 内部调用 _make_request，但它还没接受 base_url/api_key
-        # 我们需要先更新 ImageGenerator 的 optimize_prompt 方法来接受这些参数吗？
-        # 是的，刚才只更新了 system_instruction，没有更新传参。
-        # 暂时我们只利用新的 prompt 逻辑，鉴权沿用默认（除非也去修改 optimize_prompt 签名）
-        # 为了简单起见，这里暂不强求 BYOK 用于 optimize (因为这只是耗费极少的 text token)
-        # 但为了逻辑一致性，我们可以让 optimize_prompt 使用系统默认 Key
-        
+        # 暂不使用 custom key 进行 optimize，沿用系统默认 (Token消耗低)
         optimized = img_gen.optimize_prompt(req.prompt, subject=req.subject)
         return {"success": True, "optimized_prompt": optimized}
     except Exception as e:
-        print(f"Error optimizing prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/settings/api")
 async def get_api_settings():
-    """获取当前的 API 调用配置（不返回完整密钥）"""
     try:
         current_cfg = img_gen.config or {}
         api_cfg = current_cfg.get("api", {}) or {}
@@ -246,91 +314,51 @@ async def get_api_settings():
 
 @app.post("/api/settings/api")
 async def update_api_settings(req: ApiSettingsRequest):
-    """更新 API 调用配置（BASE_URL / MODEL / API KEY）"""
     try:
         base_url = req.base_url.strip()
         model = req.model.strip()
-        if not base_url:
-            raise HTTPException(status_code=400, detail="BASE_URL is required")
-        if not model:
-            raise HTTPException(status_code=400, detail="MODEL is required")
+        if not base_url or not model:
+            raise HTTPException(status_code=400, detail="Required fields missing")
 
-        # 空字符串表示保留原有 key，只有明确填写才更新
         new_api_key = req.api_key.strip() if req.api_key is not None else None
-        if new_api_key == "":
-            new_api_key = None
+        if new_api_key == "": new_api_key = None
 
         img_gen.update_config(base_url=base_url, model=model, api_key=new_api_key)
-
-        # 批量生成器共用同一配置，更新后重新加载
         if hasattr(batch_gen, "generator") and batch_gen.generator:
             batch_gen.generator.reload_config()
 
-        return {
-            "success": True,
-            "base_url": img_gen.base_url,
-            "model": img_gen.model
-        }
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": True}
+    except HTTPException as he: raise he
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/config")
 async def get_config():
-    """获取当前的配置（Prompts）"""
-    try:
-        batch_gen.load_config() # 刷新配置
-        return {
-            "system_prompts": batch_gen.system_prompts,
-            "requirement_prompts": batch_gen.requirement_prompts
-        }
-    except Exception as e:
-        print(f"Error loading config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    batch_gen.load_config()
+    return {
+        "system_prompts": batch_gen.system_prompts,
+        "requirement_prompts": batch_gen.requirement_prompts
+    }
 
 @app.post("/api/generate/batch")
 async def generate_batch_endpoint(req: BatchGenRequest, request: Request, x_access_key: Optional[str] = Header(None)):
-    """批量生成"""
     try:
-        # 鉴权/流控
-        access_type = check_access_permission(request, x_access_key)
-        client_ip = request.client.host
-        
+        check_access_permission(request, x_access_key)
         custom_combinations = []
-        target_systems = req.system_keys
-        # 如果未指定，默认全部
-        if not target_systems:
-             target_systems = list(batch_gen.system_prompts.keys())
-             
-        target_reqs = req.requirement_indices
-        if not target_reqs:
-             target_reqs = list(range(len(batch_gen.requirement_prompts)))
+        target_systems = req.system_keys or list(batch_gen.system_prompts.keys())
+        target_reqs = req.requirement_indices or list(range(len(batch_gen.requirement_prompts)))
              
         for sys_key in target_systems:
             for req_idx in target_reqs:
-                custom_combinations.append({
-                    "system_key": sys_key,
-                    "requirement_index": req_idx
-                })
+                custom_combinations.append({"system_key": sys_key, "requirement_index": req_idx})
         
-        print(f"🧩 Batch request: {len(custom_combinations)} tasks")
-
-        # 调用 generate_batch
-        results = batch_gen.generate_batch(
-            custom_combinations=custom_combinations,
-            output_dir=BATCH_DIR
-        )
+        results = batch_gen.generate_batch(custom_combinations=custom_combinations, output_dir=BATCH_DIR)
         
-        # 构造返回
         generated_files = []
         for task_id, path in results.get("files", {}).items():
             filename = os.path.basename(path)
-            # 编码 URL
-            url = f"/static/batch/{quote(filename)}"
             generated_files.append({
                 "id": task_id,
-                "url": url,
+                "url": f"/static/batch/{quote(filename)}",
                 "filename": filename
             })
             
@@ -340,39 +368,23 @@ async def generate_batch_endpoint(req: BatchGenRequest, request: Request, x_acce
             "total": results["total_tasks"],
             "successful": results["successful"]
         }
-
     except Exception as e:
-        print(f"Error generating batch: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/download/batch")
 async def download_batch_endpoint(req: DownloadBatchRequest):
-    """打包下载"""
     try:
-        if not req.filenames:
-            raise HTTPException(status_code=400, detail="No files specified")
-            
+        if not req.filenames: raise HTTPException(status_code=400, detail="No files")
         import time
-        # 创建内存 ZIP
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             for filename in req.filenames:
-                # 尝试在 BATCH_DIR 和 GENERATED_DIR 找
                 p1 = os.path.join(BATCH_DIR, filename)
                 p2 = os.path.join(GENERATED_DIR, filename)
-                
-                target_path = None
-                if os.path.exists(p1): target_path = p1
-                elif os.path.exists(p2): target_path = p2
-                
-                if target_path:
-                    zf.write(target_path, filename)
-                else:
-                    print(f"⚠️ File not found for zip: {filename}")
+                target = p1 if os.path.exists(p1) else (p2 if os.path.exists(p2) else None)
+                if target: zf.write(target, filename)
         
         zip_buffer.seek(0)
-        
-        # 返回流
         zip_filename = f"batch_download_{int(time.time())}.zip"
         return StreamingResponse(
             iter([zip_buffer.getvalue()]), 
@@ -380,7 +392,6 @@ async def download_batch_endpoint(req: DownloadBatchRequest):
             headers={"Content-Disposition": f"attachment; filename={zip_filename}"}
         )
     except Exception as e:
-         print(f"Error zipping: {e}")
          raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate/modify")
@@ -390,39 +401,26 @@ async def generate_modify(
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url")
 ):
-    """基于原图修改"""
     try:
-        # 1. 鉴权
         access_info = check_access_permission(request, x_model_key)
         client_ip = request.client.host
         
-        runtime_api_key = None
-        runtime_base_url = None
-        if access_info["type"] == "custom":
-            runtime_api_key = access_info["api_key"]
-            runtime_base_url = x_model_base_url
+        runtime_api_key = access_info.get("api_key")
+        runtime_base_url = x_model_base_url
 
-        # 2. 解析原图路径
-        # URL 格式 /static/generated/filename.png
         if not req.original_image_url.startswith("/static/generated/"):
             raise HTTPException(status_code=400, detail="Invalid image URL")
         
         filename = os.path.basename(req.original_image_url)
         original_path = os.path.join(GENERATED_DIR, filename)
-        
         if not os.path.exists(original_path):
             raise HTTPException(status_code=404, detail="Original image not found")
 
-        # 3. 生成新文件名
-        import time
         timestamp = int(time.time())
         safe_prompt = sanitize_filename(req.prompt)
         new_filename = f"modified_{safe_prompt}_{timestamp}.png"
         new_meta_filename = f"modified_{safe_prompt}_{timestamp}.json"
         
-        # 4. 调用修改生成
-        
-        # generate_modified_image 现在接受 list
         image_url = img_gen.generate_modified_image(
             req.prompt, 
             [original_path],
@@ -433,12 +431,13 @@ async def generate_modify(
         if image_url:
             save_path = os.path.join(GENERATED_DIR, new_filename)
             if img_gen.download_image(image_url, save_path):
-                # 记录使用 (仅 LAN)
+                # 生成缩略图
+                create_thumbnail(save_path)
+
                 if access_info["type"] == "lan":
                     rate_limiter.record_usage(client_ip)
                 remaining = rate_limiter.get_remaining_quota(client_ip)
                 
-                # 保存元数据
                 meta_data = {
                     "prompt": req.prompt,
                     "parent_image": filename,
@@ -454,24 +453,16 @@ async def generate_modify(
                     "url": f"/static/generated/{new_filename}",
                     "remaining_quota": remaining
                 }
-        
         raise HTTPException(status_code=500, detail="Modification failed")
-
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error modifying image: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException as he: raise he
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/upload")
 async def upload_file(file: UploadFile = File(...)):
-    """上传文件接口"""
     try:
-        # 生成安全的文件名
-        import time
-        file_ext = os.path.splitext(file.filename)[1]
-        if not file_ext: file_ext = ".png"
-        filename = f"upload_{int(time.time())}_{secrets.token_hex(4)}{file_ext}"
+        timestamp = int(time.time())
+        file_ext = os.path.splitext(file.filename)[1] or ".png"
+        filename = f"upload_{timestamp}_{secrets.token_hex(4)}{file_ext}"
         file_path = os.path.join(UPLOAD_DIR, filename)
         
         with open(file_path, "wb") as buffer:
@@ -479,7 +470,7 @@ async def upload_file(file: UploadFile = File(...)):
             
         return {"success": True, "url": f"/static/uploads/{filename}"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/generate/single")
 async def generate_single(
@@ -488,60 +479,32 @@ async def generate_single(
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url")
 ):
-    """单图生成 (支持参考图)"""
     try:
-        # 1. 鉴权
         access_info = check_access_permission(request, x_model_key)
         client_ip = request.client.host
         
-        # 提取运行时配置
-        runtime_api_key = None
-        runtime_base_url = None
-        
-        if access_info["type"] == "custom":
-            runtime_api_key = access_info["api_key"]
-            runtime_base_url = x_model_base_url # 允许为空，为空则用系统默认或ImageGenerator默认
-            print(f"🔑 Using Custom Key from {client_ip}")
-        else:
-            # LAN 模式，不传递 runtime 参数，使用 img_gen 默认配置
-            pass
+        runtime_api_key = access_info.get("api_key")
+        runtime_base_url = x_model_base_url
 
-        import time
         timestamp = int(time.time())
-        # 使用 Prompt 作为文件名一部分
         safe_prompt = sanitize_filename(req.prompt)
         filename = f"{safe_prompt}_{timestamp}.png"
         meta_filename = f"{safe_prompt}_{timestamp}.json"
         
-        # --- 智能提示词增强 ---
-        # 根据学科和年级，自动调整提示词，让生成结果更贴合场景
         enhanced_prompt = req.prompt
         context_prompts = []
-        
         if req.subject and req.subject != "general":
             context_prompts.append(f"Subject: {req.subject}")
-        
         if req.grade and req.grade != "general":
-            if "primary" in req.grade.lower() or "kindergarten" in req.grade.lower():
-                context_prompts.append(f"Target Audience: {req.grade} students (cute, friendly, easy to understand)")
-            else:
-                context_prompts.append(f"Target Audience: {req.grade} students")
+            context_prompts.append(f"Target Audience: {req.grade} students")
         
         if context_prompts:
              enhanced_prompt += " (" + ", ".join(context_prompts) + ")"
         
-        # --- 智能文字语言适配 ---
-        # 如果学科是英语，自然应该显示英文；否则默认显示中文
-        is_english_subject = req.subject and ("english" in req.subject.lower() or "英语" in req.subject.lower())
-        
-        if is_english_subject:
-             enhanced_prompt += ", (text in image must be in English, text must be clear and legible, high quality typography)"
-        else:
-             enhanced_prompt += ", (text in image must be in Chinese, text must be clear and legible, high quality typography)"
-        
-        print(f"🧠 Enhanced Prompt: {enhanced_prompt}")
+        is_english = req.subject and ("english" in req.subject.lower() or "英语" in req.subject.lower())
+        enhanced_prompt += ", (text in image must be in English)" if is_english else ", (text in image must be in Chinese)"
 
-        # 临时修改配置
+        # 临时配置
         original_config = img_gen.config.copy()
         img_gen.config["image"]["size"] = req.size
         if "image" not in img_gen.config: img_gen.config["image"] = {}
@@ -550,34 +513,16 @@ async def generate_single(
         
         final_path = None
         
-        # ⚠️ 核心分支：是否有参考图
-        # 统一收集所有参考图 URL
-        all_ref_urls = []
-        if req.reference_image_url:
-            all_ref_urls.append(req.reference_image_url)
-        if req.reference_image_urls:
-            all_ref_urls.extend(req.reference_image_urls)
-            
-        # 去重
-        all_ref_urls = list(set(all_ref_urls))
+        all_ref_urls = list(set([u for u in [req.reference_image_url] + req.reference_image_urls if u]))
         
         if all_ref_urls:
-            print(f"🖼️ 使用参考图 ({len(all_ref_urls)}): {all_ref_urls}")
-            
             ref_paths = []
             for ref_url in all_ref_urls:
-                # 解析本地路径
                 ref_filename = os.path.basename(ref_url)
-                if "uploads" in ref_url:
-                    p = os.path.join(UPLOAD_DIR, ref_filename)
-                else:
-                    p = os.path.join(GENERATED_DIR, ref_filename)
-                
-                if os.path.exists(p):
-                    ref_paths.append(p)
+                p = os.path.join(UPLOAD_DIR, ref_filename) if "uploads" in ref_url else os.path.join(GENERATED_DIR, ref_filename)
+                if os.path.exists(p): ref_paths.append(p)
             
             if ref_paths:
-                # 使用 modify 的逻辑（传入路径列表）
                 image_url = img_gen.generate_modified_image(
                     enhanced_prompt, 
                     ref_paths,
@@ -588,11 +533,7 @@ async def generate_single(
                     save_path = os.path.join(GENERATED_DIR, filename)
                     if img_gen.download_image(image_url, save_path):
                         final_path = save_path
-            else:
-                print(f"⚠️ 所有参考图路径都不存在，降级为纯文本生成")
-                
         
-        # 如果没有参考图，或者参考图生成失败但没抛异常（逻辑降级），则执行纯文本生成
         if not final_path:
              final_path = img_gen.generate_and_download(
                 enhanced_prompt,
@@ -602,15 +543,15 @@ async def generate_single(
                 api_key=runtime_api_key
             )
         
-        # 恢复配置
         img_gen.config = original_config
         
         if final_path:
-            # 2. 成功生成后记录使用 (仅限 LAN 模式，Custom 模式不消耗系统额度，但仍记录日志)
+            # 生成缩略图
+            create_thumbnail(final_path)
+
             if access_info["type"] == "lan":
                 rate_limiter.record_usage(client_ip)
             
-            # 3. 保存元数据 (Metadata)
             meta_data = {
                 "prompt": req.prompt, 
                 "enhanced_prompt": enhanced_prompt,
@@ -619,21 +560,15 @@ async def generate_single(
                 "size": req.size,
                 "quality": req.quality,
                 "style": req.style,
-                "reference_images": all_ref_urls, # 记录所有参考图
+                "reference_images": all_ref_urls,
                 "timestamp": timestamp,
                 "ip": client_ip,
                 "featured": False 
             }
-            try:
-                with open(os.path.join(GENERATED_DIR, meta_filename), 'w', encoding='utf-8') as f:
-                    json.dump(meta_data, f, ensure_ascii=False, indent=2)
-            except Exception as e:
-                print(f"Failed to save metadata: {e}")
+            with open(os.path.join(GENERATED_DIR, meta_filename), 'w', encoding='utf-8') as f:
+                json.dump(meta_data, f, ensure_ascii=False, indent=2)
 
             remaining = rate_limiter.get_remaining_quota(client_ip)
-            print(f"✅ Generated for {client_ip}. Remaining quota: {remaining}")
-            
-            # 返回 URL
             return {
                 "success": True, 
                 "url": f"/static/generated/{filename}",
@@ -642,37 +577,26 @@ async def generate_single(
         else:
             raise HTTPException(status_code=500, detail="Generation failed")
             
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        print(f"Error generating image: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException as he: raise he
+    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/gallery")
 async def get_gallery():
-    """获取图库列表"""
     try:
         files = []
-        import json
-        
-        # 扫描所有图片格式
-        # 增加大写支持，防止漏网
+        # 扫描所有图片
         extensions = ["*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG"]
         all_images = []
         for ext in extensions:
             all_images.extend(glob.glob(os.path.join(GENERATED_DIR, ext)))
             
-        # 去重（不同后缀可能匹配到同一文件？不，glob是精确匹配）
-        # 但为了保险转成 set 再转回
         all_images = list(set(all_images))
 
         for f in all_images:
-            # 尝试寻找对应的 json 元数据
-            # 兼容 .png.json 或 .json 替换
+            if f.endswith(".thumb.jpg"): continue # 跳过缩略图文件
+
             basename = os.path.basename(f)
             name_without_ext = os.path.splitext(basename)[0]
-            
-            # 优先找同名json
             json_path = os.path.join(GENERATED_DIR, f"{name_without_ext}.json")
             
             meta = {}
@@ -682,62 +606,58 @@ async def get_gallery():
                         meta = json.load(jf)
                 except: pass
             
-            # 关键修复：URL 编码处理文件名中的空格和特殊字符
             encoded_name = quote(basename)
+            url = f"/static/generated/{encoded_name}"
             
+            # 检查是否有缩略图
+            thumb_name = f"{name_without_ext}.thumb.jpg"
+            thumb_path = os.path.join(GENERATED_DIR, thumb_name)
+            if os.path.exists(thumb_path):
+                thumbnail_url = f"/static/generated/{quote(thumb_name)}"
+            else:
+                thumbnail_url = url # 降级为原图
+
             files.append({
-                "url": f"/static/generated/{encoded_name}",
+                "url": url,
+                "thumbnail_url": thumbnail_url,
                 "name": basename,
                 "type": "single",
                 "time": os.path.getmtime(f),
                 "subject": meta.get("subject", "general"),
                 "grade": meta.get("grade", "general"),
-                "prompt": meta.get("prompt", name_without_ext), # 没prompt就用文件名
+                "prompt": meta.get("prompt", name_without_ext),
                 "featured": meta.get("featured", False)
             })
         
-        # 按时间倒序
         files.sort(key=lambda x: x["time"], reverse=True)
         return files
     except Exception as e:
-        print(f"Error loading gallery: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- 前端托管配置 (生产环境模式) ---
-# 这部分必须放在所有 API 路由之后
 if getattr(sys, 'frozen', False):
-    # 打包模式: 前端资源被打入 exe 内部的 dist 目录
     FRONTEND_DIST_DIR = os.path.join(BUNDLE_DIR, "dist")
 else:
-    # 开发模式
     FRONTEND_DIST_DIR = os.path.join(BUNDLE_DIR, "..", "frontend", "dist")
 
 FRONTEND_ASSETS_DIR = os.path.join(FRONTEND_DIST_DIR, "assets")
 
 if os.path.exists(FRONTEND_DIST_DIR):
-    print(f"📦 Found frontend build at {FRONTEND_DIST_DIR}, enabling static serving...")
-    
-    # 1. 挂载 assets 目录 (CSS/JS/Images)
+    print(f"📦 Found frontend build at {FRONTEND_DIST_DIR}")
     if os.path.exists(FRONTEND_ASSETS_DIR):
         app.mount("/assets", StaticFiles(directory=FRONTEND_ASSETS_DIR), name="assets")
 
-    # 2. 挂载根路径和其他前端路由
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # 排除已知的 API 前缀
         if full_path.startswith("api/") or full_path.startswith("static/"):
             raise HTTPException(status_code=404)
         
-        # 1. 尝试直接从 dist 根目录服务静态文件 (如 logo.png, favicon.ico)
         file_path = os.path.join(FRONTEND_DIST_DIR, full_path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return FileResponse(file_path)
             
-        # 2. 否则返回 index.html (SPA 路由)
         index_path = os.path.join(FRONTEND_DIST_DIR, "index.html")
         if os.path.exists(index_path):
             return FileResponse(index_path)
-            
         return {"error": "Frontend build not found"}
 else:
-    print("⚠️ Frontend dist not found. Run 'npm run build' in frontend/ first.")
+    print("⚠️ Frontend dist not found.")

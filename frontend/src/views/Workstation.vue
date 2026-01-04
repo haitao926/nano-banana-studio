@@ -382,7 +382,7 @@
                class="group relative aspect-square rounded-xl overflow-hidden cursor-pointer"
                @click="openImage(img)"
              >
-               <img :src="img.url" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
+               <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
                <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
                  <span class="text-white text-xs font-bold mb-1">{{ getSubjectLabel(img.subject) }}</span>
                  <p class="text-gray-200 text-[10px] line-clamp-2">{{ img.prompt }}</p>
@@ -1183,6 +1183,7 @@ const fetchHistory = async () => {
     galleryImages.value = res.data.map(img => ({
       id: img.name,
       url: img.url,
+      thumbnail_url: img.thumbnail_url,
       prompt: img.prompt || 'History Image',
       subject: img.subject || 'general',
       grade: img.grade || 'general',
