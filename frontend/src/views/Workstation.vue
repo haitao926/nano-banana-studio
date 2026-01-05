@@ -34,6 +34,7 @@
         <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
 
         <button 
+          v-if="isAdmin"
           @click="currentTab = 'settings'"
           class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
           :class="currentTab === 'settings' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
@@ -41,7 +42,7 @@
           <span>⚙️</span> 设置
         </button>
         
-        <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
+        <div v-if="isAdmin" class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
 
         <button 
           v-if="isAdmin"
@@ -50,15 +51,6 @@
           title="Admin Dashboard"
         >
           <span>📊</span>
-        </button>
-
-        <button 
-          @click="showAdminLogin = true"
-          class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold transition-all text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          :class="isAdmin ? 'text-green-500' : ''"
-          title="Admin Access"
-        >
-          <span>{{ isAdmin ? '🔓' : '🔒' }}</span>
         </button>
       </div>
     </div>
@@ -149,9 +141,10 @@
                              <button 
                                @click="handleOptimizePrompt" 
                                class="text-xs flex items-center gap-1 text-purple-600 hover:text-purple-800 font-bold transition-colors disabled:opacity-50"
-                               :disabled="!inputText.trim() || processing"
+                               :disabled="!inputText.trim() || processing || optimizing"
                              >
-                               <span>🪄</span> 魔法润色
+                               <span v-if="optimizing" class="animate-spin">⏳</span>
+                               <span v-else>🪄</span> 魔法润色
                              </button>
                            </div>
                            <textarea
@@ -165,7 +158,7 @@
                         <div class="space-y-2">
                             <button 
                               @click="handleGenerateSingle"
-                              :disabled="!inputText.trim() || processing || quota.remaining <= 0"
+                              :disabled="!inputText.trim() || processing || optimizing || quota.remaining <= 0"
                               class="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               <span v-if="processing">绘制中...</span>
@@ -177,55 +170,79 @@
                                                                <span v-if="quota.remaining < 5" class="text-red-400 font-bold">额度告急!</span>
                                                             </div>
                                                             <!-- 常驻联系信息 -->
-                                                            <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-center">
+                                                            <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-center relative group">
                                                               <p class="text-[10px] text-gray-400 leading-relaxed">
                                                                 如需调整额度或报告问题<br>
                                                                 请联系 <span class="text-blue-500 font-bold hover:underline cursor-pointer">上海科技大学附属学校信息组</span> 老师
                                                               </p>
+                                                              <button @click="showAdminLogin = true" class="absolute bottom-0 right-0 opacity-0 group-hover:opacity-50 text-[9px] text-gray-300 hover:text-blue-500 transition-all p-2">Admin</button>
                                                             </div>
                                                         </div>
                                                       </div>
-                                                    </div>        <!-- 右侧：预览大图 -->
-        <div class="relative min-h-[500px] flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700 overflow-hidden">
-             <div v-if="latestSingleTask" class="relative w-full h-full p-4">
-             <div v-if="latestSingleTask.status === 'processing' || latestSingleTask.status === 'pending'" class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-gray-800/80 backdrop-blur z-10">
-                <div class="text-6xl animate-bounce mb-4">🍌</div>
-                <p class="font-bold text-gray-500">{{ latestSingleTask.statusMsg || '生成中，预计 30 秒左右，请稍候...' }}</p>
-             </div>
-             <img 
-               v-if="latestSingleTask.resultUrl" 
-               :src="latestSingleTask.resultUrl" 
-               class="w-full h-full object-contain rounded-xl shadow-lg cursor-pointer"
-               @click="openImage({ url: latestSingleTask.resultUrl, prompt: latestSingleTask.prompt, subject: settings.subject, grade: settings.grade })"
-             />
-             <div v-else-if="latestSingleTask.status === 'failed'" class="text-center text-red-500">
-               <div class="text-4xl mb-2">❌</div>
-               Generation Failed
-             </div>
-          </div>
-          <div v-else class="text-center text-gray-400">
-            <div class="text-6xl mb-4">🎨</div>
-            <p>Ready to create</p>
-          </div>
+                                                    </div>        <!-- 右侧：预览大图 & 历史胶卷 -->
+        <div class="flex flex-col gap-4">
+            <!-- 主预览区 -->
+            <div class="relative min-h-[500px] flex-1 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700 overflow-hidden group">
+                 
+                 <!-- Loading Overlay (Only when generating new single task) -->
+                 <div v-if="latestSingleTask && (latestSingleTask.status === 'processing' || latestSingleTask.status === 'pending')" class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-gray-800/80 backdrop-blur z-20">
+                    <div class="text-6xl animate-bounce mb-4">🍌</div>
+                    <p class="font-bold text-gray-500">{{ latestSingleTask.statusMsg || '生成中，预计 30 秒左右，请稍候...' }}</p>
+                 </div>
 
-          <!-- Modification Overlay / Section -->
-          <div v-if="latestSingleTask && latestSingleTask.status === 'done'" class="absolute bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur p-4 border-t border-gray-100 dark:border-gray-700 transition-transform transform translate-y-0">
-             <div class="flex gap-2">
-                <input 
-                  v-model="modificationInput" 
-                  placeholder="✨ Modify this image (e.g., add a hat, make it night)..." 
-                  class="flex-1 bg-gray-50 dark:bg-gray-900 border-none outline-none px-4 py-2 rounded-lg text-sm"
-                  @keydown.enter="handleModify"
-                />
-                <button 
-                  @click="handleModify"
-                  :disabled="processing || !modificationInput"
-                  class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                 <!-- Image Display -->
+                 <div v-if="currentDisplayImage" class="relative w-full h-full p-4 flex items-center justify-center">
+                     <img 
+                       :src="currentDisplayImage.url" 
+                       class="max-w-full max-h-[600px] object-contain rounded-xl shadow-lg cursor-pointer"
+                       @click="openImage(currentDisplayImage)"
+                     />
+                     
+                     <!-- Tag -->
+                     <div class="absolute top-6 left-6 px-3 py-1 bg-black/60 backdrop-blur text-white text-xs rounded-full pointer-events-none">
+                        {{ getSubjectLabel(currentDisplayImage.subject) }}
+                     </div>
+                 </div>
+
+                 <!-- Empty State -->
+                 <div v-else-if="!processing" class="text-center text-gray-400">
+                    <div class="text-6xl mb-4">🎨</div>
+                    <p>Ready to create</p>
+                 </div>
+
+                 <!-- Modification Overlay (Shows on hover or if set) -->
+                 <div v-if="currentDisplayImage && !processing" class="absolute bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur p-4 border-t border-gray-100 dark:border-gray-700 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                     <div class="flex gap-2">
+                        <input 
+                          v-model="modificationInput" 
+                          placeholder="✨ Modify this image..." 
+                          class="flex-1 bg-gray-50 dark:bg-gray-900 border-none outline-none px-4 py-2 rounded-lg text-sm"
+                          @keydown.enter="handleModify"
+                        />
+                        <button 
+                          @click="handleModify"
+                          :disabled="processing || !modificationInput"
+                          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                        >
+                           Modify
+                        </button>
+                     </div>
+                  </div>
+            </div>
+
+            <!-- 底部胶卷栏 (Filmstrip) -->
+            <div v-if="recentHistory.length > 0" class="h-24 bg-white dark:bg-gray-800 rounded-2xl p-2 border border-gray-100 dark:border-gray-700 flex gap-2 overflow-x-auto custom-scrollbar">
+                <div 
+                  v-for="img in recentHistory" 
+                  :key="img.id"
+                  @click="handleHistorySelect(img)"
+                  class="relative flex-shrink-0 h-full aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all"
+                  :class="currentDisplayImage && currentDisplayImage.url === img.url ? 'border-black dark:border-white scale-95' : 'border-transparent hover:border-gray-300 opacity-70 hover:opacity-100'"
                 >
-                   Modify
-                </button>
-             </div>
-          </div>
+                   <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover" loading="lazy" />
+                   <div v-if="currentDisplayImage && currentDisplayImage.url === img.url" class="absolute inset-0 bg-black/10"></div>
+                </div>
+            </div>
         </div>
       </div>
     </Transition>
@@ -663,6 +680,44 @@
       </div>
     </Transition>
 
+    <!-- ==================== 访问模式选择弹窗 ==================== -->
+    <Transition name="fade">
+      <div v-if="showAccessModeModal" class="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+         <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 w-full max-w-2xl shadow-2xl animate-scale-in text-center space-y-8">
+            <div>
+               <h3 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 mb-2">欢迎来到智绘工坊</h3>
+               <p class="text-gray-500">请选择您的访问环境以优化体验</p>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+               <button 
+                 @click="handleSelectAccessMode('lan')"
+                 class="group relative overflow-hidden rounded-2xl p-6 border-2 border-gray-100 hover:border-green-400 bg-gray-50 hover:bg-green-50 transition-all text-left space-y-4"
+               >
+                  <div class="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🏫</div>
+                  <div>
+                     <h4 class="font-bold text-lg text-gray-800">校内访问 (LAN)</h4>
+                     <p class="text-xs text-gray-500 mt-1">使用校园网，无需配置密钥，直接使用。</p>
+                  </div>
+               </button>
+
+               <button 
+                 @click="handleSelectAccessMode('internet')"
+                 class="group relative overflow-hidden rounded-2xl p-6 border-2 border-gray-100 hover:border-blue-400 bg-gray-50 hover:bg-blue-50 transition-all text-left space-y-4"
+               >
+                  <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌍</div>
+                  <div>
+                     <h4 class="font-bold text-lg text-gray-800">互联网访问 (Internet)</h4>
+                     <p class="text-xs text-gray-500 mt-1">在家或外网访问，需提供您自己的 API Key。</p>
+                  </div>
+               </button>
+            </div>
+
+            <p class="text-[10px] text-gray-400">* 选择后将保存在本地，可随时在设置中清除缓存重置。</p>
+         </div>
+      </div>
+    </Transition>
+
   </div>
 </template>
 
@@ -679,8 +734,12 @@ const inputText = ref('')
 const modificationInput = ref('') // 修改指令
 const batchInputText = ref('') 
 const processing = ref(false)
+const optimizing = ref(false) // New state for Magic Polish
 
 const singleTasks = ref([]) 
+// 当前大图展示的图片对象 (可能是刚生成的，也可能是历史记录点击的)
+const currentDisplayImage = ref(null) 
+
 const batchQueue = ref([])
 
 // --- 接口配置 ---
@@ -734,8 +793,8 @@ const saveApiSettings = async () => {
 }
 
 const handleModify = async () => {
-  const currentTask = latestSingleTask.value
-  if (!currentTask || !currentTask.resultUrl || !modificationInput.value.trim()) return
+  const currentTask = currentDisplayImage.value // Use the currently viewed image
+  if (!currentTask || !currentTask.url || !modificationInput.value.trim()) return
   
   const modPrompt = modificationInput.value.trim()
   modificationInput.value = '' // clear input
@@ -755,12 +814,22 @@ const handleModify = async () => {
       try {
         const res = await axios.post('/api/generate/modify', {
           prompt: modPrompt,
-          original_image_url: currentTask.resultUrl
+          original_image_url: currentTask.url // Use url from currentDisplayImage
         })
         
         if (res.data.success) {
           newTask.status = 'done'
           newTask.resultUrl = res.data.url
+          
+          // Update Display
+          currentDisplayImage.value = {
+              url: res.data.url,
+              prompt: newTask.prompt,
+              subject: newTask.settings.subject,
+              grade: newTask.settings.grade,
+              isHistory: false
+          }
+
           message.success('修改成功！请及时保存')
           addToGallery(newTask)
         }
@@ -804,6 +873,22 @@ const selectedImage = ref(null)
 const showAccessKeyModal = ref(false)
 const userModelKeyInput = ref('')
 const userModelBaseUrlInput = ref('')
+const showAccessModeModal = ref(false)
+
+const handleSelectAccessMode = (mode) => {
+    localStorage.setItem('access_mode', mode)
+    showAccessModeModal.value = false
+    
+    if (mode === 'internet') {
+        // Check if key already exists, if not, prompt
+        if (!localStorage.getItem('user_model_key')) {
+             message.info('互联网模式需要配置模型密钥')
+             userModelKeyInput.value = localStorage.getItem('user_model_key') || ''
+             userModelBaseUrlInput.value = localStorage.getItem('user_model_base_url') || ''
+             showAccessKeyModal.value = true
+        }
+    }
+}
 
 // --- Axios 拦截器配置 ---
 // 在请求发出前，自动附带 localStorage 中的 Key
@@ -1010,6 +1095,19 @@ const getQualityLabel = (val) => qualityOptions.find(o => o.value === val)?.labe
 const getCountBySubject = (sub) => galleryImages.value.filter(i => i.subject === sub).length
 const latestSingleTask = computed(() => singleTasks.value[singleTasks.value.length - 1] || null)
 const reversedBatchQueue = computed(() => [...batchQueue.value].reverse())
+const recentHistory = computed(() => galleryImages.value.slice(0, 10)) // 胶卷栏显示最近10张
+
+const handleHistorySelect = (img) => {
+    // 转换为统一格式用于展示
+    currentDisplayImage.value = {
+        url: img.url,
+        prompt: img.prompt,
+        subject: img.subject,
+        grade: img.grade,
+        isHistory: true // 标记
+    }
+}
+
 const filteredGallery = computed(() => {
   let imgs = galleryImages.value
   if (galleryFilter.value !== 'all') {
@@ -1086,7 +1184,7 @@ const handleGenerateSingle = async () => {
 const handleOptimizePrompt = async () => {
   if (!inputText.value.trim()) return
   const original = inputText.value
-  processing.value = true
+  optimizing.value = true
   try {
     message.loading('✨ AI is optimizing your prompt...')
     // 传递 subject 上下文
@@ -1101,7 +1199,7 @@ const handleOptimizePrompt = async () => {
   } catch (e) {
     message.error('Optimization failed')
   } finally {
-    processing.value = false
+    optimizing.value = false
   }
 }
 
@@ -1199,6 +1297,11 @@ const fetchHistory = async () => {
       timestamp: img.time,
       featured: img.featured || false
     }))
+    
+    // 如果当前没有展示图片，且有历史记录，默认展示第一张
+    if (!currentDisplayImage.value && galleryImages.value.length > 0) {
+        handleHistorySelect(galleryImages.value[0])
+    }
   } catch (e) {}
 }
 
@@ -1326,6 +1429,15 @@ const executeTask = async (task) => {
         task.status = 'done'
         task.resultUrl = res.data.url
         
+        // 生成成功，立即展示
+        currentDisplayImage.value = {
+            url: res.data.url,
+            prompt: task.prompt,
+            subject: task.settings.subject,
+            grade: task.settings.grade,
+            isHistory: false
+        }
+
         const remaining = res.data.remaining_quota ?? quota.value.remaining
         const max = res.data.max ?? quota.value.max
         quota.value = { remaining, max }
@@ -1370,6 +1482,15 @@ onMounted(() => {
   fetchHistory()
   fetchQuota()
   loadApiSettings()
+  
+  // Check Access Mode
+  const mode = localStorage.getItem('access_mode')
+  if (!mode) {
+      showAccessModeModal.value = true
+  } else if (mode === 'internet') {
+      // If internet mode, double check key
+      // Not strictly necessary to popup every time, but good to ensure
+  }
 })
 </script>
 

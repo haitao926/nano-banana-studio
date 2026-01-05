@@ -18,3 +18,6 @@ nano_test.png
 backend/data/rate_limit.db
 backend/venv/
 verify_native_api.py
+
+# Generated Content
+backend/static/generated/
