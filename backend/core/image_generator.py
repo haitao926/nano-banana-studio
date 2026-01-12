@@ -45,63 +45,33 @@ class ImageGenerator:
 
         # 加载配置（以 config 文件为主）
         self.base_url = api_cfg.get("base_url", "").rstrip("/")
-        self.api_key = auth_cfg.get("api_key", "")
+        
+        # Load keys
+        primary_key = auth_cfg.get("api_key", "")
+        # Load backup keys (from config or env)
+        # Env var BACKUP_KEYS takes precedence? Or config?
+        # Let's support config 'backup_keys' which is a list or string
+        backup_keys_conf = auth_cfg.get("backup_keys", [])
+        if isinstance(backup_keys_conf, str):
+            backup_keys_conf = [k.strip() for k in backup_keys_conf.split(",") if k.strip()]
+        
+        self.api_keys = [k for k in [primary_key] + backup_keys_conf if k]
+        self.api_key = self.api_keys[0] if self.api_keys else ""
+        
+        # Load model-specific keys
+        model_rules = auth_cfg.get("model_rules", {})
+        self.special_models = model_rules.get("special_models", [])
+        self.special_keys = model_rules.get("special_keys", [])
+        if isinstance(self.special_keys, str):
+             self.special_keys = [k.strip() for k in self.special_keys.split(",") if k.strip()]
+        
         self.model = api_cfg.get("model")
         
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
         self.timeout = api_cfg.get("timeout", 120)
         self.max_retries = api_cfg.get("max_retries", 3)
 
-    def save_config(self):
-        """持久化当前配置"""
-        try:
-            os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
-            with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, ensure_ascii=False, indent=2)
-            return True
-        except Exception as e:
-            print(f"配置文件保存失败: {e}")
-            return False
-
-    def reload_config(self):
-        """从磁盘重新加载配置"""
-        self.config = self._load_config(self.config_path)
-        self._apply_config(self.config)
-
-    def update_config(self, base_url: Optional[str] = None, model: Optional[str] = None, api_key: Optional[str] = None):
-        """更新并保存配置"""
-        if not isinstance(self.config, dict):
-            self.config = {}
-        self.config.setdefault("api", {})
-        self.config.setdefault("auth", {})
-        self.config.setdefault("image", {})
-
-        if base_url is not None:
-            self.config["api"]["base_url"] = base_url.rstrip("/")
-        if model is not None:
-            self.config["api"]["model"] = model
-        if api_key is not None:
-            self.config["auth"]["api_key"] = api_key
-
-        self._apply_config(self.config)
-        self.save_config()
-
-    def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0, base_url: str = None, api_key: str = None) -> Optional[Dict]:
-        """发送API请求"""
-        # 使用传入的 base_url 或 实例的 base_url
-        current_base_url = (base_url or self.base_url).rstrip("/")
-        current_api_key = api_key or self.api_key
-        
-        url = f"{current_base_url}{endpoint}"
-        
-        headers = {
-            "Authorization": f"Bearer {current_api_key}",
-            "Content-Type": "application/json"
-        }
-
+    def _execute_raw_request(self, url: str, headers: Dict, data: Dict, retry_count: int = 0) -> Optional[requests.Response]:
+        """执行单次请求，处理网络层面的重试"""
         try:
             print(f"🚀 发送请求到: {url}")
             print(f"   模型: {data.get('model')}")
@@ -112,25 +82,82 @@ class ImageGenerator:
                 json=data,
                 timeout=self.timeout
             )
-
-            if response.status_code == 200:
-                return response.json()
-            else:
-                print(f"❌ API请求失败: {response.status_code}")
-                print(f"   响应: {response.text}")
-                
-                # 可重试的状态码
-                if response.status_code in [500, 502, 503, 504] and retry_count < self.max_retries:
-                    print(f"🔄 正在重试 ({retry_count + 1}/{self.max_retries})...")
-                    time.sleep(2)
-                    return self._make_request(endpoint, data, retry_count + 1, base_url=base_url, api_key=api_key)
-                return None
-
+            return response
         except Exception as e:
             print(f"❌ 请求异常: {e}")
             return None
 
-    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None) -> Optional[str]:
+    def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0, base_url: str = None, api_key: str = None, model: str = None) -> Optional[Dict]:
+        """发送API请求 (支持多Key轮询)"""
+        current_base_url = (base_url or self.base_url).rstrip("/")
+        
+        # Override model in data if provided
+        if model:
+            data["model"] = model
+            
+        url = f"{current_base_url}{endpoint}"
+        
+        # Determine keys to try
+        # If explicit api_key provided (BYOK), use only that.
+        # Otherwise, use system keys (primary + backups).
+        keys_to_try = [api_key] if api_key else (self.api_keys if self.api_keys else [""])
+
+        # Check for model-specific keys override (System keys only)
+        if not api_key and model and model in self.special_models and self.special_keys:
+             print(f"🔑 使用专用Key池 (针对模型: {model})")
+             keys_to_try = self.special_keys
+        
+        last_error = None
+        
+        for key_idx, current_key in enumerate(keys_to_try):
+            headers = {
+                "Authorization": f"Bearer {current_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # Internal Retry Loop for a specific key (for 502/Timeout etc, not 401/403)
+            # Actually, _execute_raw_request handles the call. We handle logical retries here?
+            # Let's keep simple: Try Key -> If 401/429/500 -> Try Next Key.
+            # If 502/504 -> Retry same key a few times?
+            
+            # Let's combine: Loop over Keys. Inside, retry connection errors?
+            # Simplified: Just try each key once. If network fails, maybe retry same key?
+            
+            # We will use a simple retry for network flakes on the *same* key
+            for attempt in range(self.max_retries + 1):
+                response = self._execute_raw_request(url, headers, data)
+                
+                if response is None:
+                    # Network error, retry same key
+                    time.sleep(1)
+                    continue
+                
+                if response.status_code == 200:
+                    return response.json()
+                
+                # If error is recoverable by switching keys (401 Auth, 429 Rate, 402 Payment, 500/503 Provider Error)
+                if response.status_code in [401, 403, 429, 402, 500, 503]:
+                    print(f"⚠️ Key #{key_idx} failed with {response.status_code}. Trying next key...")
+                    # Break inner loop (retries) to go to next key
+                    break 
+                
+                # If error is likely transient (502, 504), retry same key
+                if response.status_code in [502, 504]:
+                     print(f"🔄 正在重试 ({attempt + 1}/{self.max_retries})...")
+                     time.sleep(2)
+                     continue
+                
+                # Other errors (400 Bad Request) -> Don't switch keys, likely request issue
+                print(f"❌ API请求失败: {response.status_code}")
+                print(f"   响应: {response.text}")
+                return None
+            
+            # If we broke out of inner loop, it means this key failed. Continue to next key.
+            
+        print("❌ All keys failed.")
+        return None
+
+    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
         """通过 Chat API 生成图片 (针对 Gemini 等模型)"""
         
         # 针对 Gemini 的 Prompt 增强: 注入画幅比例指令
@@ -156,14 +183,14 @@ class ImageGenerator:
         print(f"🎨 Chat生成提示词: {final_prompt}")
 
         data = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": [
                 {"role": "user", "content": final_prompt}
             ],
             "n": 1
         }
         
-        response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key)
+        response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key, model=model)
         
         if response and "choices" in response and len(response["choices"]) > 0:
             content = response["choices"][0]["message"]["content"]
@@ -175,55 +202,112 @@ class ImageGenerator:
             return content # 如果没找到markdown格式，直接返回内容尝试
         return None
 
-    def optimize_prompt(self, raw_prompt: str, subject: str = "general") -> str:
+    def optimize_prompt(self, raw_prompt: str, subject: str = "general", model: str = None) -> str:
         """
         使用 LLM 优化提示词 (融入结构化思维)
+        :param model: 目标绘图模型 (Target Image Model)，用于定制提示词风格。
+                      实际推理仍然使用 self.model (System LLM)。
         """
-        # 1. 定义学科特定的负面约束 (借鉴 promot参考.md)
+        # 1. 确定 LLM 和 目标风格
+        llm_model = self.model # 始终使用系统配置的 LLM (Brain) 进行思考
+        target_model = model or self.model # 用户选择的绘图模型
+        
+        # 2. 定义学科特定的负面约束
         subject_constraints = {
             "math": "no distorted numbers, no curved rulers, no incorrect formulas",
             "science": "no pseudo-science, no incorrect anatomy, no impossible physics",
+            "physics": "no impossible physics, correct diagrams",
+            "chemistry": "no incorrect molecules, realistic equipment",
+            "biology": "correct anatomy, realistic plants/animals",
             "english": "no gibberish text, no asian characters, spelling must be correct",
+            "chinese": "calligraphy style, correct characters",
             "history": "no anachronisms, period-accurate clothing only",
-            "it_ai": "no blurry screens, no nonsensical code, futuristic but logical"
+            "it_ai": "no blurry screens, no nonsensical code, futuristic but logical",
+            "arts_pe": "aesthetic, dynamic composition, correct musical instruments, realistic sports action",
+            "humanities_psych": "accurate maps, historical accuracy, biological details, empathy, facial expressions, social scenes",
+            "textbook": "no blurry details, no photographic noise, no dark background, no complex background"
         }
         
         neg_constraint = subject_constraints.get(subject, "no distorted text, no blurry details")
 
-        # 2. 高级 System Prompt: 强制 LLM 先思考结构，再输出 Prompt
-        system_instruction = f"""
-You are an expert Educational Visual Designer. Your goal is to convert simple requests into highly structured, logical, and beautiful prompts for AI image generation.
+        # 3. 定制化风格指令 (根据目标模型)
+        style_instruction = ""
+        if target_model:
+            t_lower = target_model.lower()
+            if "jimeng" in t_lower:
+                style_instruction = "Target Model: Jimeng/Dream. Style preference: High artistic quality, dreamy lighting, Chinese aesthetic friendly, precise tags."
+            elif "gpt" in t_lower or "dall" in t_lower:
+                style_instruction = "Target Model: DALL-E 3. Style preference: Natural language descriptions, very literal interpretation, detailed visual adjectives."
+            elif "gemini" in t_lower:
+                style_instruction = "Target Model: Gemini Image. Style preference: Structured, logical, high dynamic range, prompt adherence."
 
-Internal Thinking Process (Do NOT output this JSON, but use it to structure your final prompt):
-1. **Analyze Subject & Goal**: Is it a Timeline? Comparison? Anatomy? Process?
-2. **Define Layout**: Left-to-right? Top-down? Split screen?
-3. **Inject Logic**: "Left is early, Right is late" or "Top is macro, Bottom is micro".
-4. **Enforce Constraints**: {neg_constraint}
-
-Output ONLY the final descriptive prompt. The prompt should be a flat paragraph but written with the clarity of a structured specification. 
-Start with the core subject, then describe the layout/composition, then details, and finally style/lighting.
-"""
+        # 4. 高级 System Prompt
         
+        # 针对“教材绘图”的特殊处理
+        if subject == "textbook":
+            style_keywords = "modern 2.5D vector illustration, soft gradient shading, clean lines, high-quality educational textbook art, vibrant multi-color accents, white background"
+            
+            system_instruction = f"""
+You are a Prompt Engineering Expert. Your task is to WRITE A TEXT DESCRIPTION.
+DO NOT GENERATE AN IMAGE.
+
+Goal: Rewrite the user's input into a detailed visual description suitable for an image generator.
+Constraint: {neg_constraint}.
+Background: Must be White.
+{style_instruction}
+
+Process:
+1. Analyze the core concept.
+2. Write a descriptive paragraph in English.
+3. Integrate the style requirements naturally.
+
+Output ONLY the text description.
+"""
+            user_content = f"Create a textbook illustration prompt for: {raw_prompt}. Style requirements: {style_keywords}. Subject context: {subject}"
+        else:
+            system_instruction = f"""
+You are a Prompt Engineering Expert. Your task is to WRITE A TEXT DESCRIPTION.
+DO NOT GENERATE AN IMAGE.
+
+Goal: Rewrite the user's input into a structured prompt.
+Constraint: {neg_constraint}.
+{style_instruction}
+
+Output ONLY the text description.
+"""
+            user_content = f"Create an educational infographic prompt for: {raw_prompt}. Subject context: {subject}"
+        
+        # 注意: 这里使用 llm_model (self.model) 发起请求，而不是传入的 model (可能只是 image model)
         data = {
-            "model": self.model, 
+            "model": llm_model, 
             "messages": [
                 {"role": "system", "content": system_instruction},
-                {"role": "user", "content": f"Create an educational infographic prompt for: {raw_prompt}. Subject context: {subject}"}
+                {"role": "user", "content": user_content}
             ],
             "temperature": 0.7
         }
         
-        print(f"✨ 正在优化提示词 (Smart Mode): {raw_prompt}")
-        response = self._make_request("/v1/chat/completions", data)
+        print(f"✨ 正在优化提示词 (Target: {target_model}): {raw_prompt}")
+        response = self._make_request("/v1/chat/completions", data, model=llm_model)
         
         if response and "choices" in response and len(response["choices"]) > 0:
-            optimized = response["choices"][0]["message"]["content"].strip()
-            print(f"✨ 优化完成: {optimized[:50]}...")
-            return optimized
+            content = response["choices"][0]["message"]["content"].strip()
+            
+            # 移除 markdown 图片链接
+            content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
+            content = re.sub(r'\[Image\]', '', content, flags=re.IGNORECASE)
+            content = content.strip()
+            
+            if not content or len(content) < 5:
+                print("⚠️ 优化结果无效，回退")
+                return raw_prompt
+
+            print(f"✨ 优化完成: {content[:50]}...")
+            return content
         
         return raw_prompt
 
-    def generate_modified_image(self, prompt: str, base_image_paths: list[str], base_url: str = None, api_key: str = None) -> Optional[str]:
+    def generate_modified_image(self, prompt: str, base_image_paths: list[str], base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
         """
         基于原图(多图)进行修改 (Image-to-Image / Vision)
         """
@@ -263,7 +347,7 @@ Start with the core subject, then describe the layout/composition, then details,
 
             # 2. 构建多模态请求 (OpenAI Vision 格式)
             data = {
-                "model": self.model,
+                "model": model or self.model,
                 "messages": [
                     {
                         "role": "user",
@@ -273,7 +357,7 @@ Start with the core subject, then describe the layout/composition, then details,
                 "n": 1
             }
 
-            response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key)
+            response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key, model=model)
 
             if response and "choices" in response and len(response["choices"]) > 0:
                 content = response["choices"][0]["message"]["content"]
@@ -291,7 +375,7 @@ Start with the core subject, then describe the layout/composition, then details,
             print(f"❌ 图片修改失败: {e}")
             return None
 
-    def generate_image(self, prompt: str, size: str = None, quality: str = None, style: str = None, base_url: str = None, api_key: str = None) -> Optional[str]:
+    def generate_image(self, prompt: str, size: str = None, quality: str = None, style: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
         """
         生成图片
         Returns: 图片 URL 或 Base64 Data URI
@@ -301,21 +385,31 @@ Start with the core subject, then describe the layout/composition, then details,
         if quality is None: quality = self.config["image"].get("quality")
         if style is None: style = self.config["image"].get("style")
         
+        target_model = model or self.model
+
         # 针对 Gemini-3-pro-image-preview 模型的特殊处理
-        if "gemini-3-pro-image-preview" in self.model:
+        if "gemini-3-pro-image-preview" in target_model:
             print(f"🤖 检测到 Gemini 绘图模型，切换到 Chat 接口...")
-            return self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key)
+            return self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
 
         # 构建请求数据 (OpenAI 兼容格式)
         data = {
-            "model": self.model,
+            "model": target_model,
             "prompt": prompt,
             "n": 1,
-            "size": size
+            "size": size,
+            "response_format": "url"
         }
 
+        # 针对 z-image-turbo 的特殊参数
+        if target_model == "z-image-turbo":
+            data.update({
+                "watermark": False,
+                "prompt_extend": True
+            })
+
         # 大多数中转商使用标准的 OpenAI 图片接口
-        response = self._make_request("/v1/images/generations", data, base_url=base_url, api_key=api_key)
+        response = self._make_request("/v1/images/generations", data, base_url=base_url, api_key=api_key, model=target_model)
 
         if response and "data" in response and len(response["data"]) > 0:
             image_url = response["data"][0]["url"]
@@ -361,9 +455,9 @@ Start with the core subject, then describe the layout/composition, then details,
             print(f"❌ 下载异常: {e}")
             return False
 
-    def generate_and_download(self, prompt: str, filename: str, folder: str = "generated_images", base_url: str = None, api_key: str = None) -> Optional[str]:
+    def generate_and_download(self, prompt: str, filename: str, folder: str = "generated_images", base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
         """生成并下载"""
-        image_url = self.generate_image(prompt, base_url=base_url, api_key=api_key)
+        image_url = self.generate_image(prompt, base_url=base_url, api_key=api_key, model=model)
         
         if image_url:
             save_path = os.path.join(folder, filename)

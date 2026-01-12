@@ -11,6 +11,7 @@ frontend/dist/
 
 # Local data/secrets
 backend/data/config.json
+backend/data/app.db
 nano_test.png
 
 # Streamlit local state
@@ -21,3 +22,4 @@ verify_native_api.py
 
 # Generated Content
 backend/static/generated/
+backend/static/uploads/

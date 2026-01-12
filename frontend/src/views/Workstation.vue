@@ -1,719 +1,639 @@
 <template>
-  <div class="space-y-8">
+  <div class="space-y-8 relative min-h-[80vh]">
 
-    <!-- 顶部主导航栏 -->
-    <div class="flex justify-center mb-10">
-      <div class="bg-white dark:bg-gray-800 p-1.5 rounded-2xl flex gap-2 shadow-sm border border-gray-100 dark:border-gray-700">
-        
-        <button 
-          @click="currentTab = 'single'"
-          class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
-          :class="currentTab === 'single' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
-        >
-          <span>✨</span> 单图创作
-        </button>
-
-        <button 
-          @click="currentTab = 'batch'"
-          class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
-          :class="currentTab === 'batch' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
-        >
-          <span>🏭</span> 批量工坊
-        </button>
-
-        <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
-
-        <button 
-          @click="currentTab = 'gallery'"
-          class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
-          :class="currentTab === 'gallery' ? 'bg-yellow-100 text-yellow-800 shadow-sm' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
-        >
-          <span>🖼️</span> 学科画廊
-        </button>
-
-        <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
-
-        <button 
-          v-if="isAdmin"
-          @click="currentTab = 'settings'"
-          class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
-          :class="currentTab === 'settings' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
-        >
-          <span>⚙️</span> 设置
-        </button>
-        
-        <div v-if="isAdmin" class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
-
-        <button 
-          v-if="isAdmin"
-          @click="showAdminStats = true"
-          class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-bold transition-all text-blue-500 hover:bg-blue-50"
-          title="Admin Dashboard"
-        >
-          <span>📊</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- ==================== 页面 1: 单图创作 ==================== -->
-    <Transition name="fade" mode="out-in">
-      <div v-if="currentTab === 'single'" class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        
-        <!-- 左侧：控制台 -->
-        <div class="space-y-4">
-          <!-- Header removed to save space -->
-
-          <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-xl border border-gray-100 dark:border-gray-700 space-y-4">
-            
-            <!-- 参数行 (紧凑布局) -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <!-- 学科 -->
-              <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">学科 (Subject)</label>
-                <n-popselect v-model:value="settings.subject" :options="subjectOptions" trigger="click">
-                  <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-yellow-50 transition-colors truncate">
-                    <span>{{ getSubjectLabel(settings.subject) }}</span>
-                    <span class="text-xs">▼</span>
-                  </button>
-                </n-popselect>
-              </div>
-
-              <!-- 年级 -->
-              <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">年级 (Grade)</label>
-                <n-popselect v-model:value="settings.grade" :options="gradeOptions" trigger="click">
-                  <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-green-50 transition-colors truncate">
-                    <span>{{ getGradeLabel(settings.grade) }}</span>
-                    <span class="text-xs">▼</span>
-                  </button>
-                </n-popselect>
-              </div>
-
-              <!-- 画幅 -->
-              <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">画幅 (Ratio)</label>
-                 <n-popselect v-model:value="settings.aspectRatio" :options="ratioOptions" trigger="click">
-                  <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors truncate">
-                    <span>{{ settings.aspectRatio }}</span>
-                    <span class="text-xs">▼</span>
-                  </button>
-                </n-popselect>
-              </div>
-
-              <!-- 画质 -->
-              <div class="space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">画质 (Quality)</label>
-                 <n-popselect v-model:value="settings.quality" :options="qualityOptions" trigger="click">
-                  <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors truncate">
-                    <span>{{ getQualityLabel(settings.quality).split(' ')[0] }}</span>
-                    <span class="text-xs">▼</span>
-                  </button>
-                </n-popselect>
-              </div>
-            </div>
-
-            <!-- 参考图上传 (多图) -->
-            <div class="space-y-1">
-                <div class="flex justify-between items-center">
-                   <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">参考图 (Reference Images) {{ refImageUrls.length }}/4</label>
-                   <button v-if="refImageUrls.length > 0" @click="refImageUrls = []" class="text-[10px] text-red-400 hover:underline">清空 (Clear)</button>
-                </div>
-                <n-upload
-                  action="/api/upload"
-                  :max="4"
-                  multiple
-                  list-type="image-card"
-                  @finish="handleUploadFinishWithStore"
-                  @remove="handleRemoveWithStore"
-                  class="block"
-                >
-                  <div class="flex flex-col items-center justify-center text-gray-400 text-xs gap-1">
-                    <span class="text-lg">📸</span>
-                    <span class="scale-90">上传图片</span>
-                  </div>
-                </n-upload>
-            </div>
-
-            <!-- 输入框 -->
-                        <div class="space-y-2">
-                           <div class="flex justify-between items-center">
-                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">提示词 (Prompt)</label>
-                             <button 
-                               @click="handleOptimizePrompt" 
-                               class="text-xs flex items-center gap-1 text-purple-600 hover:text-purple-800 font-bold transition-colors disabled:opacity-50"
-                               :disabled="!inputText.trim() || processing || optimizing"
-                             >
-                               <span v-if="optimizing" class="animate-spin">⏳</span>
-                               <span v-else>🪄</span> 魔法润色
-                             </button>
-                           </div>
-                           <textarea
-                            v-model="inputText"
-                            placeholder="描述一个清晰的画面..."
-                            class="w-full h-48 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl border-none outline-none text-lg resize-none focus:ring-2 focus:ring-yellow-400 transition-all"
-                            @keydown.enter.ctrl="handleGenerateSingle"
-                          ></textarea>
-                        </div>
-            
-                        <div class="space-y-2">
-                            <button 
-                              @click="handleGenerateSingle"
-                              :disabled="!inputText.trim() || processing || optimizing || quota.remaining <= 0"
-                              class="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                              <span v-if="processing">绘制中...</span>
-                              <span v-else-if="quota.remaining <= 0">额度耗尽</span>
-                              <span v-else>开始绘制</span>
-                            </button>
-                                                            <div class="flex justify-between text-xs text-gray-400 px-1 mt-2">
-                                                               <span>本周额度: {{ quota.remaining }} / {{ quota.max }}</span>
-                                                               <span v-if="quota.remaining < 5" class="text-red-400 font-bold">额度告急!</span>
-                                                            </div>
-                                                            <!-- 常驻联系信息 -->
-                                                            <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 text-center relative group">
-                                                              <p class="text-[10px] text-gray-400 leading-relaxed">
-                                                                如需调整额度或报告问题<br>
-                                                                请联系 <span class="text-blue-500 font-bold hover:underline cursor-pointer">上海科技大学附属学校信息组</span> 老师
-                                                              </p>
-                                                              <button @click="showAdminLogin = true" class="absolute bottom-0 right-0 opacity-0 group-hover:opacity-50 text-[9px] text-gray-300 hover:text-blue-500 transition-all p-2">Admin</button>
-                                                            </div>
-                                                        </div>
-                                                      </div>
-                                                    </div>        <!-- 右侧：预览大图 & 历史胶卷 -->
-        <div class="flex flex-col gap-4">
-            <!-- 主预览区 -->
-            <div class="relative min-h-[500px] flex-1 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700 overflow-hidden group">
-                 
-                 <!-- Loading Overlay (Only when generating new single task) -->
-                 <div v-if="latestSingleTask && (latestSingleTask.status === 'processing' || latestSingleTask.status === 'pending')" class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-gray-800/80 backdrop-blur z-20">
-                    <div class="text-6xl animate-bounce mb-4">🍌</div>
-                    <p class="font-bold text-gray-500">{{ latestSingleTask.statusMsg || '生成中，预计 30 秒左右，请稍候...' }}</p>
-                 </div>
-
-                 <!-- Image Display -->
-                 <div v-if="currentDisplayImage" class="relative w-full h-full p-4 flex items-center justify-center">
-                     <img 
-                       :src="currentDisplayImage.url" 
-                       class="max-w-full max-h-[600px] object-contain rounded-xl shadow-lg cursor-pointer"
-                       @click="openImage(currentDisplayImage)"
-                     />
-                     
-                     <!-- Tag -->
-                     <div class="absolute top-6 left-6 px-3 py-1 bg-black/60 backdrop-blur text-white text-xs rounded-full pointer-events-none">
-                        {{ getSubjectLabel(currentDisplayImage.subject) }}
-                     </div>
-                 </div>
-
-                 <!-- Empty State -->
-                 <div v-else-if="!processing" class="text-center text-gray-400">
-                    <div class="text-6xl mb-4">🎨</div>
-                    <p>Ready to create</p>
-                 </div>
-
-                 <!-- Modification Overlay (Shows on hover or if set) -->
-                 <div v-if="currentDisplayImage && !processing" class="absolute bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur p-4 border-t border-gray-100 dark:border-gray-700 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                     <div class="flex gap-2">
-                        <input 
-                          v-model="modificationInput" 
-                          placeholder="✨ Modify this image..." 
-                          class="flex-1 bg-gray-50 dark:bg-gray-900 border-none outline-none px-4 py-2 rounded-lg text-sm"
-                          @keydown.enter="handleModify"
-                        />
-                        <button 
-                          @click="handleModify"
-                          :disabled="processing || !modificationInput"
-                          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
-                        >
-                           Modify
-                        </button>
-                     </div>
-                  </div>
-            </div>
-
-            <!-- 底部胶卷栏 (Filmstrip) -->
-            <div v-if="recentHistory.length > 0" class="h-24 bg-white dark:bg-gray-800 rounded-2xl p-2 border border-gray-100 dark:border-gray-700 flex gap-2 overflow-x-auto custom-scrollbar">
-                <div 
-                  v-for="img in recentHistory" 
-                  :key="img.id"
-                  @click="handleHistorySelect(img)"
-                  class="relative flex-shrink-0 h-full aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all"
-                  :class="currentDisplayImage && currentDisplayImage.url === img.url ? 'border-black dark:border-white scale-95' : 'border-transparent hover:border-gray-300 opacity-70 hover:opacity-100'"
-                >
-                   <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover" loading="lazy" />
-                   <div v-if="currentDisplayImage && currentDisplayImage.url === img.url" class="absolute inset-0 bg-black/10"></div>
-                </div>
-            </div>
-        </div>
-      </div>
-    </Transition>
-
-
-    <!-- ==================== 页面 2: 批量工坊 ==================== -->
-    <Transition name="fade" mode="out-in">
-      <div v-if="currentTab === 'batch'" class="space-y-10">
-        
-        <section class="max-w-6xl mx-auto space-y-6">
-           <div class="text-center space-y-2">
-            <h2 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600">
-              批量工坊 (Batch Factory)
-            </h2>
-            <p class="text-gray-400">文本输入 或 JSON导入，灵活满足大规模生产。</p>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            
-            <!-- 左侧：JSON 导入区 -->
-            <div class="md:col-span-1 bg-blue-50 dark:bg-gray-800 rounded-2xl p-6 border-2 border-dashed border-blue-200 dark:border-gray-600 flex flex-col justify-center items-center text-center space-y-4 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors cursor-pointer relative">
-               <input 
-                 type="file" 
-                 accept=".json" 
-                 class="absolute inset-0 opacity-0 cursor-pointer"
-                 @change="handleJsonUpload" 
-               />
-               <div class="text-4xl">📂</div>
-               <div>
-                  <h3 class="font-bold text-blue-800 dark:text-blue-300">导入 JSON (Import JSON)</h3>
-                  <p class="text-xs text-blue-600 dark:text-gray-400 mt-1">拖拽或点击上传</p>
-               </div>
-               <button @click.stop="downloadTemplate" class="text-xs text-gray-500 underline hover:text-blue-600 z-10 relative">下载模板 (Template)</button>
-            </div>
-
-            <!-- 右侧：文本输入区 -->
-            <div class="md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden flex flex-col">
-               <div class="flex items-center gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                  <span class="text-sm font-bold text-gray-500">默认设置 (Default):</span>
-                  <n-popselect v-model:value="settings.subject" :options="subjectOptions" trigger="click">
-                    <button class="px-3 py-1 bg-white dark:bg-gray-700 rounded-md text-sm border hover:border-blue-400 transition-colors">
-                      🏷️ {{ getSubjectLabel(settings.subject) }}
-                    </button>
-                  </n-popselect>
-                  <n-popselect v-model:value="settings.aspectRatio" :options="ratioOptions" trigger="click">
-                    <button class="px-3 py-1 bg-white dark:bg-gray-700 rounded-md text-sm border hover:border-blue-400 transition-colors">
-                      📐 {{ settings.aspectRatio }}
-                    </button>
-                  </n-popselect>
-               </div>
-
-               <div class="relative flex-1">
-                  <textarea
-                    v-model="batchInputText"
-                    placeholder="在此输入批量提示词 (每行一个)..."
-                    class="w-full h-full min-h-[200px] p-6 bg-transparent border-none outline-none text-base resize-none font-mono leading-relaxed"
-                  ></textarea>
-                  
-                  <div class="absolute bottom-6 right-6">
-                     <button 
-                      @click="handleGenerateBatch"
-                      :disabled="!batchInputText.trim() || processing"
-                      class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold shadow-lg hover:shadow-blue-500/30 transition-all disabled:opacity-50"
-                    >
-                      <span v-if="processing">处理中...</span>
-                      <span v-else>🚀 开始批量生成</span>
-                    </button>
-                  </div>
-               </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 批量任务流 -->
-        <section v-if="batchQueue.length > 0" class="max-w-[1600px] mx-auto px-6">
-           <div class="flex items-center justify-between mb-4">
-              <h3 class="font-bold text-gray-500">任务队列 (Task Queue) ({{ batchQueue.filter(t=>t.status==='done').length }}/{{ batchQueue.length }})</h3>
-              <div class="flex gap-4">
-                 <button 
-                   v-if="batchQueue.some(t => t.status === 'done')"
-                   @click="downloadBatchResults"
-                   class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1"
-                 >
-                   <span>📦</span> 一键打包下载 (ZIP)
-                 </button>
-                 <button @click="batchQueue = []" class="text-xs text-red-400 hover:underline">清空 (Clear All)</button>
-              </div>
-           </div>
-           
-           <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-              <TransitionGroup name="list">
-                <div v-for="task in reversedBatchQueue" :key="task.id" class="group relative bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-100 dark:border-gray-700 shadow-sm">
-                   
-                   <div class="aspect-square relative">
-                      <img v-if="task.status === 'done'" :src="task.resultUrl" class="w-full h-full object-cover cursor-pointer hover:opacity-90" @click="openImage({ url: task.resultUrl, prompt: task.prompt, subject: task.settings.subject, grade: task.settings.grade })" />
-                      <div v-else-if="task.status === 'pending'" class="w-full h-full flex items-center justify-center bg-gray-50 text-gray-300 text-xs">Waiting...</div>
-                      <div v-else-if="task.status === 'processing'" class="w-full h-full flex flex-col items-center justify-center bg-blue-50 text-blue-500"><div class="animate-spin text-xl mb-1">⏳</div></div>
-                      <div v-else class="w-full h-full flex items-center justify-center bg-red-50 text-red-400 text-xs">Failed</div>
-                      
-                      <!-- 标签 -->
-                      <div class="absolute top-1 left-1" v-if="task.settings.subject">
-                         <span class="px-1.5 py-0.5 bg-black/50 text-white text-[9px] rounded backdrop-blur">
-                            {{ getSubjectLabel(task.settings.subject) }}
-                         </span>
-                      </div>
-                   </div>
-                   <div class="p-2">
-                      <p class="text-[10px] text-gray-500 truncate" :title="task.prompt">{{ task.prompt }}</p>
-                   </div>
-                </div>
-              </TransitionGroup>
-           </div>
-        </section>
-      </div>
-    </Transition>
-
-    <!-- ==================== 页面 3: 学科画廊 ==================== -->
-    <Transition name="fade" mode="out-in">
-      <div v-if="currentTab === 'gallery'" class="flex gap-8 max-w-[1600px] mx-auto min-h-[600px]">
-        <aside class="w-64 flex-shrink-0 space-y-2">
-          <h3 class="font-bold text-gray-400 px-4 mb-4 text-xs uppercase tracking-wider">学科分类 (Subjects)</h3>
-          <button 
-            @click="galleryFilter = 'all'"
-            class="w-full text-left px-4 py-3 rounded-xl font-medium transition-colors flex justify-between items-center"
-            :class="galleryFilter === 'all' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-600'"
-          >
-            <span>全部图片 (All)</span>
-            <span class="opacity-60 text-xs">{{ galleryImages.length }}</span>
-          </button>
-          <button 
-            v-for="sub in subjectOptions"
-            :key="sub.value"
-            @click="galleryFilter = sub.value"
-            class="w-full text-left px-4 py-3 rounded-xl font-medium transition-colors flex justify-between items-center group"
-            :class="galleryFilter === sub.value ? 'bg-yellow-100 text-yellow-800' : 'hover:bg-gray-100 text-gray-600'"
-          >
-            <span class="flex items-center gap-2"><span>{{ sub.icon }}</span> {{ sub.label }}</span>
-            <span class="opacity-0 group-hover:opacity-100 text-xs bg-gray-200 px-1.5 rounded-full transition-opacity">{{ getCountBySubject(sub.value) }}</span>
-          </button>
-        </aside>
-        <main class="flex-1 bg-white dark:bg-gray-800 rounded-3xl p-8 border border-gray-100 shadow-sm min-h-screen">
-          <div class="flex items-center justify-between mb-6">
-            <div class="text-sm text-gray-500">共 {{ filteredGallery.length }} 张图片</div>
-            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
-              <input type="checkbox" v-model="showFeaturedOnly" class="h-4 w-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-400" />
-              只看精选
-            </label>
-          </div>
-          <div v-if="filteredGallery.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400"><div class="text-4xl mb-4">📭</div><p>暂无图片</p></div>
-          <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-             <div 
-               v-for="img in filteredGallery" 
-               :key="img.id" 
-               class="group relative aspect-square rounded-xl overflow-hidden cursor-pointer"
-               @click="openImage(img)"
-             >
-               <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
-               <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
-                 <span class="text-white text-xs font-bold mb-1">{{ getSubjectLabel(img.subject) }}</span>
-                 <p class="text-gray-200 text-[10px] line-clamp-2">{{ img.prompt }}</p>
-               </div>
-               <button 
-                 v-if="isAdmin" 
-                 @click.stop="toggleFeature(img)" 
-                 class="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
-                 :title="img.featured ? '取消精选' : '设为精选'"
-               >
-                 <span v-if="img.featured">★</span>
-                 <span v-else>☆</span>
-               </button>
-               <div v-else-if="img.featured" class="absolute top-2 right-2 px-2 py-1 bg-yellow-400 text-black text-[10px] font-bold rounded-full shadow">精选</div>
-             </div>
-          </div>
-        </main>
-      </div>
-    </Transition>
-
-    <!-- ==================== 页面 4: 设置 ==================== -->
-    <Transition name="fade" mode="out-in">
-      <div v-if="currentTab === 'settings'" class="max-w-4xl mx-auto">
-        <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700 space-y-6">
-          <div class="flex items-center justify-between">
-            <div>
-              <h2 class="text-2xl font-bold">接口配置</h2>
-              <p class="text-sm text-gray-500">设置 BASE_URL / MODEL / API KEY，保存后立即生效</p>
-            </div>
-            <button 
-              @click="loadApiSettings" 
-              class="px-4 py-2 rounded-xl text-sm font-bold bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"
-              :disabled="apiSettingsLoading || apiSettingsSaving"
-            >
-              刷新
-            </button>
+    <!-- 登录/注册遮罩 -->
+    <Transition name="fade">
+      <div v-if="!authStore.isLoggedIn && !authStore.isGuest" class="absolute inset-0 z-[500] flex items-center justify-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm">
+        <div class="w-full max-w-md bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-2xl border border-gray-100 dark:border-gray-700 animate-scale-in">
+          <div class="text-center mb-8">
+            <h2 class="text-3xl font-bold mb-2">Welcome Back</h2>
+            <p class="text-gray-500">请登录以继续使用智绘工坊</p>
           </div>
 
           <div class="space-y-4">
             <div>
-              <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">BASE_URL</label>
-              <input 
-                v-model="apiSettings.baseUrl" 
-                type="text" 
-                placeholder="https://api.vectorengine.ai" 
-                class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-yellow-400"
-                :disabled="apiSettingsLoading || apiSettingsSaving"
-              />
-              <p class="text-xs text-gray-500 mt-1">例如: https://api.vectorengine.ai</p>
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Username</label>
+              <input v-model="loginForm.username" type="text" class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all" placeholder="输入用户名" @keyup.enter="handleAuthAction" />
             </div>
-
             <div>
-              <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">MODEL</label>
-              <input 
-                v-model="apiSettings.model" 
-                type="text" 
-                placeholder="gemini-3-pro-image-preview" 
-                class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-yellow-400"
-                :disabled="apiSettingsLoading || apiSettingsSaving"
-              />
+              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Password</label>
+              <input v-model="loginForm.password" type="password" class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all" placeholder="输入密码" @keyup.enter="handleAuthAction" />
             </div>
 
-            <div>
-              <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">API KEY</label>
-              <input 
-                v-model="apiSettings.apiKey" 
-                type="password" 
-                placeholder="输入新的密钥以更新" 
-                class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700 outline-none focus:ring-2 focus:ring-yellow-400"
-                :disabled="apiSettingsLoading || apiSettingsSaving"
-              />
-              <div class="text-xs text-gray-500 mt-1">
-                <span v-if="apiKeyPreview">已保存密钥尾号: ****{{ apiKeyPreview }}</span>
-                <span v-else>尚未保存密钥</span>
-                <span class="ml-2 text-gray-400">留空则保留现有密钥</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex justify-end gap-3">
             <button 
-              @click="loadApiSettings" 
-              class="px-4 py-3 rounded-xl text-sm font-bold bg-gray-50 hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-200"
-              :disabled="apiSettingsLoading || apiSettingsSaving"
+              @click="handleAuthAction" 
+              class="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all"
+              :disabled="authLoading"
             >
-              取消更改
+              <span v-if="authLoading">Processing...</span>
+              <span v-else>登录 (Login)</span>
             </button>
+
             <button 
-              @click="saveApiSettings" 
-              :disabled="apiSettingsSaving || apiSettingsLoading"
-              class="px-6 py-3 rounded-xl text-sm font-bold bg-black text-white hover:scale-[1.01] active:scale-[0.99] transition disabled:opacity-50"
+              @click="handleGuestAccess" 
+              class="w-full py-3 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-200 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-600 transition-all border border-gray-200 dark:border-gray-600"
             >
-              <span v-if="apiSettingsSaving">保存中...</span>
-              <span v-else>保存配置</span>
+              🔑 我没有账号 (使用 API Key)
             </button>
           </div>
         </div>
       </div>
     </Transition>
 
-    <!-- ==================== 图片详情弹窗 ==================== -->
+    <!-- 主界面 (仅登录后可操作) -->
+    <div v-if="authStore.isLoggedIn || authStore.isGuest" class="space-y-8">
+      
+      <!-- 用户状态栏 -->
+      <div class="flex justify-between items-center bg-white dark:bg-gray-800 p-4 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700">
+         <div class="flex items-center gap-3">
+             <div class="text-xs text-gray-500">
+                <span v-if="authStore.isGuest">Guest Mode (BYOK Only)</span>
+                <span v-else>
+                    <span v-if="authStore.user.is_pro" class="mr-2 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded font-bold">PRO</span>
+                    <span v-else class="mr-2 px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded font-bold">STD</span>
+                    
+                    本周额度: <span :class="{'text-red-500': authStore.user.quota_remaining < 3, 'font-bold': true}">{{ authStore.user.quota_remaining }}</span> / {{ authStore.user.quota_limit }}
+                    
+                    <span v-if="authStore.user.quota_remaining <= 0">
+                        <span v-if="userModelKeyInput" class="ml-2 text-blue-500 font-bold">
+                            ✅ 已启用自定义 Key 继续生成
+                        </span>
+                        <span v-else class="ml-2 text-red-500 font-bold animate-pulse cursor-pointer hover:underline" @click="showAccessKeyModal = true">
+                            ⚠️ 额度已用完，请配置 Key
+                        </span>
+                    </span>
+                </span>
+             </div>
+         </div>
+         <div class="flex gap-4">
+             <button @click="currentTab = 'settings'" class="text-sm font-bold text-gray-500 hover:text-black">API设置</button>
+             <button @click="authStore.logout()" class="text-sm font-bold text-red-500 hover:text-red-700">退出登录</button>
+         </div>
+      </div>
+
+      <!-- 顶部主导航栏 -->
+      <div class="flex justify-center">
+        <div class="bg-white dark:bg-gray-800 p-1.5 rounded-2xl flex gap-2 shadow-sm border border-gray-100 dark:border-gray-700">
+          <button 
+            @click="currentTab = 'single'"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+            :class="currentTab === 'single' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+          >
+            <span>✨</span> 单图创作
+          </button>
+
+          <button 
+            @click="currentTab = 'batch'"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+            :class="currentTab === 'batch' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+          >
+            <span>🏭</span> 批量工坊
+          </button>
+
+          <button 
+            @click="currentTab = 'digital_human'"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+            :class="currentTab === 'digital_human' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+          >
+            <span>🗣️</span> 数字人 (Beta)
+          </button>
+
+          <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
+
+          <button 
+            @click="currentTab = 'gallery'"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+            :class="currentTab === 'gallery' ? 'bg-yellow-100 text-yellow-800 shadow-sm' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+          >
+            <span>🖼️</span> 画廊
+          </button>
+          
+          <button 
+            v-if="authStore.user.username === 'admin'"
+            @click="currentTab = 'settings'"
+            class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+            :class="currentTab === 'settings' ? 'bg-gray-900 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
+          >
+            <span>⚙️</span> 全局设置
+          </button>
+        </div>
+      </div>
+
+      <!-- ==================== 页面 1: 单图创作 ==================== -->
+      <Transition name="fade" mode="out-in">
+        <div v-if="currentTab === 'single'" class="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          
+          <!-- 左侧：控制台 -->
+          <div class="space-y-4">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-xl border border-gray-100 dark:border-gray-700 space-y-4">
+              <!-- 参数行 -->
+              <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+                <div class="space-y-1">
+                  <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">模型 (Model)</label>
+                  <n-popselect v-model:value="settings.model" :options="modelOptions" trigger="click">
+                    <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-blue-50 transition-colors truncate">
+                      <span>{{ modelOptions.find(o => o.value === settings.model)?.label }}</span><span class="text-xs">▼</span>
+                    </button>
+                  </n-popselect>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">学科</label>
+                  <n-popselect v-model:value="settings.subject" :options="subjectOptions" trigger="click">
+                    <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-yellow-50 transition-colors truncate">
+                      <span>{{ getSubjectLabel(settings.subject) }}</span><span class="text-xs">▼</span>
+                    </button>
+                  </n-popselect>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">年级</label>
+                  <n-popselect v-model:value="settings.grade" :options="gradeOptions" trigger="click">
+                    <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-green-50 transition-colors truncate">
+                      <span>{{ getGradeLabel(settings.grade) }}</span><span class="text-xs">▼</span>
+                    </button>
+                  </n-popselect>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">画幅</label>
+                   <n-popselect v-model:value="settings.aspectRatio" :options="ratioOptions" trigger="click">
+                    <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors truncate">
+                      <span>{{ settings.aspectRatio }}</span><span class="text-xs">▼</span>
+                    </button>
+                  </n-popselect>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">画质</label>
+                   <n-popselect v-model:value="settings.quality" :options="qualityOptions" trigger="click">
+                    <button class="w-full flex justify-between items-center px-3 py-2 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm font-bold hover:bg-gray-100 transition-colors truncate">
+                      <span>{{ getQualityLabel(settings.quality).split(' ')[0] }}</span><span class="text-xs">▼</span>
+                    </button>
+                  </n-popselect>
+                </div>
+              </div>
+
+              <!-- 参考图 -->
+              <div class="space-y-1">
+                  <div class="flex justify-between items-center">
+                     <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">参考图 {{ refImageUrls.length }}/4</label>
+                     <button v-if="refImageUrls.length > 0" @click="refImageUrls = []" class="text-[10px] text-red-400 hover:underline">清空</button>
+                  </div>
+                  <n-upload action="/api/upload" :max="4" multiple list-type="image-card" @finish="handleUploadFinishWithStore" @remove="handleRemoveWithStore" class="block">
+                    <div class="flex flex-col items-center justify-center text-gray-400 text-xs gap-1"><span class="text-lg">📸</span><span class="scale-90">上传</span></div>
+                  </n-upload>
+              </div>
+
+              <!-- 输入框 -->
+              <div class="space-y-2">
+                 <div class="flex justify-between items-center">
+                  <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">提示词</label>
+                   <button @click="handleOptimizePrompt" class="text-xs flex items-center gap-1 text-purple-600 hover:text-purple-800 font-bold transition-colors disabled:opacity-50" :disabled="!inputText.trim() || processing || optimizing">
+                     <span v-if="optimizing" class="animate-spin">⏳</span><span v-else>🪄</span> 魔法润色
+                   </button>
+                 </div>
+                 <textarea v-model="inputText" placeholder="描述一个清晰的画面..." class="w-full h-48 p-4 bg-gray-50 dark:bg-gray-900 rounded-xl border-none outline-none text-lg resize-none focus:ring-2 focus:ring-yellow-400 transition-all" @keydown.enter.ctrl="handleGenerateSingle"></textarea>
+              </div>
+  
+              <div class="space-y-2">
+                  <button @click="handleGenerateSingle" :disabled="!inputText.trim() || processing || optimizing" class="w-full py-4 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold text-lg hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span v-if="processing">绘制中...</span>
+                    <span v-else>开始绘制</span>
+                  </button>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 右侧：预览 -->
+          <div class="flex flex-col gap-4">
+              <div class="relative min-h-[500px] flex-1 flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-3xl border-2 border-dashed border-gray-200 dark:border-gray-700 overflow-hidden group">
+                   <div v-if="latestSingleTask && (latestSingleTask.status === 'processing' || latestSingleTask.status === 'pending')" class="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-gray-800/80 backdrop-blur z-20">
+                      <div class="text-6xl animate-bounce mb-4">🍌</div>
+                      <p class="font-bold text-gray-500">{{ latestSingleTask.statusMsg || '生成中...' }}</p>
+                   </div>
+                   <div v-if="currentDisplayImage" class="relative w-full h-full p-4 flex items-center justify-center">
+                       <img :src="currentDisplayImage.url" class="max-w-full max-h-[600px] object-contain rounded-xl shadow-lg cursor-pointer" @click="openImage(currentDisplayImage)" />
+                       <div class="absolute top-6 left-6 px-3 py-1 bg-black/60 backdrop-blur text-white text-xs rounded-full pointer-events-none">{{ getSubjectLabel(currentDisplayImage.subject) }}</div>
+                   </div>
+                   <div v-else-if="!processing" class="text-center text-gray-400"><div class="text-6xl mb-4">🎨</div><p>Ready to create</p></div>
+                   
+                   <div v-if="currentDisplayImage && !processing" class="absolute bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur p-4 border-t border-gray-100 dark:border-gray-700 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
+                       <div class="flex gap-2">
+                          <input v-model="modificationInput" placeholder="✨ Modify this image..." class="flex-1 bg-gray-50 dark:bg-gray-900 border-none outline-none px-4 py-2 rounded-lg text-sm" @keydown.enter="handleModify" />
+                          <button @click="handleModify" :disabled="processing || !modificationInput" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50">Modify</button>
+                       </div>
+                    </div>
+              </div>
+              <!-- 胶卷栏 -->
+              <div v-if="recentHistory.length > 0" class="h-24 bg-white dark:bg-gray-800 rounded-2xl p-2 border border-gray-100 dark:border-gray-700 flex gap-2 overflow-x-auto custom-scrollbar">
+                  <div v-for="img in recentHistory" :key="img.id" @click="handleHistorySelect(img)" class="relative flex-shrink-0 h-full aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all" :class="currentDisplayImage && currentDisplayImage.url === img.url ? 'border-black dark:border-white scale-95' : 'border-transparent hover:border-gray-300 opacity-70 hover:opacity-100'">
+                     <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover" loading="lazy" />
+                  </div>
+              </div>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- ==================== 页面 2: 批量工坊 ==================== -->
+      <Transition name="fade" mode="out-in">
+        <div v-if="currentTab === 'batch'" class="space-y-10">
+          <section class="max-w-6xl mx-auto space-y-6">
+             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div class="md:col-span-1 bg-blue-50 dark:bg-gray-800 rounded-2xl p-6 border-2 border-dashed border-blue-200 dark:border-gray-600 flex flex-col justify-center items-center text-center space-y-4 hover:bg-blue-100 dark:hover:bg-gray-700 transition-colors cursor-pointer relative">
+                 <input type="file" accept=".json" class="absolute inset-0 opacity-0 cursor-pointer" @change="handleJsonUpload" />
+                 <div class="text-4xl">📂</div>
+                 <div><h3 class="font-bold text-blue-800 dark:text-blue-300">导入 JSON</h3></div>
+                 <button @click.stop="downloadTemplate" class="text-xs text-gray-500 underline hover:text-blue-600 z-10 relative">下载模板</button>
+              </div>
+              <!-- 右侧：文本输入区 -->
+              <div class="md:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden flex flex-col">
+                 <div class="flex items-center gap-4 px-6 py-4 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <span class="text-sm font-bold text-gray-500">默认设置:</span>
+                    <n-popselect v-model:value="settings.model" :options="modelOptions"><button class="px-3 py-1 bg-white dark:bg-gray-700 rounded-md text-sm border">🤖 {{ modelOptions.find(o => o.value === settings.model)?.label }}</button></n-popselect>
+                    <n-popselect v-model:value="settings.subject" :options="subjectOptions"><button class="px-3 py-1 bg-white dark:bg-gray-700 rounded-md text-sm border">🏷️ {{ getSubjectLabel(settings.subject) }}</button></n-popselect>
+                    
+                    <!-- Batch Reference Upload -->
+                    <div class="flex-1 flex justify-end items-center gap-2">
+                        <n-upload action="/api/upload" :max="4" multiple :show-file-list="false" @finish="handleBatchRefUpload" class="flex">
+                            <button class="flex items-center gap-1 px-3 py-1 bg-white dark:bg-gray-700 rounded-md text-sm border hover:bg-gray-50 transition-colors">
+                                <span>📸 参考图 ({{ batchRefImageUrls.length }})</span>
+                            </button>
+                        </n-upload>
+                        <button v-if="batchRefImageUrls.length > 0" @click="batchRefImageUrls = []" class="text-xs text-red-400 hover:underline">清除</button>
+                    </div>
+                 </div>
+                 <div class="relative flex-1">
+                    <textarea v-model="batchInputText" placeholder="每行一个提示词..." class="w-full h-full min-h-[200px] p-6 bg-transparent border-none outline-none text-base resize-none font-mono"></textarea>
+                    <div class="absolute bottom-6 right-6"><button @click="handleGenerateBatch" :disabled="!batchInputText.trim() || processing" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold shadow-lg disabled:opacity-50">🚀 批量生成</button></div>
+                 </div>
+              </div>
+            </div>
+          </section>
+          <section v-if="batchQueue.length > 0" class="max-w-[1600px] mx-auto px-6">
+             <div class="flex items-center justify-between mb-6 bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                <div class="flex items-center gap-4">
+                    <h3 class="font-bold text-lg text-gray-700 dark:text-gray-200">任务队列 ({{ batchQueue.filter(t=>t.status==='done').length }}/{{ batchQueue.length }})</h3>
+                    <div class="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                        {{ processing ? '运行中...' : '等待开始' }}
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                   <button v-if="!processing && batchQueue.some(t => t.status === 'draft' || t.status === 'pending')" @click="startBatchProcessing" class="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold shadow-sm transition-all flex items-center gap-2">
+                       <span>▶️</span> 开始生成
+                   </button>
+                   <button v-if="processing" @click="pauseBatchProcessing" class="px-6 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-bold shadow-sm transition-all flex items-center gap-2">
+                       <span>⏸️</span> 暂停
+                   </button>
+                   <button v-if="batchQueue.some(t => t.status === 'done')" @click="downloadBatchResults" class="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg font-bold border border-blue-200 transition-all">
+                       📦 打包下载
+                   </button>
+                   <button @click="batchQueue = []" class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg font-bold border border-red-200 transition-all">
+                       🗑️ 清空
+                   </button>
+                </div>
+             </div>
+             
+             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <TransitionGroup name="list">
+                  <div v-for="task in reversedBatchQueue" :key="task.id" class="group relative bg-white dark:bg-gray-800 rounded-xl overflow-hidden border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow flex flex-col">
+                     <!-- Image Area -->
+                     <div class="aspect-video relative bg-gray-100 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700">
+                        <img v-if="task.status === 'done'" :src="task.resultUrl" class="w-full h-full object-contain cursor-pointer hover:opacity-90" @click="openImage(task)" />
+                        <div v-else-if="task.status === 'pending'" class="w-full h-full flex flex-col items-center justify-center bg-yellow-50 text-yellow-600 gap-2">
+                            <span class="text-2xl">⏳</span>
+                            <span class="text-xs font-bold">排队中 (Pending)</span>
+                        </div>
+                        <div v-else-if="task.status === 'draft'" class="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-400 gap-2">
+                            <span class="text-2xl">📝</span>
+                            <span class="text-xs font-bold">草稿 (Ready)</span>
+                        </div>
+                        <div v-else-if="task.status === 'processing'" class="w-full h-full flex flex-col items-center justify-center bg-blue-50 text-blue-500 gap-2">
+                            <div class="animate-spin text-2xl">⚡️</div>
+                            <span class="text-xs font-bold">生成中...</span>
+                        </div>
+                        <div v-else class="w-full h-full flex flex-col items-center justify-center bg-red-50 text-red-400 gap-2">
+                            <span class="text-2xl">⚠️</span>
+                            <span class="text-xs">Failed</span>
+                        </div>
+                        
+                        <!-- ID Badge -->
+                        <div class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/50 text-white text-[10px] rounded font-mono backdrop-blur">
+                            #{{ task.id.slice(-4) }}
+                        </div>
+                     </div>
+                     
+                     <!-- Info Area -->
+                     <div class="p-3 flex-1 flex flex-col gap-2">
+                        <!-- Settings Tags -->
+                        <div class="flex flex-wrap gap-1.5">
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
+                                {{ getSubjectLabel(task.settings.subject) }}
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-100">
+                                {{ task.settings.aspectRatio }}
+                            </span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-600 border border-purple-100">
+                                {{ getQualityLabel(task.settings.quality) }}
+                            </span>
+                            <span v-if="task.reference_image_urls && task.reference_image_urls.length" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-50 text-green-600 border border-green-100 flex items-center gap-1">
+                                📸 {{ task.reference_image_urls.length }}
+                            </span>
+                        </div>
+                        
+                        <!-- Prompt -->
+                        <div class="flex items-start gap-2">
+                            <p class="text-xs text-gray-600 dark:text-gray-300 line-clamp-3 leading-relaxed flex-1" :title="task.prompt">
+                                {{ task.prompt }}
+                            </p>
+                            <button v-if="task.status === 'draft' || task.status === 'pending'" @click.stop="openEditTask(task)" class="text-xs text-blue-500 hover:bg-blue-50 p-1 rounded transition-colors" title="Edit Prompt">
+                                ✏️
+                            </button>
+                        </div>
+                     </div>
+                  </div>
+                </TransitionGroup>
+             </div>
+          </section>
+        </div>
+      </Transition>
+
+      <!-- ==================== 页面 3: 数字人 (Digital Human) ==================== -->
+      <Transition name="fade" mode="out-in">
+        <div v-if="currentTab === 'digital_human'">
+            <DigitalHumanPanel />
+        </div>
+      </Transition>
+
+      <!-- ==================== 页面 3: 画廊 ==================== -->
+      <Transition name="fade" mode="out-in">
+        <div v-if="currentTab === 'gallery'" class="flex gap-8 max-w-[1600px] mx-auto min-h-[600px]">
+          <aside class="w-64 flex-shrink-0 space-y-2">
+            <h3 class="font-bold text-gray-400 px-4 mb-4 text-xs uppercase tracking-wider">过滤器</h3>
+            <button @click="galleryFilter = 'all'" class="w-full text-left px-4 py-3 rounded-xl font-medium transition-colors flex justify-between items-center" :class="galleryFilter === 'all' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-600'"><span>全部 (All)</span></button>
+            <button v-for="sub in subjectOptions" :key="sub.value" @click="galleryFilter = sub.value" class="w-full text-left px-4 py-3 rounded-xl font-medium transition-colors flex justify-between items-center" :class="galleryFilter === sub.value ? 'bg-yellow-100 text-yellow-800' : 'hover:bg-gray-100 text-gray-600'"><span>{{ sub.icon }} {{ sub.label }}</span></button>
+          </aside>
+          <main class="flex-1 bg-white dark:bg-gray-800 rounded-3xl p-8 border border-gray-100 shadow-sm min-h-screen">
+            <div class="flex items-center justify-between mb-6">
+              <div class="text-sm text-gray-500">共 {{ filteredGallery.length }} 张图片</div>
+              <div class="flex gap-4">
+                  <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"><input type="checkbox" v-model="showMyImages" class="h-4 w-4" /> 只看我的</label>
+                  <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"><input type="checkbox" v-model="showFeaturedOnly" class="h-4 w-4" /> 只看精选</label>
+              </div>
+            </div>
+            <div v-if="filteredGallery.length === 0" class="h-full flex flex-col items-center justify-center text-gray-400"><div class="text-4xl mb-4">📭</div><p>暂无图片</p></div>
+            <div v-else class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+               <div v-for="img in filteredGallery" :key="img.id" class="group relative aspect-square rounded-xl overflow-hidden cursor-pointer" @click="openImage(img)">
+                 <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" loading="lazy" />
+                 <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
+                   <span class="text-white text-xs font-bold mb-1">{{ getSubjectLabel(img.subject) }}</span>
+                 </div>
+                 <div v-if="img.featured" class="absolute top-2 right-2 px-2 py-1 bg-yellow-400 text-black text-[10px] font-bold rounded-full shadow">精选</div>
+                 <div v-if="img.is_mine" class="absolute top-2 left-2 px-2 py-1 bg-blue-500 text-white text-[10px] font-bold rounded-full shadow">ME</div>
+                 <button v-if="authStore.user.username === 'admin'" @click.stop="toggleFeature(img)" class="absolute top-2 right-12 h-8 w-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80">
+                     <span v-if="img.featured">★</span><span v-else>☆</span>
+                 </button>
+               </div>
+            </div>
+          </main>
+        </div>
+      </Transition>
+
+      <!-- ==================== 页面 4: 设置 ==================== -->
+      <Transition name="fade" mode="out-in">
+        <div v-if="currentTab === 'settings'" class="max-w-4xl mx-auto space-y-8">
+          
+          <!-- Admin User Management Panel -->
+          <div v-if="authStore.user.username === 'admin'" class="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700 space-y-6">
+             <div class="flex justify-between items-center">
+                <h2 class="text-2xl font-bold">👤 用户管理 (Admin)</h2>
+                <div class="flex gap-2">
+                    <button @click="showCreateUserModal = true" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold flex items-center gap-1">➕ 新增用户</button>
+                    <button @click="fetchUsers" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm font-bold">🔄 刷新列表</button>
+                </div>
+             </div>
+             
+             <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                   <thead class="bg-gray-50 dark:bg-gray-700 text-gray-500 uppercase font-bold text-xs">
+                      <tr>
+                         <th class="px-4 py-3 rounded-l-lg">ID</th>
+                         <th class="px-4 py-3">Username</th>
+                         <th class="px-4 py-3">Role</th>
+                         <th class="px-4 py-3">Quota (Used/Limit)</th>
+                         <th class="px-4 py-3 rounded-r-lg">Actions</th>
+                      </tr>
+                   </thead>
+                   <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                      <tr v-for="u in usersList" :key="u.id" class="hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                         <td class="px-4 py-3 font-mono text-gray-400">#{{ u.id }}</td>
+                         <td class="px-4 py-3 font-bold">{{ u.username }}</td>
+                         <td class="px-4 py-3">
+                            <span v-if="u.is_pro" class="px-2 py-1 bg-purple-100 text-purple-700 rounded font-bold text-xs">PRO</span>
+                            <span v-else class="px-2 py-1 bg-gray-100 text-gray-500 rounded font-bold text-xs">STD</span>
+                         </td>
+                         <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                               <span :class="{'text-red-500 font-bold': u.quota_used >= u.quota_limit}">{{ u.quota_used }}</span>
+                               <span class="text-gray-400">/</span>
+                               <input type="number" v-model="u.tempLimit" @blur="handleUpdateUser(u)" class="w-16 px-2 py-1 bg-gray-100 dark:bg-gray-900 rounded border border-transparent focus:border-blue-500 outline-none text-center" />
+                            </div>
+                         </td>
+                         <td class="px-4 py-3">
+                            <button @click="toggleUserPro(u)" class="text-xs font-bold underline" :class="u.is_pro ? 'text-red-500' : 'text-blue-500'">
+                               {{ u.is_pro ? 'Demote' : 'Promote' }}
+                            </button>
+                         </td>
+                      </tr>
+                   </tbody>
+                </table>
+             </div>
+          </div>
+          
+          <!-- Create User Modal -->
+          <div v-if="showCreateUserModal" class="fixed inset-0 z-[600] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @click.self="showCreateUserModal = false">
+             <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-2xl animate-scale-in space-y-4">
+                <h3 class="text-lg font-bold">Create New User</h3>
+                <input v-model="newUserForm.username" type="text" placeholder="Username" class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg outline-none" />
+                <input v-model="newUserForm.password" type="text" placeholder="Password" class="w-full px-4 py-2 bg-gray-50 dark:bg-gray-700 rounded-lg outline-none" />
+                <div class="flex justify-end gap-2">
+                    <button @click="showCreateUserModal = false" class="px-4 py-2 text-gray-500 hover:bg-gray-100 rounded-lg text-sm font-bold">Cancel</button>
+                    <button @click="handleCreateUser" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold" :disabled="!newUserForm.username || !newUserForm.password">Create</button>
+                </div>
+             </div>
+          </div>
+
+          <!-- BYOK Settings -->
+          <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 shadow-xl border border-gray-100 dark:border-gray-700 space-y-6">
+            <h2 class="text-2xl font-bold">BYOK 设置</h2>
+            <p class="text-sm text-gray-500">当额度耗尽或非Pro用户时，系统将使用以下配置调用模型。</p>
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">API KEY</label>
+                <input v-model="userModelKeyInput" type="password" placeholder="sk-..." class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl outline-none" />
+              </div>
+              <div>
+                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">BASE_URL (Optional)</label>
+                <input v-model="userModelBaseUrlInput" type="text" placeholder="https://..." class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 rounded-xl outline-none" />
+              </div>
+            </div>
+            <div class="flex justify-end">
+              <button @click="handleSaveAccessKey" class="px-6 py-3 rounded-xl bg-black text-white font-bold">保存配置</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+    </div>
+
+    <!-- 弹窗：图片详情 -->
     <Transition name="fade">
       <div v-if="showModal && selectedImage" class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8" @click.self="closeModal">
-         <!-- 背景遮罩 -->
-         <div class="absolute inset-0 bg-black/90 backdrop-blur-sm transition-opacity"></div>
-         
-         <!-- 内容卡片 -->
-         <div class="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-2xl animate-scale-in">
+         <div class="absolute inset-0 bg-black/90 backdrop-blur-sm"></div>
+         <div class="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col md:flex-row overflow-hidden shadow-2xl">
+            <button @click="closeModal" class="absolute top-4 right-4 z-10 w-10 h-10 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center backdrop-blur">✕</button>
             
-            <!-- 关闭按钮 -->
-            <button @click="closeModal" class="absolute top-4 right-4 z-10 w-10 h-10 bg-black/50 hover:bg-black/70 text-white rounded-full flex items-center justify-center backdrop-blur transition-colors">
-               ✕
-            </button>
-
-            <!-- 左侧：图片展示 -->
-            <div class="flex-1 bg-black/5 dark:bg-black flex items-center justify-center p-4 overflow-hidden relative group">
-               <img :src="selectedImage.url" class="max-w-full max-h-full object-contain shadow-sm" />
-               <a :href="selectedImage.url" target="_blank" download class="absolute bottom-6 right-6 opacity-0 group-hover:opacity-100 bg-white/90 text-black px-4 py-2 rounded-lg text-sm font-bold shadow transition-opacity">
-                  下载原图 (Download)
-               </a>
-            </div>
-
-            <!-- 右侧：信息面板 -->
-            <div class="w-full md:w-96 p-8 flex flex-col border-l border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
-               <div class="mb-6">
-                  <h3 class="text-2xl font-bold mb-2 text-gray-900 dark:text-white">图片详情</h3>
-                  <div class="flex flex-wrap gap-2">
-                     <span class="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-bold uppercase tracking-wide">
-                        {{ getSubjectLabel(selectedImage.subject) }}
-                     </span>
-                     <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-bold uppercase tracking-wide">
-                        {{ getGradeLabel(selectedImage.grade) }}
-                     </span>
-                     <span v-if="selectedImage.timestamp" class="px-3 py-1 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-full text-xs">
-                        {{ new Date(selectedImage.timestamp * 1000).toLocaleDateString() }}
-                     </span>
-                  </div>
+            <!-- Left: Image / Splitter Area -->
+            <div class="flex-1 bg-black/5 dark:bg-black flex items-center justify-center p-4 overflow-hidden relative group select-none">
+               
+               <!-- Normal View -->
+               <div v-if="!showSplitter" class="relative w-full h-full flex items-center justify-center">
+                   <img :src="selectedImage.url" class="max-w-full max-h-full object-contain" />
+                   <a :href="selectedImage.url" download class="absolute bottom-6 right-6 bg-white/90 text-black px-4 py-2 rounded-lg text-sm font-bold shadow">下载原图</a>
                </div>
 
-               <div class="flex-1 overflow-y-auto mb-6 pr-2 custom-scrollbar">
-                  <label class="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-2">提示词 (Prompt)</label>
-                  <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap font-mono bg-gray-50 dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700">
-                     {{ selectedImage.prompt }}
-                  </p>
-               </div>
-
-               <div class="mt-auto space-y-3">
-                  <button 
-                    @click="copyPrompt"
-                    class="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-                  >
-                     <span>📋</span> 复制提示词
-                  </button>
-               </div>
-            </div>
-         </div>
-      </div>
-    </Transition>
-
-    <!-- ==================== 管理员登录弹窗 ==================== -->
-    <Transition name="fade">
-      <div v-if="showAdminLogin" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="showAdminLogin = false">
-         <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-xl animate-scale-in space-y-4">
-            <h3 class="text-xl font-bold text-center">Admin Access</h3>
-            <input type="password" v-model="adminPassword" placeholder="Enter password..." class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl border-none outline-none" @keydown.enter="handleAdminLogin" />
-            <button @click="handleAdminLogin" class="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold hover:opacity-90">Login</button>
-         </div>
-      </div>
-    </Transition>
-
-    <!-- ==================== 数据统计弹窗 ==================== -->
-    <Transition name="fade">
-      <div v-if="showAdminStats && adminStats" class="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="showAdminStats = false">
-         <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 w-full max-w-4xl max-h-[80vh] overflow-y-auto shadow-xl animate-scale-in">
-            <div class="flex justify-between items-center mb-6">
-              <h3 class="text-2xl font-bold">Data Dashboard</h3>
-              <button @click="showAdminStats = false" class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200">✕</button>
-            </div>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-               <!-- 学科统计 -->
-               <div class="space-y-4">
-                  <h4 class="font-bold text-gray-500 uppercase tracking-wider text-xs">By Subject</h4>
-                  <div class="space-y-2">
-                     <div v-for="(count, sub) in adminStats.subject_counts" :key="sub" class="flex items-center gap-2">
-                        <div class="w-24 text-sm font-bold truncate">{{ getSubjectLabel(sub) }}</div>
-                        <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                           <div class="h-full bg-yellow-400 rounded-full" :style="{width: Math.min(count * 5, 100) + '%'}"></div>
+               <!-- Splitter View -->
+               <div v-else class="relative inline-block">
+                   <img ref="imageRef" :src="selectedImage.url" class="max-w-full max-h-[80vh] block object-contain pointer-events-none" />
+                   
+                   <!-- Interaction Layer -->
+                   <div 
+                     class="absolute inset-0 cursor-crosshair z-10"
+                     @mousedown="startCrop"
+                     @mousemove="moveCrop"
+                     @mouseup="endCrop"
+                     @mouseleave="endCrop"
+                   >
+                        <!-- Existing Boxes -->
+                        <div 
+                            v-for="(box, idx) in cropBoxes" 
+                            :key="idx"
+                            class="absolute border-2 border-red-500 bg-red-500/20 z-20"
+                            :style="{ left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px' }"
+                        >
+                            <button @click.stop="removeCrop(idx)" class="absolute -top-3 -right-3 w-5 h-5 bg-red-600 text-white rounded-full flex items-center justify-center text-xs">×</button>
+                            <span class="absolute top-0 left-0 bg-red-600 text-white text-[9px] px-1">{{ idx + 1 }}</span>
                         </div>
-                        <div class="w-8 text-xs text-right">{{ count }}</div>
-                     </div>
-                  </div>
-               </div>
 
-               <!-- 年级统计 -->
-               <div class="space-y-4">
-                  <h4 class="font-bold text-gray-500 uppercase tracking-wider text-xs">By Grade</h4>
-                  <div class="space-y-2">
-                     <div v-for="(count, grade) in adminStats.grade_counts" :key="grade" class="flex items-center gap-2">
-                        <div class="w-24 text-sm font-bold truncate">{{ getGradeLabel(grade) }}</div>
-                        <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                           <div class="h-full bg-green-400 rounded-full" :style="{width: Math.min(count * 5, 100) + '%'}"></div>
-                        </div>
-                        <div class="w-8 text-xs text-right">{{ count }}</div>
-                     </div>
-                  </div>
+                        <!-- Drawing Box -->
+                        <div 
+                            v-if="currentBox"
+                            class="absolute border-2 border-yellow-400 bg-yellow-400/20 z-20"
+                            :style="{ left: currentBox.x + 'px', top: currentBox.y + 'px', width: currentBox.w + 'px', height: currentBox.h + 'px' }"
+                        ></div>
+                   </div>
                </div>
+               
+               <!-- Splitter Toolbar (Moved Below) -->
+               <div v-if="showSplitter" class="absolute bottom-4 left-0 right-0 flex gap-2 justify-center z-30 px-4 pointer-events-auto">
+                    <button @click="cropBoxes = []" class="bg-gray-800/80 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-700 backdrop-blur">重置</button>
+                    <button @click="downloadCrops" class="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-green-700 flex items-center gap-1" :disabled="cropBoxes.length===0">
+                        <span>📦</span> 下载 ZIP
+                    </button>
+                    <button @click="sendCropsToBatch" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow hover:bg-blue-700 flex items-center gap-1" :disabled="cropBoxes.length===0">
+                        <span>➡️</span> 发送到批量工坊
+                    </button>
+               </div>
+            </div>
 
-               <!-- IP 活跃度 -->
-               <div class="md:col-span-2 space-y-4">
-                  <h4 class="font-bold text-gray-500 uppercase tracking-wider text-xs">Top Active Users (IP)</h4>
-                  <div class="bg-gray-50 dark:bg-gray-900 rounded-xl p-4 overflow-x-auto">
-                     <table class="w-full text-sm text-left">
-                        <thead>
-                           <tr class="text-gray-400 border-b border-gray-200 dark:border-gray-700">
-                              <th class="py-2">IP Address</th>
-                              <th class="py-2">Total Generated</th>
-                              <th class="py-2">Last Active</th>
-                           </tr>
-                        </thead>
-                        <tbody>
-                           <tr v-for="stat in adminStats.ip_stats.slice(0, 10)" :key="stat.ip" class="border-b border-gray-100 dark:border-gray-800 last:border-0">
-                              <td class="py-2 font-mono">{{ stat.ip }}</td>
-                              <td class="py-2 font-bold">{{ stat.count }}</td>
-                              <td class="py-2 text-gray-500">{{ new Date(stat.last_active * 1000).toLocaleString() }}</td>
-                           </tr>
-                        </tbody>
-                     </table>
-                  </div>
+            <!-- Right: Info Panel -->
+            <div class="w-full md:w-96 p-8 flex flex-col bg-white dark:bg-gray-900 overflow-y-auto">
+               <h3 class="text-2xl font-bold mb-4">详情</h3>
+               <p class="text-gray-600 bg-gray-50 p-4 rounded-xl mb-4 text-sm">{{ selectedImage.prompt }}</p>
+               
+               <div class="space-y-3">
+                   <button @click="copyPrompt" class="w-full py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-xl font-bold">复制提示词</button>
+                   <button @click="showSplitter = !showSplitter" class="w-full py-3 bg-black text-white rounded-xl font-bold flex items-center justify-center gap-2">
+                       <span>{{ showSplitter ? '🔙 返回预览' : '✂️ 场景切分 (Split Tool)' }}</span>
+                   </button>
+               </div>
+               
+               <div v-if="showSplitter" class="mt-4 p-4 bg-yellow-50 text-yellow-800 rounded-xl text-xs">
+                   <p class="font-bold mb-1">使用说明:</p>
+                   <ul class="list-disc list-inside space-y-1">
+                       <li>在左侧图片上<b>拖拽</b>框选每个场景。</li>
+                       <li>可框选多个区域。</li>
+                       <li>点击下方绿色按钮一键打包下载。</li>
+                   </ul>
                </div>
             </div>
          </div>
       </div>
     </Transition>
 
-    <!-- ==================== 访问密钥输入弹窗 ==================== -->
+    <!-- 弹窗：需要 API Key -->
     <Transition name="fade">
       <div v-if="showAccessKeyModal" class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
          <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 w-full max-w-sm shadow-2xl animate-scale-in space-y-4 text-center">
-            <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto text-3xl">
-              🌐
-            </div>
-            <div>
-              <h3 class="text-xl font-bold mb-2">配置模型服务</h3>
-              <p class="text-xs text-gray-500 text-left mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100">
-                 您当前通过互联网访问，请输入您自己的模型 API 配置以使用。<br>
-                 <span class="text-red-400 font-bold">* 您的密钥仅保存在本地浏览器，我们无法查看。</span>
-              </p>
-            </div>
-            
-            <div class="text-left space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Model API Key <span class="text-red-500">*</span></label>
-                <input 
-                  type="password" 
-                  v-model="userModelKeyInput" 
-                  placeholder="sk-..." 
-                  class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm" 
-                />
-            </div>
-
-            <div class="text-left space-y-1">
-                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-wider ml-1">Model Base URL (可选)</label>
-                <input 
-                  type="text" 
-                  v-model="userModelBaseUrlInput" 
-                  placeholder="https://api.openai.com/v1" 
-                  class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm" 
-                />
-            </div>
-            
-            <button 
-              @click="handleSaveAccessKey" 
-              class="w-full py-3 bg-black dark:bg-white text-white dark:text-black rounded-xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all mt-2"
-            >
-              保存并继续
-            </button>
+            <h3 class="text-xl font-bold">需配置密钥</h3>
+            <p class="text-xs text-gray-500">您的 Pro 额度已用完或您是普通用户，请输入 Key 继续使用。</p>
+            <input type="password" v-model="userModelKeyInput" placeholder="sk-..." class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl outline-none" />
+            <input type="text" v-model="userModelBaseUrlInput" placeholder="https://..." class="w-full px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-xl outline-none" />
+            <button @click="handleSaveAccessKey" class="w-full py-3 bg-black text-white rounded-xl font-bold">保存并重试</button>
+            <button @click="showAccessKeyModal = false" class="text-gray-400 text-xs hover:underline">取消</button>
          </div>
       </div>
     </Transition>
 
-    <!-- ==================== 访问模式选择弹窗 ==================== -->
+    <!-- 弹窗：编辑任务提示词 -->
     <Transition name="fade">
-      <div v-if="showAccessModeModal" class="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-         <div class="bg-white dark:bg-gray-800 rounded-3xl p-8 w-full max-w-2xl shadow-2xl animate-scale-in text-center space-y-8">
-            <div>
-               <h3 class="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-purple-600 mb-2">欢迎来到智绘工坊</h3>
-               <p class="text-gray-500">请选择您的访问环境以优化体验</p>
-            </div>
+      <div v-if="editingTask" class="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" @click.self="cancelEditTask">
+         <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-lg shadow-2xl animate-scale-in space-y-4">
+            <h3 class="text-lg font-bold">编辑任务 (Edit Task)</h3>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-               <button 
-                 @click="handleSelectAccessMode('lan')"
-                 class="group relative overflow-hidden rounded-2xl p-6 border-2 border-gray-100 hover:border-green-400 bg-gray-50 hover:bg-green-50 transition-all text-left space-y-4"
-               >
-                  <div class="w-12 h-12 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🏫</div>
-                  <div>
-                     <h4 class="font-bold text-lg text-gray-800">校内访问 (LAN)</h4>
-                     <p class="text-xs text-gray-500 mt-1">使用校园网，无需配置密钥，直接使用。</p>
-                  </div>
-               </button>
-
-               <button 
-                 @click="handleSelectAccessMode('internet')"
-                 class="group relative overflow-hidden rounded-2xl p-6 border-2 border-gray-100 hover:border-blue-400 bg-gray-50 hover:bg-blue-50 transition-all text-left space-y-4"
-               >
-                  <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">🌍</div>
-                  <div>
-                     <h4 class="font-bold text-lg text-gray-800">互联网访问 (Internet)</h4>
-                     <p class="text-xs text-gray-500 mt-1">在家或外网访问，需提供您自己的 API Key。</p>
-                  </div>
-               </button>
+            <!-- Reference Images Preview -->
+            <div v-if="editingTask?.reference_image_urls?.length" class="space-y-1">
+                <label class="text-[10px] font-bold text-gray-400 uppercase">Reference Images</label>
+                <div class="flex gap-2 overflow-x-auto p-2 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-100 dark:border-gray-700">
+                    <div v-for="(url, idx) in editingTask.reference_image_urls" :key="idx" class="relative w-16 h-16 flex-shrink-0 rounded-lg overflow-hidden border border-gray-200">
+                        <img :src="url" class="w-full h-full object-cover" />
+                    </div>
+                </div>
             </div>
 
-            <p class="text-[10px] text-gray-400">* 选择后将保存在本地，可随时在设置中清除缓存重置。</p>
+            <!-- Settings Row -->
+            <div class="grid grid-cols-3 gap-2">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Subject</label>
+                    <select v-model="editTaskSettings.subject" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm border-none outline-none">
+                        <option v-for="opt in subjectOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Ratio</label>
+                    <select v-model="editTaskSettings.aspectRatio" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm border-none outline-none">
+                        <option v-for="opt in ratioOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                    </select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Quality</label>
+                    <select v-model="editTaskSettings.quality" class="w-full px-2 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm border-none outline-none">
+                        <option v-for="opt in qualityOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="space-y-1">
+                <div class="flex justify-between items-center">
+                    <label class="text-[10px] font-bold text-gray-400 uppercase">Prompt</label>
+                    <button @click="optimizeEditPrompt" class="text-[10px] text-purple-600 hover:text-purple-800 font-bold flex items-center gap-1" :disabled="optimizing">
+                        <span v-if="optimizing" class="animate-spin">⏳</span>
+                        <span v-else>🪄 魔法润色</span>
+                    </button>
+                </div>
+                <textarea v-model="editPromptText" class="w-full h-32 p-3 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 outline-none text-sm resize-none"></textarea>
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <button @click="cancelEditTask" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 rounded-lg text-sm font-bold">取消</button>
+                <button @click="saveEditTask" class="px-4 py-2 bg-black text-white rounded-lg text-sm font-bold">保存</button>
+            </div>
          </div>
       </div>
     </Transition>
@@ -722,332 +642,113 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive, watch } from 'vue'
 import { NPopselect, useMessage, NUpload } from 'naive-ui'
 import axios from 'axios'
+import { useAuthStore } from '../stores/auth'
+import DigitalHumanPanel from '../components/DigitalHumanPanel.vue'
 
+const authStore = useAuthStore()
 const message = useMessage()
-const currentTab = ref('single') 
+const currentTab = ref('single')
 
-// --- 状态 ---
+// --- Auth Logic moved to Store, local state for form only ---
+const authLoading = ref(false)
+const loginForm = reactive({ username: '', password: '' })
+
+// --- App State ---
 const inputText = ref('') 
-const modificationInput = ref('') // 修改指令
+const modificationInput = ref('')
 const batchInputText = ref('') 
 const processing = ref(false)
-const optimizing = ref(false) // New state for Magic Polish
-
+const optimizing = ref(false)
 const singleTasks = ref([]) 
-// 当前大图展示的图片对象 (可能是刚生成的，也可能是历史记录点击的)
 const currentDisplayImage = ref(null) 
-
 const batchQueue = ref([])
+const refImageUrls = ref([])
+const batchRefImageUrls = ref([])
 
-// --- 接口配置 ---
-const apiSettings = ref({ baseUrl: '', model: '', apiKey: '' })
-const apiSettingsLoading = ref(false)
-const apiSettingsSaving = ref(false)
-const apiKeyPreview = ref('')
-
-// ... existing code ...
-
-const loadApiSettings = async () => {
-  apiSettingsLoading.value = true
-  try {
-    const res = await axios.get('/api/settings/api')
-    apiSettings.value.baseUrl = res.data.base_url || ''
-    apiSettings.value.model = res.data.model || ''
-    apiKeyPreview.value = res.data.api_key_preview || ''
-    apiSettings.value.apiKey = ''
-  } catch (err) {
-    message.error('加载配置失败')
-  } finally {
-    apiSettingsLoading.value = false
-  }
-}
-
-const saveApiSettings = async () => {
-  if (!apiSettings.value.baseUrl.trim() || !apiSettings.value.model.trim()) {
-    message.error('BASE_URL 和 MODEL 不能为空')
-    return
-  }
-  apiSettingsSaving.value = true
-  try {
-    const payload = {
-      base_url: apiSettings.value.baseUrl.trim(),
-      model: apiSettings.value.model.trim()
-    }
-    if (apiSettings.value.apiKey.trim()) {
-      payload.api_key = apiSettings.value.apiKey.trim()
-    }
-    await axios.post('/api/settings/api', payload)
-    message.success('配置已保存')
-    if (apiSettings.value.apiKey.trim()) {
-      apiKeyPreview.value = apiSettings.value.apiKey.trim().slice(-4)
-      apiSettings.value.apiKey = ''
-    }
-  } catch (err) {
-    message.error('保存失败: ' + (err.response?.data?.detail || err.message))
-  } finally {
-    apiSettingsSaving.value = false
-  }
-}
-
-const handleModify = async () => {
-  const currentTask = currentDisplayImage.value // Use the currently viewed image
-  if (!currentTask || !currentTask.url || !modificationInput.value.trim()) return
-  
-  const modPrompt = modificationInput.value.trim()
-  modificationInput.value = '' // clear input
-  processing.value = true
-  
-  // Create a new task entry for the modification to show progress
-  const newTask = { 
-      id: Date.now(), 
-      prompt: `Modify: ${modPrompt}`, 
-      status: 'processing', 
-      resultUrl: null, 
-      settings: { ...settings.value } // inherit settings
-  }
-  singleTasks.value.push(newTask)
-  
-  const runModify = async () => {
-      try {
-        const res = await axios.post('/api/generate/modify', {
-          prompt: modPrompt,
-          original_image_url: currentTask.url // Use url from currentDisplayImage
-        })
-        
-        if (res.data.success) {
-          newTask.status = 'done'
-          newTask.resultUrl = res.data.url
-          
-          // Update Display
-          currentDisplayImage.value = {
-              url: res.data.url,
-              prompt: newTask.prompt,
-              subject: newTask.settings.subject,
-              grade: newTask.settings.grade,
-              isHistory: false
-          }
-
-          message.success('修改成功！请及时保存')
-          addToGallery(newTask)
-        }
-      } catch (err) {
-        if (err.response && err.response.status === 429) {
-            const msg = err.response.data.detail || ''
-            const match = msg.match(/(\d+)\s*秒/)
-            const waitSeconds = match ? parseInt(match[1]) : 30
-            
-            newTask.status = 'pending'
-            for (let i = waitSeconds; i > 0; i--) {
-                newTask.statusMsg = `排队中... ${i}s 后重试`
-                await new Promise(r => setTimeout(r, 1000))
-            }
-            newTask.statusMsg = '正在重试...'
-            newTask.status = 'processing'
-            await runModify()
-            return
-        }
-        
-        newTask.status = 'failed'
-        message.error('修改失败: ' + (err.response?.data?.detail || err.message))
-      }
-  }
-
-  await runModify()
-  processing.value = false
-}
-
-const galleryFilter = ref('all')
+// --- Gallery State ---
 const galleryImages = ref([])
-const showFeaturedOnly = ref(true) // 默认仅展示精选，可切换查看全部
-
-const quota = ref({ remaining: 20, max: 20 })
-
-// --- 弹窗状态 ---
+const galleryFilter = ref('all')
+const showFeaturedOnly = ref(false)
+const showMyImages = ref(false)
 const showModal = ref(false)
 const selectedImage = ref(null)
 
-// --- 访问密钥 (Access Key) 状态 ---
+// --- BYOK State ---
 const showAccessKeyModal = ref(false)
-const userModelKeyInput = ref('')
-const userModelBaseUrlInput = ref('')
-const showAccessModeModal = ref(false)
+const userModelKeyInput = ref(localStorage.getItem('user_model_key') || '')
+const userModelBaseUrlInput = ref(localStorage.getItem('user_model_base_url') || '')
 
-const handleSelectAccessMode = (mode) => {
-    localStorage.setItem('access_mode', mode)
-    showAccessModeModal.value = false
-    
-    if (mode === 'internet') {
-        // Check if key already exists, if not, prompt
-        if (!localStorage.getItem('user_model_key')) {
-             message.info('互联网模式需要配置模型密钥')
-             userModelKeyInput.value = localStorage.getItem('user_model_key') || ''
-             userModelBaseUrlInput.value = localStorage.getItem('user_model_base_url') || ''
-             showAccessKeyModal.value = true
-        }
-    }
-}
+// --- Admin State ---
+const usersList = ref([])
+const showCreateUserModal = ref(false)
+const newUserForm = reactive({ username: '', password: '' })
 
-// --- Axios 拦截器配置 ---
-// 在请求发出前，自动附带 localStorage 中的 Key
-axios.interceptors.request.use(config => {
-    const key = localStorage.getItem('user_model_key')
-    const baseUrl = localStorage.getItem('user_model_base_url')
-    
-    if (key) {
-        config.headers['x-model-key'] = key
-        if (baseUrl) {
-             config.headers['x-model-base-url'] = baseUrl
-        }
-    }
-    return config
-})
-
-// 在响应出错时，拦截 403
-axios.interceptors.response.use(response => {
-    return response
-}, error => {
-    if (error.response && error.response.status === 403) {
-        // 如果是 403 Forbidden，说明需要 Key 或 Key 无效
-        // 只有当不是在请求 admin 接口时才弹窗 (admin 有自己的逻辑)
-        if (!error.config.url.includes('/api/admin')) {
-             message.warning('互联网络访问需要配置模型服务密钥')
-             // 预填充
-             userModelKeyInput.value = localStorage.getItem('user_model_key') || ''
-             userModelBaseUrlInput.value = localStorage.getItem('user_model_base_url') || ''
-             showAccessKeyModal.value = true
-        }
-    }
-    return Promise.reject(error)
-})
-
-const handleSaveAccessKey = () => {
-    if (!userModelKeyInput.value.trim()) {
-        message.error('密钥 (API Key) 不能为空')
-        return
-    }
-    
-    localStorage.setItem('user_model_key', userModelKeyInput.value.trim())
-    
-    if (userModelBaseUrlInput.value.trim()) {
-        localStorage.setItem('user_model_base_url', userModelBaseUrlInput.value.trim())
-    } else {
-        localStorage.removeItem('user_model_base_url')
-    }
-    
-    showAccessKeyModal.value = false
-    message.success('配置已保存，请重新尝试操作')
-}
-
-// --- 管理员状态 ---
-const isAdmin = ref(false)
-const showAdminLogin = ref(false)
-const adminPassword = ref('')
-const showAdminStats = ref(false)
-const adminStats = ref(null)
-
-// --- 设置 ---
-const settings = ref({
-  subject: 'general',
-  grade: 'general',
-  aspectRatio: '1:1',
-  style: 'vivid',
-  quality: 'standard'
-})
-
-const refImageUrls = ref([]) // 多张参考图
-
-const handleUploadFinish = ({ file, event }) => {
-  try {
-    const res = JSON.parse(event.target.response)
-    if (res.success) {
-      refImageUrls.value.push(res.url)
-      message.success('参考图上传成功')
-    } else {
-      message.error('上传失败')
-    }
-  } catch (e) {
-    message.error('上传响应解析失败')
-  }
-}
-
-const handleRemoveUpload = ({ file, fileList }) => {
-  // Naive UI 的 fileList 包含剩余的文件
-  // 但我们的 fileList 是组件内部维护的，我们需要同步 refImageUrls
-  // 这里简化处理：直接从 file.url (如果有) 或重新映射
-  // 更可靠的方式是: 每次 finish push, 每次 remove 找到对应的并删除
-  // 因为没有 file.url (response 在 event里), 我们假设顺序一致或者不做复杂匹配
-  // 简单起见，remove时不传参数，我们只能拿到 fileList?
-  // Naive UI 的 remove 回调参数是 { file, fileList }
-  
-  // 实际上，因为我们要传给后端的是 URL 列表，最稳妥的是每次变动都同步
-  // 但 Naive Upload 在 remove 时 file 对象可能没有我们存的 url
-  
-  // 改进方案：我们只维护一个简单的数组。如果用户删除了，我们怎么知道删的是哪个？
-  // 我们可以利用 file.id 匹配。
-  // 但目前为了快速实现，我们假设用户不会频繁删改。
-  // 或者我们可以直接重置：
-  // refImageUrls.value = fileList.map(...) 
-  // 但是 fileList 里的 file 没有 response url...
-  
-  // 修正逻辑：
-  // 在 handleUploadFinish 时，把 url 挂载到 file 对象上 (file.url = ...)
-  // Naive UI 会自动维护 fileList。
-  // 这样在 remove 时，fileList 里剩余的 file 都有 url。
-  
-  // 这里的 file 是 Naive UI 的内部对象。我们无法直接修改 fileList 的引用。
-  // 妥协方案：remove 时我们根据 index 删除？或者 file.name?
-  
-  // 重新思考：最简单的方式是只 append。如果用户想删，点击 "Clear All"。
-  // 单个删除有点复杂，因为我们需要匹配 URL。
-  
-  // 尝试匹配：
-  // 实际上，file 对象在 finish 时我们可以访问。
-  file.url = JSON.parse(event?.target?.response || '{}').url
-  // 等等，handleRemoveUpload 的参数是 data: { file, fileList }
-  // 我们其实在 handleUploadFinish 里拿不到 fileList 的引用去修改 file.url
-  
-  // 让我们采用最简方案：handleRemoveUpload 不做精细操作，只是为了防止报错。
-  // 真正的同步逻辑：refImageUrls 只是个字符串数组。
-  // 如果必须支持单个删除，我们需要维护一个 Map<FileId, Url>。
-  
-  // 既然我们在 UI 上加了 "Clear All"，那暂时先仅支持全清，或者简单 pop。
-  // 这里暂时留空，或者 filter。
-  
-  // 更好的做法：使用 v-model:file-list ? 不，action模式下比较麻烦。
-  
-  // 让我们用一个简单的方法：通过文件名匹配（假设不重复）
-  const targetUrl = file.url // 如果我们能存进去的话
-  // ...
-  
-  // 暂时：移除时，从 refImageUrls 里移除最后添加的一个（栈操作），不太准但能用
-  refImageUrls.value.pop() 
-}
-
-// 修正：handleUploadFinish 中给 file 赋值
-const handleUploadFinishWithStore = ({ file, event }) => {
+const fetchUsers = async () => {
     try {
-        const res = JSON.parse(event.target.response)
-        if (res.success) {
-            file.url = res.url // 存入 file 对象
-            refImageUrls.value.push(res.url)
-            message.success('参考图 +1')
-        }
-    } catch(e) {}
+        const res = await axios.get('/api/admin/users')
+        usersList.value = res.data.map(u => ({ ...u, tempLimit: u.quota_limit }))
+    } catch(e) { message.error("Failed to fetch users") }
 }
 
-const handleRemoveWithStore = ({ file }) => {
-    if (file.url) {
-        refImageUrls.value = refImageUrls.value.filter(u => u !== file.url)
-    } else {
-        // Fallback
-        refImageUrls.value.pop()
+const handleCreateUser = async () => {
+    if (!newUserForm.username || !newUserForm.password) return
+    try {
+        await axios.post('/api/auth/register', { ...newUserForm })
+        message.success("User created")
+        showCreateUserModal.value = false
+        newUserForm.username = ''
+        newUserForm.password = ''
+        fetchUsers()
+    } catch(e) {
+        message.error(e.response?.data?.detail || "Creation failed")
     }
 }
 
-// ... 
+const handleUpdateUser = async (u) => {
+    if (u.tempLimit === u.quota_limit) return
+    try {
+        await axios.post('/api/admin/update_user', {
+            user_id: u.id,
+            is_pro: Boolean(u.is_pro), // Ensure boolean
+            quota_limit: parseInt(u.tempLimit)
+        })
+        u.quota_limit = parseInt(u.tempLimit)
+        message.success("Quota updated")
+    } catch(e) { message.error("Update failed") }
+}
+
+const toggleUserPro = async (u) => {
+    const newStatus = !u.is_pro
+    try {
+        await axios.post('/api/admin/update_user', {
+            user_id: u.id,
+            is_pro: newStatus,
+            quota_limit: u.quota_limit // Keep existing limit or reset? Keep for now.
+        })
+        u.is_pro = newStatus
+        message.success(`User is now ${newStatus ? 'PRO' : 'Standard'}`)
+    } catch(e) { message.error("Update failed") }
+}
+
+// --- Settings ---
+const settings = ref({ 
+    subject: 'general', 
+    grade: 'general', 
+    aspectRatio: '1:1', 
+    style: 'vivid', 
+    quality: 'standard',
+    model: 'gemini-3-pro-image-preview' // Default model
+})
+
+// --- Options ---
+const modelOptions = [
+    { label: 'Gemini 3 Pro', value: 'gemini-3-pro-image-preview' },
+    { label: 'Z-Image Turbo', value: 'z-image-turbo' },
+    { label: 'GPT Image 1.5', value: 'gpt-image-1.5-all' }
+]
 
 const subjectOptions = [
   { label: '通用', value: 'general', icon: '🌐' },
@@ -1055,19 +756,12 @@ const subjectOptions = [
   { label: '数学', value: 'math', icon: '📐' },
   { label: '物理', value: 'physics', icon: '🧪' },
   { label: '化学', value: 'chemistry', icon: '⚗️' },
-  { label: '生物', value: 'biology', icon: '🧬' },
-  { label: '地理', value: 'geography', icon: '🌍' },
   { label: '语文', value: 'chinese', icon: '📖' },
   { label: '英语', value: 'english', icon: '🔡' },
-  { label: '历史', value: 'history', icon: '📜' },
-  { label: '道德与法治', value: 'politics', icon: '⚖️' },
-  { label: '美术', value: 'art', icon: '🎨' },
-  { label: '音乐', value: 'music', icon: '🎵' },
-  { label: '体育', value: 'pe', icon: '🏃' },
-  { label: '心理', value: 'psychology', icon: '🧠' },
-  { label: '综合实践', value: 'practice', icon: '🛠️' }
+  { label: '史地生政/心理', value: 'humanities_psych', icon: '🧠' },
+  { label: '音体美', value: 'arts_pe', icon: '🎨' },
+  { label: '教材绘图', value: 'textbook', icon: '📚' }
 ]
-
 const gradeOptions = [
   { label: '通用', value: 'general' },
   { label: '幼儿园 / 小学', value: 'primary' },
@@ -1075,103 +769,120 @@ const gradeOptions = [
   { label: '高中', value: 'high' },
   { label: '大学', value: 'college' }
 ]
-
 const ratioOptions = [
   { label: '正方形 (1:1)', value: '1:1' },
   { label: '横版 (16:9)', value: '16:9' },
   { label: '竖版 (9:16)', value: '9:16' }
 ]
-
 const qualityOptions = [
-  { label: '标准 (1K) - 快速', value: 'standard' },
-  { label: '高质 (2K) - 细节', value: '2k' },
-  { label: '超清 (4K) - 最佳', value: '4k' }
+  { label: '标准 (1K)', value: 'standard' },
+  { label: '高质 (2K)', value: '2k' },
+  { label: '超清 (4K)', value: '4k' }
 ]
 
-// --- 辅助 ---
+// --- Computed ---
 const getSubjectLabel = (val) => subjectOptions.find(o => o.value === val)?.label || val
 const getGradeLabel = (val) => gradeOptions.find(o => o.value === val)?.label || val
 const getQualityLabel = (val) => qualityOptions.find(o => o.value === val)?.label || val
-const getCountBySubject = (sub) => galleryImages.value.filter(i => i.subject === sub).length
 const latestSingleTask = computed(() => singleTasks.value[singleTasks.value.length - 1] || null)
 const reversedBatchQueue = computed(() => [...batchQueue.value].reverse())
-const recentHistory = computed(() => galleryImages.value.slice(0, 10)) // 胶卷栏显示最近10张
-
-const handleHistorySelect = (img) => {
-    // 转换为统一格式用于展示
-    currentDisplayImage.value = {
-        url: img.url,
-        prompt: img.prompt,
-        subject: img.subject,
-        grade: img.grade,
-        isHistory: true // 标记
-    }
-}
+const recentHistory = computed(() => galleryImages.value.filter(i => i.is_mine).slice(0, 10))
 
 const filteredGallery = computed(() => {
   let imgs = galleryImages.value
   if (galleryFilter.value !== 'all') {
     imgs = imgs.filter(img => img.subject === galleryFilter.value)
   }
-  // 如果不是管理员且勾选了"只看精选"，或者管理员勾选了"只看精选"
-  // 其实通常逻辑是：默认给公众看精选。
+  if (showMyImages.value) {
+      imgs = imgs.filter(img => img.is_mine)
+  }
   if (showFeaturedOnly.value) {
-    imgs = imgs.filter(img => img.featured)
+      imgs = imgs.filter(img => img.featured)
   }
   return imgs
 })
 
-// --- 逻辑: JSON 处理 ---
-const handleJsonUpload = (event) => {
-  const file = event.target.files[0]
-  if (!file) return
-
-  const reader = new FileReader()
-  reader.onload = (e) => {
+// --- Auth Logic Handlers ---
+const handleAuthAction = async () => {
+    if (!loginForm.username || !loginForm.password) return message.warning("Please fill in fields")
+    authLoading.value = true
     try {
-      const tasks = JSON.parse(e.target.result)
-      if (!Array.isArray(tasks)) throw new Error('Root must be an array')
-      
-      const newTasks = tasks.map(t => ({
-        id: Date.now() + Math.random().toString(),
-        prompt: t.prompt,
-        status: 'pending',
-        resultUrl: null,
-        settings: {
-          subject: t.subject || settings.value.subject,
-          grade: t.grade || settings.value.grade,
-          aspectRatio: t.aspectRatio || settings.value.aspectRatio,
-          style: t.style || settings.value.style,
-          quality: t.quality || settings.value.quality
-        }
-      }))
-      
-      batchQueue.value.push(...newTasks)
-      message.success(`成功导入 ${newTasks.length} 个任务`)
-      processBatchQueue() // 自动开始
-      
-    } catch (err) {
-      message.error('JSON 格式错误: ' + err.message)
+        await authStore.login(loginForm.username, loginForm.password)
+        message.success("Welcome back!")
+        fetchHistory()
+    } catch (e) {
+        message.error(e.response?.data?.detail || "Auth Failed")
+    } finally {
+        authLoading.value = false
     }
-  }
-  reader.readAsText(file)
-  event.target.value = '' // reset
 }
 
-const downloadTemplate = () => {
-  const template = [
-    { prompt: "Example prompt 1", subject: "science", aspectRatio: "1:1", quality: "standard" },
-    { prompt: "Example prompt 2", subject: "math", aspectRatio: "16:9", quality: "4k" }
-  ]
-  const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'nano_banana_template.json'
-  a.click()
+const handleGuestAccess = () => {
+    authStore.enableGuestMode()
+    message.info("Guest Mode Enabled. Please configure API Key.")
+    showAccessKeyModal.value = true
 }
 
-// --- 逻辑: 生成 ---
+// --- Watch for login state changes to fetch data ---
+watch(() => authStore.isLoggedIn, (newVal) => {
+    if (newVal) fetchHistory()
+})
+
+// --- Axios Interceptor ---
+axios.interceptors.request.use(config => {
+    const token = localStorage.getItem('token')
+    if (token) config.headers['Authorization'] = `Bearer ${token}`
+    
+    // Add custom key if present
+    const key = localStorage.getItem('user_model_key')
+    const base = localStorage.getItem('user_model_base_url')
+    if (key) config.headers['x-model-key'] = key
+    if (base) config.headers['x-model-base-url'] = base
+    
+    return config
+})
+
+axios.interceptors.response.use(res => res, error => {
+    if (error.response) {
+        if (error.response.status === 401 && error.config.url.includes('/api/auth/me')) {
+            authStore.logout()
+        }
+        else if ((error.response.status === 403 || error.response.status === 429) && !error.config.url.includes('auth')) {
+             message.warning("Access Denied or Quota Exceeded. Please check API Key.")
+             showAccessKeyModal.value = true
+        }
+    }
+    return Promise.reject(error)
+})
+
+// --- Key Management ---
+const handleSaveAccessKey = () => {
+    localStorage.setItem('user_model_key', userModelKeyInput.value.trim())
+    if (userModelBaseUrlInput.value.trim()) {
+        localStorage.setItem('user_model_base_url', userModelBaseUrlInput.value.trim())
+    } else {
+        localStorage.removeItem('user_model_base_url')
+    }
+    showAccessKeyModal.value = false
+    message.success("Configuration Saved")
+}
+
+// --- Gallery & Gen Logic (Simplified from original) ---
+const fetchHistory = async () => {
+    if (!authStore.isLoggedIn) return
+    try {
+        const res = await axios.get('/api/gallery')
+        galleryImages.value = res.data
+        if (!currentDisplayImage.value && galleryImages.value.length > 0) {
+            handleHistorySelect(galleryImages.value.find(i => i.is_mine) || galleryImages.value[0])
+        }
+    } catch(e) {}
+}
+
+const handleHistorySelect = (img) => {
+    currentDisplayImage.value = img
+}
+
 const handleGenerateSingle = async () => {
   if (!inputText.value.trim()) return
   const newTask = { id: Date.now(), prompt: inputText.value, status: 'pending', resultUrl: null, settings: { ...settings.value } }
@@ -1179,318 +890,451 @@ const handleGenerateSingle = async () => {
   processing.value = true
   await executeTask(newTask)
   processing.value = false
+  // Update quota display
+  authStore.checkAuth()
 }
 
-const handleOptimizePrompt = async () => {
-  if (!inputText.value.trim()) return
-  const original = inputText.value
-  optimizing.value = true
+const executeTask = async (task) => {
+  task.status = 'processing'
   try {
-    message.loading('✨ AI is optimizing your prompt...')
-    // 传递 subject 上下文
-    const res = await axios.post('/api/optimize_prompt', { 
-        prompt: original,
-        subject: settings.value.subject // 新增
-    })
-    if (res.data.success) {
-      inputText.value = res.data.optimized_prompt
-      message.success('Prompt Optimized!')
-    }
+     const mapAspectToSize = (ratio, model) => {
+        // GPT Image 1.5 specific resolutions
+        if (model === 'gpt-image-1.5') {
+            if (ratio === '16:9') return '1536x1024'
+            if (ratio === '9:16') return '1024x1536'
+            return '1024x1024'
+        }
+        // Default (DALL-E 3, Gemini, Jimeng)
+        if (ratio === '16:9') return '1792x1024'
+        if (ratio === '9:16') return '1024x1792'
+        return '1024x1024'
+     }
+     
+     const res = await axios.post('/api/generate/single', {
+        prompt: task.prompt,
+        size: mapAspectToSize(task.settings.aspectRatio, task.settings.model),
+        quality: task.settings.quality,
+        style: task.settings.style,
+        subject: task.settings.subject,
+        grade: task.settings.grade,
+        model: task.settings.model, 
+        reference_image_urls: task.reference_image_urls || refImageUrls.value
+     })
+     task.status = 'done'
+     task.resultUrl = res.data.url
+     currentDisplayImage.value = { ...res.data, is_mine: true, featured: false, prompt: task.prompt } // simplify
+     message.success("Generated!")
+     fetchHistory()
   } catch (e) {
-    message.error('Optimization failed')
-  } finally {
-    optimizing.value = false
+     task.status = 'failed'
+     task.statusMsg = 'Failed'
+     // Interceptor handles 403/429
   }
+}
+
+// --- Other Handlers (Optimize, Modify, Upload, Batch, Admin) ---
+const handleOptimizePrompt = async () => {
+    optimizing.value = true
+    try {
+        const res = await axios.post('/api/optimize_prompt', { 
+            prompt: inputText.value, 
+            subject: settings.value.subject,
+            model: settings.value.model
+        })
+        inputText.value = res.data.optimized_prompt
+    } catch(e) { message.error("Optimize failed") } 
+    finally { optimizing.value = false }
+}
+
+const handleUploadFinishWithStore = ({ file, event }) => {
+    try {
+        const res = JSON.parse(event.target.response)
+        if (res.success) {
+            file.url = res.url
+            refImageUrls.value.push(res.url)
+            message.success('Uploaded')
+        }
+    } catch(e) {}
+}
+
+const handleBatchRefUpload = ({ file, event }) => {
+    try {
+        const res = JSON.parse(event.target.response)
+        if (res.success) {
+            batchRefImageUrls.value.push(res.url)
+            message.success('Batch Ref Uploaded')
+        }
+    } catch(e) {}
+}
+
+const handleRemoveWithStore = ({ file }) => {
+    if (file.url) refImageUrls.value = refImageUrls.value.filter(u => u !== file.url)
+}
+
+const openImage = (img) => {
+    selectedImage.value = img
+    showModal.value = true
+}
+const closeModal = () => { showModal.value = false }
+const copyPrompt = () => {
+    navigator.clipboard.writeText(selectedImage.value.prompt)
+    message.success("Copied")
+}
+
+const toggleFeature = async (img) => {
+    try {
+        const res = await axios.post('/api/admin/toggle_feature', { filename: img.id, featured: !img.featured })
+        img.featured = res.data.featured
+        message.success("Updated")
+    } catch(e) { message.error("Admin only") }
+}
+
+const handleJsonUpload = (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const tasks = JSON.parse(e.target.result)
+      if (!Array.isArray(tasks)) throw new Error('Root must be an array')
+      // Capture current refs for this batch import
+      const currentBatchRefs = [...batchRefImageUrls.value]
+
+      const newTasks = tasks.map(t => ({
+        id: Date.now() + Math.random().toString(),
+        prompt: t.prompt,
+        status: 'draft', 
+        resultUrl: null,
+        settings: {
+          subject: t.subject || settings.value.subject,
+          grade: t.grade || settings.value.grade,
+          aspectRatio: t.aspectRatio || settings.value.aspectRatio,
+          style: t.style || settings.value.style,
+          quality: t.quality || settings.value.quality
+        },
+        reference_image_urls: currentBatchRefs // Apply global refs to JSON tasks
+      }))
+      
+      batchQueue.value.push(...newTasks)
+      
+      // Optionally clear refs after import to avoid confusion for next batch?
+      // Better to keep them visible until user clears, or clear them?
+      // The button "Clear" is manual.
+      // Let's NOT clear them here, so user can import another JSON with same refs if they want.
+      // But wait, handleGenerateBatch clears them. Consistency?
+      // Let's clear them to match handleGenerateBatch behavior.
+      batchRefImageUrls.value = [] 
+      
+      message.success(`Imported ${newTasks.length} tasks. Click 'Start' to begin.`)
+      // Do not auto-start
+    } catch (err) { message.error('JSON Error') }
+  }
+  reader.readAsText(file)
+  event.target.value = ''
+}
+
+const downloadTemplate = () => {
+  const template = [
+    { prompt: "Example: Heart anatomy", subject: "textbook", aspectRatio: "1:1", quality: "standard" },
+    { prompt: "Example: Solar system", subject: "science", aspectRatio: "16:9", quality: "4k" }
+  ]
+  const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'template.json'
+  a.click()
 }
 
 const handleGenerateBatch = async () => {
   const text = batchInputText.value.trim()
   if (!text) return
   const prompts = text.split('\n').map(p => p.trim()).filter(p => p.length > 0)
-  const newTasks = prompts.map(p => ({ id: Date.now() + Math.random().toString(), prompt: p, status: 'pending', resultUrl: null, settings: { ...settings.value } }))
+  
+  // Capture current refs for this batch
+  const currentBatchRefs = [...batchRefImageUrls.value]
+  
+  const newTasks = prompts.map(p => ({ 
+      id: Date.now() + Math.random().toString(), 
+      prompt: p, 
+      status: 'draft', 
+      resultUrl: null, 
+      settings: { ...settings.value },
+      reference_image_urls: currentBatchRefs // Attach refs to task
+  }))
+  
   batchQueue.value.push(...newTasks)
   batchInputText.value = ''
-  message.success(`${newTasks.length} tasks added`)
-  processBatchQueue()
+  batchRefImageUrls.value = [] // Clear after adding
+  message.success(`${newTasks.length} tasks added to queue. Click 'Start' to begin.`)
 }
-
-const downloadBatchResults = async () => {
-    const doneTasks = batchQueue.value.filter(t => t.status === 'done' && t.resultUrl)
-    if (doneTasks.length === 0) return
-
-    message.loading('正在打包下载...')
-    try {
-        // Extract filenames from URLs
-        const filenames = doneTasks.map(t => {
-            // resultUrl is like /static/generated/xxx.png
-            return t.resultUrl.split('/').pop()
-        })
-
-        const response = await axios.post('/api/download/batch', { filenames }, {
-            responseType: 'blob'
-        })
-        
-        const url = window.URL.createObjectURL(new Blob([response.data]))
-        const link = document.createElement('a')
-        link.href = url
-        link.setAttribute('download', `NanoBanana_Batch_${Date.now()}.zip`)
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-        message.success('下载已开始')
-    } catch (err) {
-        message.error('下载失败: ' + (err.message || 'Unknown error'))
-    }
-}
-
-// executeTask 已移动到下方
 
 const processBatchQueue = async () => {
   if (processing.value) return
   processing.value = true
   
   while (true) {
+    if (paused.value) {
+        break
+    }
     const nextTask = batchQueue.value.find(t => t.status === 'pending')
     if (!nextTask) break
     
     await executeTask(nextTask)
     
-    // 如果任务成功，且队列里还有任务，主动等待，避免立刻触发 429
-    // 后端限制已改为 12s，这里我们设置 15s 的安全间隔
+    // Check pause again before waiting
+    if (paused.value) break
+    
     const hasMore = batchQueue.value.some(t => t.status === 'pending')
-    if (nextTask.status === 'done' && hasMore) {
-        for (let i = 15; i > 0; i--) {
-            // 这里我们需要一种方式通知 UI 正在冷却，但又不占用 specific task 的 status
-            // 简单起见，我们借用 message 或者一个全局状态，或者直接在下一个任务上显示？
-            // 更好的体验：直接等待即可，让下一个任务开始时去处理（或者预先显示等待）
-            // 咱们简单 sleep，但在控制台或界面上也许看不出来
-            await new Promise(r => setTimeout(r, 1000))
-        }
-    }
+    if (nextTask.status === 'done' && hasMore) await new Promise(r => setTimeout(r, 1000))
   }
   processing.value = false
 }
 
-const addToGallery = (task) => {
-  galleryImages.value.unshift({ 
-    id: task.id, 
-    url: task.resultUrl, 
-    prompt: task.prompt, 
-    subject: task.settings.subject, 
-    grade: task.settings.grade, 
-    timestamp: Date.now(),
-    featured: false
-  })
+const paused = ref(false)
+
+const startBatchProcessing = () => {
+    paused.value = false
+    // Convert all drafts to pending
+    batchQueue.value.forEach(t => {
+        if (t.status === 'draft') t.status = 'pending'
+    })
+    processBatchQueue()
 }
 
-const fetchHistory = async () => {
+// --- Prompt Editing Logic ---
+const editingTask = ref(null)
+const editPromptText = ref('')
+const editTaskSettings = reactive({ subject: 'general', aspectRatio: '1:1', quality: 'standard' })
+
+const openEditTask = (task) => {
+    editingTask.value = task
+    editPromptText.value = task.prompt
+    // Copy settings
+    editTaskSettings.subject = task.settings.subject || 'general'
+    editTaskSettings.aspectRatio = task.settings.aspectRatio || '1:1'
+    editTaskSettings.quality = task.settings.quality || 'standard'
+}
+
+const optimizeEditPrompt = async () => {
+    if (!editPromptText.value.trim()) return
+    optimizing.value = true
+    try {
+        const res = await axios.post('/api/optimize_prompt', { 
+            prompt: editPromptText.value, 
+            subject: editTaskSettings.subject,
+            model: editingTask.value?.settings?.model || settings.value.model // Use task model or global fallback
+        })
+        editPromptText.value = res.data.optimized_prompt
+        message.success('Prompt Optimized')
+    } catch(e) { 
+        message.error("Optimize failed") 
+    } finally { 
+        optimizing.value = false 
+    }
+}
+
+const saveEditTask = () => {
+    if (editingTask.value) {
+        editingTask.value.prompt = editPromptText.value
+        // Save settings back
+        editingTask.value.settings.subject = editTaskSettings.subject
+        editingTask.value.settings.aspectRatio = editTaskSettings.aspectRatio
+        editingTask.value.settings.quality = editTaskSettings.quality
+        
+        editingTask.value = null
+        editPromptText.value = ''
+        message.success('Task updated')
+    }
+}
+
+const cancelEditTask = () => {
+    editingTask.value = null
+    editPromptText.value = ''
+}
+
+const pauseBatchProcessing = () => {
+    paused.value = true
+    message.warning("Batch processing paused")
+}
+
+const downloadBatchResults = async () => {
+    const doneTasks = batchQueue.value.filter(t => t.status === 'done' && t.resultUrl)
+    if (doneTasks.length === 0) return
+    message.loading('Packing...')
+    try {
+        const filenames = doneTasks.map(t => t.resultUrl.split('/').pop())
+        const response = await axios.post('/api/download/batch', { filenames }, { responseType: 'blob' })
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `Batch_${Date.now()}.zip`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+    } catch (err) { message.error('Download failed') }
+}
+
+const handleModify = async () => {
+  const currentTask = currentDisplayImage.value
+  if (!currentTask || !currentTask.url || !modificationInput.value.trim()) return
+  const modPrompt = modificationInput.value.trim()
+  modificationInput.value = ''
+  processing.value = true
+  const newTask = { id: Date.now(), prompt: `Modify: ${modPrompt}`, status: 'processing', resultUrl: null, settings: { ...settings.value } }
+  singleTasks.value.push(newTask)
   try {
-    const res = await axios.get('/api/gallery')
-    // 后端现在返回了 subject 和 prompt，直接使用
-    galleryImages.value = res.data.map(img => ({
-      id: img.name,
-      url: img.url,
-      thumbnail_url: img.thumbnail_url,
-      prompt: img.prompt || 'History Image',
-      subject: img.subject || 'general',
-      grade: img.grade || 'general',
-      timestamp: img.time,
-      featured: img.featured || false
-    }))
+    const res = await axios.post('/api/generate/modify', { prompt: modPrompt, original_image_url: currentTask.url })
+    newTask.status = 'done'
+    newTask.resultUrl = res.data.url
+    currentDisplayImage.value = { ...res.data, is_mine: true, prompt: newTask.prompt, featured: false }
+    message.success('Modified')
+    fetchHistory()
+  } catch(e) { 
+      newTask.status = 'failed'
+      message.error("Modify Failed")
+  } finally {
+      processing.value = false
+  }
+}
+
+// --- Splitter Tool Logic ---
+// Updated with Batch Integration
+const showSplitter = ref(false)
+const cropBoxes = ref([])
+const isDrawing = ref(false)
+const startPos = ref({ x: 0, y: 0 })
+const currentBox = ref(null)
+const imageRef = ref(null)
+
+const startCrop = (e) => {
+    e.preventDefault()
+    if (!imageRef.value) return
+    const rect = imageRef.value.getBoundingClientRect()
+    isDrawing.value = true
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top
+    startPos.value = { x, y }
+    currentBox.value = { x, y, w: 0, h: 0 }
+}
+
+const moveCrop = (e) => {
+    if (!isDrawing.value || !imageRef.value) return
+    const rect = imageRef.value.getBoundingClientRect()
+    const currentX = e.clientX - rect.left
+    const currentY = e.clientY - rect.top
     
-    // 如果当前没有展示图片，且有历史记录，默认展示第一张
-    if (!currentDisplayImage.value && galleryImages.value.length > 0) {
-        handleHistorySelect(galleryImages.value[0])
+    const width = currentX - startPos.value.x
+    const height = currentY - startPos.value.y
+    
+    currentBox.value = {
+        x: width > 0 ? startPos.value.x : currentX,
+        y: height > 0 ? startPos.value.y : currentY,
+        w: Math.abs(width),
+        h: Math.abs(height)
     }
-  } catch (e) {}
 }
 
-const fetchQuota = async () => {
-    try {
-        const res = await axios.get('/api/quota')
-        quota.value = { remaining: res.data.remaining, max: res.data.max }
-    } catch(e) {}
-}
-
-const openImage = (img) => { 
-  // 兼容直接传 URL 字符串的情况 (虽然现在主要传对象)
-  if (typeof img === 'string') {
-     window.open(img, '_blank')
-     return
-  }
-  selectedImage.value = img
-  showModal.value = true
-}
-
-const closeModal = () => {
-  showModal.value = false
-  selectedImage.value = null
-}
-
-const copyPrompt = async () => {
-  if (!selectedImage.value || !selectedImage.value.prompt) return
-  
-  const text = selectedImage.value.prompt
-  
-  try {
-    // 优先尝试标准 API
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-       await navigator.clipboard.writeText(text)
-       message.success('提示词已复制！')
-       return
+const endCrop = () => {
+    if (!isDrawing.value) return
+    isDrawing.value = false
+    if (currentBox.value && currentBox.value.w > 10 && currentBox.value.h > 10) {
+        cropBoxes.value.push({ ...currentBox.value })
     }
-  } catch (e) {
-    console.warn('Clipboard API failed, trying fallback...')
-  }
-  
-  // 降级方案 (兼容 HTTP)
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.style.position = 'fixed' // 避免滚动
-    textarea.style.left = '-9999px'
-    document.body.appendChild(textarea)
-    textarea.select()
-    document.execCommand('copy')
-    document.body.removeChild(textarea)
-    message.success('提示词已复制！')
-  } catch (e) {
-    message.error('复制失败，请手动复制')
-  }
+    currentBox.value = null
 }
 
-// --- 管理员逻辑 ---
-const handleAdminLogin = async () => {
+const removeCrop = (index) => {
+    cropBoxes.value.splice(index, 1)
+}
+
+const downloadCrops = async () => {
+    if (cropBoxes.value.length === 0) return
+    // ... existing logic ...
+    const realCrops = getRealCrops() // Refactor this out to reuse
+    
+    message.loading('Processing crops...')
     try {
-        const res = await axios.post('/api/admin/login', { password: adminPassword.value })
+        const res = await axios.post('/api/tools/crop_and_zip', {
+            image_url: selectedImage.value.url,
+            crops: realCrops
+        }, { responseType: 'blob' })
+        
+        const url = window.URL.createObjectURL(new Blob([res.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `scenes_${Date.now()}.zip`)
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        message.success('Download started')
+    } catch (e) {
+        message.error('Crop failed')
+    }
+}
+
+// Helper
+const getRealCrops = () => {
+    if (!imageRef.value) return []
+    const naturalWidth = imageRef.value.naturalWidth
+    const displayWidth = imageRef.value.width
+    const scale = naturalWidth / displayWidth
+    return cropBoxes.value.map(box => ({
+        x: Math.round(box.x * scale),
+        y: Math.round(box.y * scale),
+        w: Math.round(box.w * scale),
+        h: Math.round(box.h * scale)
+    }))
+}
+
+const sendCropsToBatch = async () => {
+    if (cropBoxes.value.length === 0) return
+    const realCrops = getRealCrops()
+    
+    message.loading('Preparing batch tasks...')
+    try {
+        const res = await axios.post('/api/tools/crop_to_urls', {
+            image_url: selectedImage.value.url,
+            crops: realCrops
+        })
+        
         if (res.data.success) {
-            isAdmin.value = true
-            localStorage.setItem('admin_token', res.data.token)
-            showAdminLogin.value = false
-            message.success('管理员登录成功')
-            fetchAdminStats()
+            const urls = res.data.urls
+            const newTasks = urls.map((url, idx) => ({
+                id: Date.now() + Math.random().toString(),
+                prompt: `Scene ${idx + 1}: `, // Placeholder
+                status: 'draft',
+                resultUrl: null,
+                settings: { ...settings.value }, // Inherit current global settings
+                reference_image_urls: [url] // Unique ref per task
+            }))
+            
+            batchQueue.value.push(...newTasks)
+            
+            // Navigate
+            currentTab.value = 'batch'
+            showModal.value = false
+            resetSplitter()
+            message.success(`Created ${newTasks.length} batch tasks from scenes!`)
         }
     } catch (e) {
-        message.error('密码错误')
+        message.error('Failed to send to batch')
     }
 }
 
-const fetchAdminStats = async () => {
-    if (!isAdmin.value) return
-    try {
-        const token = localStorage.getItem('admin_token')
-        const res = await axios.get('/api/admin/stats', { headers: { 'x-admin-token': token } })
-        adminStats.value = res.data
-    } catch (e) {}
+const resetSplitter = () => {
+    cropBoxes.value = []
+    showSplitter.value = false
 }
 
-const toggleFeature = async (img) => {
-    if (!isAdmin.value) return
-    try {
-        const token = localStorage.getItem('admin_token')
-        const newState = !img.featured
-        const res = await axios.post('/api/admin/toggle_feature', 
-            { filename: img.id, featured: newState },
-            { headers: { 'x-admin-token': token } }
-        )
-        if (res.data.success) {
-            img.featured = res.data.featured
-            message.success(newState ? '已设为精选' : '取消精选')
-            // 切换到只看精选时，列表会自动刷新过滤
-        }
-    } catch (e) {
-        message.error('操作失败')
-    }
-}
-
-const executeTask = async (task) => {
-  task.status = 'processing'
-  // message.info('生成中，预计 30 秒左右，请稍候...', { duration: 5 }) // 减少干扰
-  
-  const mapAspectToSize = (ratio) => {
-    if (ratio === '16:9') return '1792x1024'
-    if (ratio === '9:16') return '1024x1792'
-    return '1024x1024'
-  }
-
-  const payload = {
-    prompt: task.prompt,
-    size: mapAspectToSize(task.settings.aspectRatio),
-    quality: task.settings.quality || 'standard',
-    style: task.settings.style || 'vivid',
-    subject: task.settings.subject || 'general',
-    grade: task.settings.grade || 'general',
-    reference_image_urls: refImageUrls.value
-  }
-
-  const runRequest = async () => {
-      try {
-        const res = await axios.post('/api/generate/single', payload)
-        task.status = 'done'
-        task.resultUrl = res.data.url
-        
-        // 生成成功，立即展示
-        currentDisplayImage.value = {
-            url: res.data.url,
-            prompt: task.prompt,
-            subject: task.settings.subject,
-            grade: task.settings.grade,
-            isHistory: false
-        }
-
-        const remaining = res.data.remaining_quota ?? quota.value.remaining
-        const max = res.data.max ?? quota.value.max
-        quota.value = { remaining, max }
-
-        addToGallery(task)
-        message.success('🎉 生成完成！请点击图片及时下载保存', { duration: 5000 }) 
-        
-      } catch (e) {
-        if (e.response && e.response.status === 429) {
-            // 触发排队机制
-            const msg = e.response.data.detail || ''
-            // 尝试提取秒数 "请休息 34 秒"
-            const match = msg.match(/(\d+)\s*秒/)
-            const waitSeconds = match ? parseInt(match[1]) : 30
-            
-            console.log(`Rate limit hit, waiting ${waitSeconds}s...`)
-            task.status = 'pending' // 保持 pending 状态或者新增 queued
-            
-            // 倒计时逻辑
-            for (let i = waitSeconds; i > 0; i--) {
-                task.statusMsg = `排队中... ${i}s 后重试`
-                await new Promise(r => setTimeout(r, 1000))
-                // 如果用户手动取消任务，需要跳出（目前还没做取消按钮，先忽略）
-            }
-            
-            task.statusMsg = '正在重试...'
-            task.status = 'processing'
-            await runRequest() // 递归重试
-            return
-        }
-        
-        task.status = 'failed'
-        const detail = e?.response?.data?.detail || '生成失败，请稍后重试'
-        message.error(detail)
-      }
-  }
-
-  await runRequest()
-}
+// Reset splitter when modal closes
+watch(showModal, (val) => {
+    if (!val) resetSplitter()
+})
 
 onMounted(() => {
-  fetchHistory()
-  fetchQuota()
-  loadApiSettings()
-  
-  // Check Access Mode
-  const mode = localStorage.getItem('access_mode')
-  if (!mode) {
-      showAccessModeModal.value = true
-  } else if (mode === 'internet') {
-      // If internet mode, double check key
-      // Not strictly necessary to popup every time, but good to ensure
-  }
+    // Auth check is now in App.vue, but we still want to ensure history is fetched if already logged in
+    if (authStore.isLoggedIn) fetchHistory()
 })
 </script>
 

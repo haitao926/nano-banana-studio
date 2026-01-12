@@ -14,7 +14,20 @@
           </div>
 
           <div class="flex items-center gap-4">
-             <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full text-xs font-medium text-gray-500">
+             <!-- User Info in Header -->
+             <div v-if="authStore.isLoggedIn || authStore.isGuest" class="flex items-center gap-3 bg-gray-100 dark:bg-gray-800 rounded-full pl-1 pr-4 py-1">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-yellow-400 to-orange-500 flex items-center justify-center text-white font-bold text-sm">
+                   {{ authStore.user.username.charAt(0).toUpperCase() }}
+                </div>
+                <div class="flex flex-col text-xs">
+                   <span class="font-bold text-gray-900 dark:text-gray-100 leading-none">{{ authStore.user.username }}</span>
+                   <span class="text-[10px] text-gray-500 leading-none mt-0.5" v-if="authStore.isGuest">BYOK User</span>
+                   <span class="text-[10px] text-gray-500 leading-none mt-0.5" v-else-if="authStore.user.is_pro">PRO User</span>
+                   <span class="text-[10px] text-gray-500 leading-none mt-0.5" v-else>Standard</span>
+                </div>
+             </div>
+
+             <div v-else class="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-full text-xs font-medium text-gray-500">
                 <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                 API Connected
              </div>
@@ -32,8 +45,16 @@
 </template>
 
 <script setup>
+import { onMounted } from 'vue'
 import { NConfigProvider, NMessageProvider } from 'naive-ui'
 import Workstation from './views/Workstation.vue'
+import { useAuthStore } from './stores/auth'
+
+const authStore = useAuthStore()
+
+onMounted(() => {
+    authStore.checkAuth()
+})
 </script>
 
 <style>

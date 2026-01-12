@@ -1,0 +1,60 @@
+配置文件已加载: /Users/apple/Documents/GitHub/nano-banana-studio/backend/core/../data/batch_config.json
+INFO:     Started server process [40181]
+INFO:     Waiting for application startup.
+🍌 ReOpenInnoLab-智绘工坊 Backend Started
+🔄 Syncing files and database...
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+✅ Sync complete (No new metadata restored).
+INFO:     127.0.0.1:63450 - "GET /api/gallery HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63452 - "GET /static/generated/modified_%E6%AF%94%E4%BE%8B_169%EF%BC%8C%E7%84%B6%E5%90%8E4K%EF%BC%8C%E7%84%B6%E5%90%8E%E6%9B%B4%E5%85%B3%E6%B3%A8%E7%BB%86%E8%8A%82%EF%BC%8C%E5%8E%9F%E7%90%86%E6%9B%B4%E6%B8%85%E6%99%B0_1767580364.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63502 - "GET /static/generated/An_educational_infographic_illustrating_the_proces_1767193044.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63504 - "GET /static/generated/single_1766625473.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63501 - "GET /static/generated/modified_%E6%AF%94%E4%BE%8B_169%EF%BC%8C%E7%84%B6%E5%90%8E4K%EF%BC%8C%E7%84%B6%E5%90%8E%E6%9B%B4%E5%85%B3%E6%B3%A8%E7%BB%86%E8%8A%82%EF%BC%8C%E5%8E%9F%E7%90%86%E6%9B%B4%E6%B8%85%E6%99%B0_1767580364.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63506 - "GET /static/generated/Generated%20Image%20November%2023%2C%202025%20-%2010_09AM.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63509 - "GET /static/generated/image.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63507 - "GET /static/generated/Projectile_Motion_Textbook_Diagram.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63518 - "GET /static/generated/Generated%20Image%20November%2023%2C%202025%20-%2010_03AM.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63521 - "GET /static/generated/%E7%BA%A2%E6%A5%BC%E6%A2%A6%E4%BA%BA%E7%89%A9%E5%85%B3%E7%B3%BBbanana.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63526 - "GET /static/generated/97-%E6%9D%83%E5%8A%9B%E7%9A%84%E6%B8%B8%E6%88%8F%E5%85%B3%E7%B3%BB%E5%9B%BE.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63527 - "GET /static/generated/Urban_Heat_Green_Watercolor_Diagram.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63519 - "GET /static/generated/Translate_all_the_202511221816.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63523 - "GET /static/generated/Create_an_infographic_202511221622.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63538 - "GET /static/generated/MARL_Drone_Fleet_Architecture.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63539 - "GET /static/generated/Transformer_Cutaway_Blueprint_Exploded.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63542 - "GET /static/generated/Transformer_Exploded_Chinese_Blueprint.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63544 - "GET /static/generated/Exploded_Transformer_Robot_Blueprint.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63543 - "GET /static/generated/Drone_Fleet_MARL_Architecture_Diagram%20%281%29.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63545 - "GET /static/generated/Urban_Heat_Green_Dynamics_Schematic.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63548 - "GET /static/generated/An_educational_infographic_illustrating_the_proces_1767193044.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63552 - "POST /api/generate/single HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:63555 - "GET /api/auth/me HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:63561 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63564 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63567 - "GET /api/gallery HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63570 - "GET /api/gallery HTTP/1.1" 200 OK
+🔑 使用专用Key池 (针对模型: gpt-image-1.5-all)
+🚀 发送请求到: https://api.vectorengine.ai/v1/images/generations
+   模型: gpt-image-1.5-all
+✅ 图片生成成功URL: https://midjourney-plus.oss-us-west-1.aliyuncs.com...
+📥 准备保存图片到: /Users/apple/Documents/GitHub/nano-banana-studio/backend/static/generated/An_educational_infographic_illustrating_the_proces_1768228067.png
+✅ 下载成功
+INFO:     127.0.0.1:63573 - "POST /api/generate/single HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63689 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63853 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63857 - "GET /api/gallery HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63859 - "GET /api/gallery HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63865 - "GET /static/generated/An_educational_infographic_illustrating_the_proces_1768228067.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63868 - "GET /static/generated/Educational_infographic_titled_%27%E6%99%BA%E6%85%A7%E5%86%9C%E5%9C%BA%EF%BC%9A%E5%9F%BA%E4%BA%8E%E7%89%A9%E8%81%94%E7%BD%91%E7%9A%84%E6%99%BA%E8%83%BD%E5%8C%96%E8%BF%87%E7%A8%8B%E4%B8%8E%E6%8E%A7_1768222106.thumb.jpg HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:63866 - "GET /static/generated/An_educational_infographic_illustrating_the_proces_1768228067.thumb.jpg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63871 - "GET /static/generated/Infographic_prompt_A_professional_educational_info_1768209235.thumb.jpg HTTP/1.1" 304 Not Modified
+🚀 发送请求到: https://api.vectorengine.ai/v1/images/generations
+   模型: z-image-turbo
+✅ 图片生成成功URL: https://dashscope-result-bj.oss-cn-beijing.aliyunc...
+📥 准备保存图片到: /Users/apple/Documents/GitHub/nano-banana-studio/backend/static/generated/An_educational_infographic_illustrating_the_proces_1768228170.png
+✅ 下载成功
+INFO:     127.0.0.1:64040 - "POST /api/generate/single HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64371 - "GET /api/gallery HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64375 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64372 - "GET /static/generated/An_educational_infographic_illustrating_the_proces_1768228170.png HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64378 - "GET /static/generated/An_educational_infographic_illustrating_the_proces_1768228170.thumb.jpg HTTP/1.1" 200 OK
