@@ -108,7 +108,7 @@ pip install -r requirements.txt
 
 # 3. 启动服务 (监听 0.0.0.0 以便局域网访问)
 echo "🚀 Starting Server..."
-echo "👉 Local:   http://localhost:6060"
+echo "👉 Local:   http://localhost:8000"
 
 # Detect IP Address
 LOCAL_IP=""
@@ -128,7 +128,7 @@ if [ -z "$LOCAL_IP" ]; then
     LOCAL_IP=$(ifconfig | grep "inet " | grep -v 127.0.0.1 | awk '{print $2}' | head -n 1)
 fi
 
-echo "👉 Network: http://${LOCAL_IP}:6060"
+echo "👉 Network: http://${LOCAL_IP}:8000"
 
 # 使用生产级配置启动
-uvicorn main:app --host 0.0.0.0 --port 6060
+uvicorn main:app --host 0.0.0.0 --port 8000
