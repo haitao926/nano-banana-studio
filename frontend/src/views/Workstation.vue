@@ -90,13 +90,13 @@
             <span>🏭</span> 批量工坊
           </button>
 
-          <button 
+          <!-- <button 
             @click="currentTab = 'digital_human'"
             class="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
             :class="currentTab === 'digital_human' ? 'bg-black text-white shadow-md' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:hover:bg-gray-700 dark:hover:text-gray-200'"
           >
             <span>🗣️</span> 数字人 (Beta)
-          </button>
+          </button> -->
 
           <div class="w-px bg-gray-200 dark:bg-gray-700 my-2"></div>
 
@@ -214,12 +214,15 @@
                    </div>
                    <div v-else-if="!processing" class="text-center text-gray-400"><div class="text-6xl mb-4">🎨</div><p>Ready to create</p></div>
                    
+                   <!-- Image Modification Section Hidden Temporarily -->
+                   <!--
                    <div v-if="currentDisplayImage && !processing" class="absolute bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur p-4 border-t border-gray-100 dark:border-gray-700 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
                        <div class="flex gap-2">
                           <input v-model="modificationInput" placeholder="✨ Modify this image..." class="flex-1 bg-gray-50 dark:bg-gray-900 border-none outline-none px-4 py-2 rounded-lg text-sm" @keydown.enter="handleModify" />
                           <button @click="handleModify" :disabled="processing || !modificationInput" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors disabled:opacity-50">Modify</button>
                        </div>
                     </div>
+                    -->
               </div>
               <!-- 胶卷栏 -->
               <div v-if="recentHistory.length > 0" class="h-24 bg-white dark:bg-gray-800 rounded-2xl p-2 border border-gray-100 dark:border-gray-700 flex gap-2 overflow-x-auto custom-scrollbar">
@@ -355,11 +358,11 @@
       </Transition>
 
       <!-- ==================== 页面 3: 数字人 (Digital Human) ==================== -->
-      <Transition name="fade" mode="out-in">
+      <!-- <Transition name="fade" mode="out-in">
         <div v-if="currentTab === 'digital_human'">
             <DigitalHumanPanel />
         </div>
-      </Transition>
+      </Transition> -->
 
       <!-- ==================== 页面 3: 画廊 ==================== -->
       <Transition name="fade" mode="out-in">

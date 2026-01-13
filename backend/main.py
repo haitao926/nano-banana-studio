@@ -504,7 +504,7 @@ async def generate_modify(
         if not req.original_image_url.startswith("/static/generated/"):
             raise HTTPException(status_code=400, detail="Invalid image URL")
         
-        filename = os.path.basename(req.original_image_url)
+        filename = unquote(os.path.basename(req.original_image_url))
         original_path = os.path.join(GENERATED_DIR, filename)
         if not os.path.exists(original_path):
             raise HTTPException(status_code=404, detail="Original image not found")
@@ -514,7 +514,7 @@ async def generate_modify(
         new_filename = f"modified_{safe_prompt}_{timestamp}.png"
         
         image_url = img_gen.generate_modified_image(
-            req.prompt, [original_path], base_url=runtime_base_url, api_key=runtime_key
+            req.prompt, [original_path], base_url=runtime_base_url, api_key=runtime_key, model=img_gen.model
         )
         
         if image_url:
