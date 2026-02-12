@@ -1,5 +1,4 @@
 import json
-import os
 from typing import Optional, Tuple
 
 import requests
@@ -21,9 +20,8 @@ def synthesize_tts(
     language_type: str = "Auto",
     timeout: int = 120,
 ) -> Tuple[str, str]:
-    api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
-        raise RuntimeError("Missing DASHSCOPE_API_KEY (or provide x-tts-key header).")
+        raise RuntimeError("Missing API Key (configure model or provide x-tts-key).")
     if response_format != "wav":
         raise RuntimeError("REST TTS only supports wav output.")
 

@@ -10,6 +10,7 @@ from core.qwen_tts import synthesize_tts
 from deps import get_current_user, get_current_user_optional
 from helpers import (
     _build_model_candidates,
+    _get_default_model,
     _get_model_cost,
     _get_tts_base_url,
     _get_wav_duration_seconds,
@@ -54,7 +55,10 @@ async def generate_tts(
         if req.response_format != "wav":
             raise HTTPException(status_code=400, detail="REST TTS only supports wav output")
 
-        model_cost = _get_model_cost("audio", req.model)
+        model_name = (req.model or _get_default_model("audio") or "").strip()
+        if not model_name:
+            raise HTTPException(status_code=400, detail="请先在模型配置中添加音频模型")
+        model_cost = _get_model_cost("audio", model_name)
         cost = model_cost if isinstance(model_cost, int) else 1
         mode, runtime_key = determine_key_execution_mode(current_user, x_tts_key, cost=cost, header_name="x-tts-key")
 
@@ -62,7 +66,7 @@ async def generate_tts(
         tts_base_url = _get_tts_base_url()
         candidates = _build_model_candidates(
             "audio",
-            model=req.model,
+            model=model_name,
             runtime_key=x_tts_key,
             fallback_base_url=tts_base_url,
         )
@@ -77,7 +81,7 @@ async def generate_tts(
                     output_dir=AUDIO_DIR,
                     filename_base=audio_id,
                     voice=req.voice,
-                    model=req.model,
+                    model=model_name,
                     instructions=req.instructions,
                     optimize_instructions=req.optimize_instructions,
                     response_format=req.response_format,
@@ -104,7 +108,7 @@ async def generate_tts(
                 url=f"/static/audio/{os.path.basename(output_path)}",
                 prompt=text,
                 voice=req.voice,
-                model=req.model,
+                model=model_name,
                 duration=duration,
                 mode="speech",
             )
@@ -121,7 +125,7 @@ async def generate_tts(
             "url": f"/static/audio/{os.path.basename(output_path)}",
             "type": mime_type,
             "voice": req.voice,
-            "model": req.model,
+            "model": model_name,
             "format": "pcm" if mime_type == "audio/pcm" else "wav",
             "duration": duration,
             "remaining_quota": remaining,

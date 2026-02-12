@@ -15,6 +15,7 @@ from helpers import (
     _download_reference_image,
     _download_public_image_bytes,
     _enforce_rate_limit,
+    _get_default_model,
     _get_model_cost,
     _resolve_reference_image_path,
     create_thumbnail,
@@ -48,7 +49,9 @@ async def generate_single(
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
     try:
-        request_model = req.model if req.model else img_gen.model
+        request_model = (req.model or _get_default_model("image") or "").strip()
+        if not request_model:
+            raise HTTPException(status_code=400, detail="请先在模型配置中添加绘图模型")
         model_cost = _get_model_cost("image", request_model)
         model_text = (request_model or "").lower()
         cost = model_cost if isinstance(model_cost, int) else (2 if "gemini" in model_text else 1)
@@ -79,7 +82,6 @@ async def generate_single(
             img_gen.config["image"]["quality"] = req.quality
             img_gen.config["image"]["style"] = req.style
 
-            request_model = req.model if req.model else img_gen.model
             final_path = None
             seedream_files = []
             seedream_urls = []
@@ -307,7 +309,9 @@ async def generate_modify(
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
     try:
-        base_model = img_gen.model
+        base_model = (_get_default_model("image") or "").strip()
+        if not base_model:
+            raise HTTPException(status_code=400, detail="请先在模型配置中添加绘图模型")
         model_cost = _get_model_cost("image", base_model)
         cost = model_cost if isinstance(model_cost, int) else (2 if base_model and "gemini" in base_model.lower() else 1)
 
@@ -331,7 +335,7 @@ async def generate_modify(
         image_url = None
         candidates = _build_model_candidates(
             "image",
-            model=img_gen.model,
+            model=base_model,
             runtime_key=runtime_key,
             runtime_base_url=runtime_base_url,
             fallback_base_url=runtime_base_url,
@@ -342,7 +346,7 @@ async def generate_modify(
                 [original_path],
                 base_url=candidate.get("base_url"),
                 api_key=candidate.get("key"),
-                model=img_gen.model,
+                model=base_model,
             )
             if image_url:
                 break
@@ -403,7 +407,9 @@ async def generate_batch(
         if total_tasks > MAX_BATCH_TASKS:
             raise HTTPException(status_code=400, detail=f"Batch task limit exceeded ({total_tasks}/{MAX_BATCH_TASKS}).")
 
-        request_model = req.model if req.model else img_gen.model
+        request_model = (req.model or _get_default_model("image") or "").strip()
+        if not request_model:
+            raise HTTPException(status_code=400, detail="请先在模型配置中添加绘图模型")
         model_cost = _get_model_cost("image", request_model)
         cost_per = model_cost if isinstance(model_cost, int) else (2 if request_model and "gemini" in request_model.lower() else 1)
         total_cost = cost_per * (len(system_keys) * len(req_indices))
@@ -501,9 +507,14 @@ async def optimize_prompt_endpoint(
         _enforce_rate_limit(request, current_user)
 
         optimized = None
+        prompt_default = _get_default_model("prompt")
+        prompt_model = (prompt_default or req.model or "").strip()
+        if not prompt_model:
+            raise HTTPException(status_code=400, detail="请先在模型配置中添加绘图模型")
+        prompt_service = "prompt" if prompt_default else "image"
         candidates = _build_model_candidates(
-            "image",
-            model=req.model,
+            prompt_service,
+            model=prompt_model,
             runtime_key=runtime_key,
             runtime_base_url=runtime_base_url,
             fallback_base_url=runtime_base_url,
@@ -512,7 +523,7 @@ async def optimize_prompt_endpoint(
             optimized = img_gen.optimize_prompt(
                 req.prompt,
                 subject=req.subject,
-                model=req.model,
+                model=prompt_model,
                 api_key=candidate.get("key"),
                 base_url=candidate.get("base_url"),
             )

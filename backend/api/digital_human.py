@@ -49,7 +49,9 @@ async def submit_digital_human_task(
     _ensure_public_url(audio_url, "audio_url")
 
     prompt = req.prompt.strip() if req.prompt else None
-    model_name = (req.model or _get_default_model("digital_human", "wan2.2-s2v") or "wan2.2-s2v").strip()
+    model_name = (req.model or _get_default_model("digital_human") or "").strip()
+    if not model_name:
+        raise HTTPException(status_code=400, detail="请先在模型配置中添加数字人模型")
 
     duration_sec = req.audio_duration
     if duration_sec is None:
@@ -144,7 +146,9 @@ async def get_digital_human_status(
     provider = "dashscope"
 
     video_base_url = _get_video_base_url()
-    model_name = _get_default_model("digital_human", "wan2.2-s2v") or "wan2.2-s2v"
+    model_name = _get_default_model("digital_human") or ""
+    if not model_name:
+        return {"error": "Missing digital human model configuration."}
     if current_user:
         task = db.get_video_task(task_id)
         if task:

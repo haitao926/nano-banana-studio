@@ -190,44 +190,6 @@ def _get_system_config_with_env() -> Dict:
     cfg.setdefault("tts", {})
     cfg.setdefault("video", {})
 
-    img_key = get_env_str("IMAGE_API_KEY")
-    if img_key:
-        cfg["auth"]["api_key"] = img_key
-    img_backups = get_env_list("IMAGE_BACKUP_KEYS")
-    if img_backups is not None:
-        cfg["auth"]["backup_keys"] = img_backups
-    img_base = get_env_str("IMAGE_BASE_URL")
-    if img_base:
-        cfg["api"]["base_url"] = img_base
-
-    tts_key = get_env_str("TTS_API_KEY")
-    if tts_key:
-        cfg["tts"]["api_key"] = tts_key
-    tts_backups = get_env_list("TTS_BACKUP_KEYS")
-    if tts_backups is not None:
-        cfg["tts"]["backup_keys"] = tts_backups
-    tts_base = get_env_str("TTS_BASE_URL")
-    if tts_base:
-        cfg["tts"]["base_url"] = tts_base
-
-    video_key = get_env_str("VIDEO_API_KEY")
-    if video_key:
-        cfg["video"]["api_key"] = video_key
-    video_backups = get_env_list("VIDEO_BACKUP_KEYS")
-    if video_backups is not None:
-        cfg["video"]["backup_keys"] = video_backups
-    video_base = get_env_str("VIDEO_BASE_URL")
-    if video_base:
-        cfg["video"]["base_url"] = video_base
-
-    key_pools_cfg = cfg.get("key_pools")
-    if key_pools_cfg:
-        cfg["key_pools"] = normalize_key_pools(key_pools_cfg)
-    else:
-        env_key_pools = os.getenv("KEY_POOLS", "").strip()
-        if env_key_pools:
-            cfg["key_pools"] = normalize_key_pools(env_key_pools)
-
     return cfg
 
 
@@ -314,7 +276,7 @@ def normalize_model_catalog(raw: Any) -> List[Dict[str, Any]]:
             continue
         label = str(item.get("label") or item.get("name") or model).strip()
         service = str(item.get("service") or item.get("type") or "").strip().lower()
-        if service not in ("image", "video", "audio", "digital_human"):
+        if service not in ("image", "video", "audio", "digital_human", "prompt"):
             continue
         platform = _normalize_model_platform(item.get("platform") or item.get("provider"))
         base_url = str(item.get("base_url") or "").strip()
@@ -330,7 +292,6 @@ def normalize_model_catalog(raw: Any) -> List[Dict[str, Any]]:
         if api_key and api_key in backup_keys:
             backup_keys = [k for k in backup_keys if k != api_key]
         cost = _coerce_int(item.get("cost"))
-        priority = _coerce_int(item.get("priority"), 100)
         enabled = _coerce_bool(item.get("enabled"), True)
         normalized.append({
             "model": model,
@@ -341,7 +302,6 @@ def normalize_model_catalog(raw: Any) -> List[Dict[str, Any]]:
             "api_key": api_key,
             "backup_keys": backup_keys,
             "cost": cost,
-            "priority": priority,
             "enabled": enabled,
         })
     return normalized
@@ -349,42 +309,7 @@ def normalize_model_catalog(raw: Any) -> List[Dict[str, Any]]:
 
 def _get_model_catalog() -> List[Dict[str, Any]]:
     cfg = _get_system_config_with_env()
-    catalog = normalize_model_catalog(cfg.get("models") or cfg.get("model_catalog") or [])
-    if catalog:
-        return catalog
-    key_pools = normalize_key_pools(cfg.get("key_pools") or [])
-    if not key_pools:
-        return []
-    derived: List[Dict[str, Any]] = []
-    for pool in key_pools:
-        models = pool.get("models") or []
-        services = pool.get("services") or []
-        if not models or not services:
-            continue
-        base_url = str(pool.get("base_url") or "").strip()
-        platform = _infer_platform_from_base_url(base_url, pool.get("provider"))
-        for service in services:
-            service_name = str(service or "").strip().lower()
-            if service_name not in ("image", "video", "audio", "digital_human"):
-                continue
-            for model in models:
-                model_id = str(model or "").strip()
-                if not model_id:
-                    continue
-                derived.append(
-                    {
-                        "model": model_id,
-                        "label": model_id,
-                        "service": service_name,
-                        "platform": platform,
-                        "base_url": base_url,
-                        "api_key": str(pool.get("key") or "").strip(),
-                        "backup_keys": normalize_key_list(pool.get("backup_keys") or []),
-                        "priority": _coerce_int(pool.get("priority"), 100),
-                        "enabled": _coerce_bool(pool.get("enabled"), True),
-                    }
-                )
-    return normalize_model_catalog(derived)
+    return normalize_model_catalog(cfg.get("models") or cfg.get("model_catalog") or [])
 
 
 def _select_model_config(service: str, model: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -406,7 +331,6 @@ def _select_model_configs(service: str, model: Optional[str]) -> List[Dict[str, 
         if str(item.get("model", "")).strip().lower() != model_lower:
             continue
         matches.append(item)
-    matches.sort(key=lambda x: _coerce_int(x.get("priority"), 100))
     return matches
 
 
@@ -466,19 +390,12 @@ def _build_model_candidates(
             if not key or key in seen_keys:
                 continue
             seen_keys.add(key)
-            preferred.append({"key": key, "base_url": base_url})
-    pool_candidates = _build_service_candidates(
-        service,
-        model=model,
-        runtime_key=None,
-        runtime_base_url=None,
-        fallback_base_url=fallback_base_url,
-    )
+            preferred.append({"key": key, "base_url": base_url, "platform": cfg.get("platform")})
+    if preferred:
+        return preferred
     if preferred_base_url:
-        for candidate in pool_candidates:
-            if not candidate.get("base_url"):
-                candidate["base_url"] = preferred_base_url
-    return _merge_candidates(preferred, pool_candidates)
+        return [{"key": None, "base_url": preferred_base_url, "platform": model_cfgs[0].get("platform") if model_cfgs else None}]
+    return []
 
 
 def _get_default_model(service: str, fallback: Optional[str] = None) -> Optional[str]:
@@ -486,7 +403,6 @@ def _get_default_model(service: str, fallback: Optional[str] = None) -> Optional
     candidates = [item for item in _get_model_catalog() if item.get("enabled", True) and item.get("service") == service]
     if not candidates:
         return fallback
-    candidates.sort(key=lambda x: _coerce_int(x.get("priority"), 100))
     model = candidates[0].get("model")
     return model or fallback
 
@@ -618,14 +534,6 @@ def _normalize_video_status(payload: Dict[str, Any]) -> str:
 
 
 def _has_system_image_key() -> bool:
-    if _select_service_key_pools("image"):
-        return True
-    if img_gen.api_keys:
-        return True
-    if getattr(img_gen, "special_keys", None):
-        return bool(img_gen.special_keys)
-    if getattr(img_gen, "model_key_map", None):
-        return bool(img_gen.model_key_map)
     for item in _get_model_catalog():
         if item.get("service") == "image" and (item.get("api_key") or item.get("backup_keys")):
             return True

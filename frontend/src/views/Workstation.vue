@@ -626,7 +626,7 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button @click="addSystemModel" class="typo-button-compact text-indigo-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-indigo-700 transition-all">
+                        <button @click="addSystemModelForActiveGroup" class="typo-button-compact text-indigo-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-indigo-700 transition-all">
                             {{ tSettings('settings.model_add', '添加模型') }}
                         </button>
                         <button @click="fetchSystemConfig" class="typo-button-compact text-slate-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-slate-700 transition-all">
@@ -636,56 +636,81 @@
                 </div>
 
                 <div class="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-                    <div v-if="systemModels.length === 0" class="text-xs text-slate-400">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-xl p-1">
+                            <button
+                                v-for="mode in modelViewModes"
+                                :key="mode.id"
+                                @click="modelViewMode = mode.id"
+                                class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                                :class="modelViewMode === mode.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+                            >
+                                {{ mode.label }}
+                            </button>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button
+                                v-for="group in activeModelGroups"
+                                :key="group.id"
+                                @click="activeModelGroup = group.id"
+                                class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
+                                :class="activeModelGroup === group.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'"
+                            >
+                                {{ group.label }} <span class="ml-1 text-[10px] opacity-80">({{ group.count }})</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="filteredSystemModels.length === 0" class="text-xs text-slate-400">
                         {{ tSettings('settings.model_empty', '暂无模型配置') }}
                     </div>
-                    <div v-for="(item, idx) in systemModels" :key="idx" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
+                    <div v-for="entry in filteredSystemModels" :key="entry.index" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
                         <div class="flex items-center justify-between">
-                            <div class="text-xs text-slate-400">#{{ idx + 1 }}</div>
-                            <button @click="removeSystemModel(idx)" class="text-xs text-red-400 hover:text-red-600">
+                            <div class="text-xs text-slate-400">#{{ entry.index + 1 }}</div>
+                            <button @click="removeSystemModel(entry.index)" class="text-xs text-red-400 hover:text-red-600">
                                 {{ tSettings('settings.model_remove', '删除') }}
                             </button>
                         </div>
-                        <div class="grid grid-cols-1 lg:grid-cols-7 gap-3">
-                            <div class="space-y-1">
+                        <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+                            <div v-if="modelViewMode !== 'platform'" class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
-                                <select v-model="item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
                                     <option value="vector">{{ tSettings('settings.model_platform_vector', '向量') }}</option>
                                     <option value="bailian">{{ tSettings('settings.model_platform_bailian', '阿里百炼') }}</option>
                                     <option value="ark">{{ tSettings('settings.model_platform_ark', '火山方舟') }}</option>
                                 </select>
-                                <div class="text-[10px] text-slate-400 mt-1">{{ tSettings('settings.model_base_url', '接口地址') }}: {{ getPlatformBaseUrl(item.platform) || item.base_url || '—' }}</div>
+                                <div class="text-[10px] text-slate-400 mt-1">{{ tSettings('settings.model_base_url', '接口地址') }}: {{ getPlatformBaseUrl(entry.item.platform) || entry.item.base_url || '—' }}</div>
                             </div>
-                            <div class="space-y-1">
+                            <div v-if="modelViewMode !== 'service'" class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_service', '用途') }}</label>
-                                <select v-model="item.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                <select v-model="entry.item.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
                                     <option value="image">{{ tSettings('settings.model_service_image', '绘图') }}</option>
                                     <option value="video">{{ tSettings('settings.model_service_video', '视频') }}</option>
                                     <option value="audio">{{ tSettings('settings.model_service_audio', '音频') }}</option>
                                     <option value="digital_human">{{ tSettings('settings.model_service_dh', '数字人') }}</option>
+                                    <option value="prompt">{{ tSettings('settings.model_service_prompt', '提示词优化') }}</option>
                                 </select>
                             </div>
                             <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', 'Model ID') }}</label>
-                                <input v-model="item.model" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="doubao-seedream-4-5-251128" />
+                                <input v-model="entry.item.model" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="doubao-seedream-4-5-251128" />
                             </div>
                             <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_name', '模型名称') }}</label>
-                                <input v-model="item.label" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="e.g. Seedream 4.5" />
+                                <input v-model="entry.item.label" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="e.g. Seedream 4.5" />
                             </div>
                             <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_api_key', 'API Key') }}</label>
-                                <input v-model="item.api_key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
+                                <input v-model="entry.item.api_key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
                             </div>
                             <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_backup_keys', '备用 Key') }}</label>
-                                <textarea v-model="item.backup_keys" rows="2" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all resize-y" placeholder="sk-***&#10;sk-***" />
+                                <textarea v-model="entry.item.backup_keys" rows="2" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all resize-y" placeholder="sk-***&#10;sk-***" />
                             </div>
                             <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_cost', '积分') }}</label>
-                                <input v-model.number="item.cost" type="number" min="0" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="1" />
+                                <input v-model.number="entry.item.cost" type="number" min="0" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="1" />
                                 <label class="flex items-center gap-2 text-[11px] text-slate-500 mt-1">
-                                    <input type="checkbox" v-model="item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                    <input type="checkbox" v-model="entry.item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
                                     {{ tSettings('settings.model_enabled', '启用') }}
                                 </label>
                             </div>
@@ -914,6 +939,22 @@ const normalizePlatform = (value) => {
 
 const getPlatformBaseUrl = (platform) => MODEL_PLATFORM_BASE_URLS[normalizePlatform(platform)] || ''
 
+const inferPlatformFromBaseUrl = (value) => {
+    const text = String(value || '').trim().toLowerCase()
+    if (!text) return ''
+    if (text.includes('vectorengine.ai')) return 'vector'
+    if (text.includes('dashscope.aliyuncs.com')) return 'bailian'
+    if (text.includes('ark.cn-beijing') || text.includes('volcengine')) return 'ark'
+    return ''
+}
+
+const normalizeModelPlatform = (item) => {
+    const direct = normalizePlatform(item?.platform)
+    if (direct) return direct
+    const inferred = inferPlatformFromBaseUrl(item?.base_url)
+    return inferred || ''
+}
+
 const normalizeModelItem = (item) => {
     const model = String(item?.model || item?.id || item?.value || '').trim()
     const service = String(item?.service || item?.type || 'image').trim().toLowerCase()
@@ -924,7 +965,7 @@ const normalizeModelItem = (item) => {
     return {
         model,
         label: String(item?.label || item?.name || model).trim(),
-        service: ['image', 'video', 'audio', 'digital_human'].includes(service) ? service : 'image',
+        service: ['image', 'video', 'audio', 'digital_human', 'prompt'].includes(service) ? service : 'image',
         platform: normalizePlatform(item?.platform || item?.provider),
         api_key: String(item?.api_key || item?.key || '').trim(),
         base_url: String(item?.base_url || '').trim(),
@@ -954,18 +995,28 @@ const serializeSystemModels = () => {
         .filter((item) => item.model)
 }
 
-const addSystemModel = () => {
+const addSystemModel = (defaults = {}) => {
+    const platform = normalizePlatform(defaults.platform) || 'vector'
+    const service = String(defaults.service || 'image').trim().toLowerCase()
     systemModels.value.push({
         model: '',
         label: '',
-        service: 'image',
-        platform: 'vector',
+        service: ['image', 'video', 'audio', 'digital_human', 'prompt'].includes(service) ? service : 'image',
+        platform,
         api_key: '',
         backup_keys: '',
         base_url: '',
         cost: null,
         enabled: true
     })
+}
+
+const addSystemModelForActiveGroup = () => {
+    if (modelViewMode.value === 'platform') {
+        addSystemModel({ platform: activeModelGroup.value })
+    } else {
+        addSystemModel({ service: activeModelGroup.value })
+    }
 }
 
 const removeSystemModel = (idx) => {
@@ -1170,6 +1221,63 @@ const tSettings = (key, fallback) => {
     const val = localeStore.t(key)
     return val === key ? fallback : val
 }
+
+const modelViewModes = computed(() => [
+    { id: 'service', label: tSettings('settings.model_view_service', '按功能') },
+    { id: 'platform', label: tSettings('settings.model_view_platform', '按平台') }
+])
+
+const modelServiceGroups = computed(() => [
+    { id: 'image', label: tSettings('settings.model_service_image', '绘图') },
+    { id: 'video', label: tSettings('settings.model_service_video', '视频') },
+    { id: 'audio', label: tSettings('settings.model_service_audio', '音频') },
+    { id: 'digital_human', label: tSettings('settings.model_service_dh', '数字人') },
+    { id: 'prompt', label: tSettings('settings.model_service_prompt', '提示词优化') }
+])
+
+const modelPlatformGroups = computed(() => [
+    { id: 'vector', label: tSettings('settings.model_platform_vector', '向量') },
+    { id: 'bailian', label: tSettings('settings.model_platform_bailian', '阿里百炼') },
+    { id: 'ark', label: tSettings('settings.model_platform_ark', '火山方舟') }
+])
+
+const modelViewMode = ref('service')
+const activeModelGroup = ref('image')
+
+watch(
+    modelViewMode,
+    (mode) => {
+        activeModelGroup.value = mode === 'platform' ? 'vector' : 'image'
+    },
+    { immediate: true }
+)
+
+const buildGroupStats = (groups, type) => {
+    const list = systemModels.value || []
+    return (groups || []).map((group) => {
+        const count = list.filter((item) => {
+            if (type === 'platform') return normalizeModelPlatform(item) === group.id
+            return String(item?.service || 'image').trim().toLowerCase() === group.id
+        }).length
+        return { ...group, count }
+    })
+}
+
+const activeModelGroups = computed(() => (
+    modelViewMode.value === 'platform'
+        ? buildGroupStats(modelPlatformGroups.value, 'platform')
+        : buildGroupStats(modelServiceGroups.value, 'service')
+))
+
+const systemModelsWithIndex = computed(() => (systemModels.value || []).map((item, index) => ({ item, index })))
+
+const filteredSystemModels = computed(() => {
+    const list = systemModelsWithIndex.value
+    if (modelViewMode.value === 'platform') {
+        return list.filter(({ item }) => normalizeModelPlatform(item) === activeModelGroup.value)
+    }
+    return list.filter(({ item }) => String(item?.service || 'image').trim().toLowerCase() === activeModelGroup.value)
+})
 
 const getVideoCreditCost = (model) => {
     if (!model) return 0
@@ -1444,6 +1552,10 @@ const handleRedraw = () => {
 
 const handleQuickRefine = async () => {
     if (!quickRefineText.value.trim() || !currentDisplayImage.value) return
+    if (!settings.value.model) {
+        message.warning(tSettings('settings.model_required_image', '请先在模型配置中添加绘图模型'))
+        return
+    }
     processing.value = true
     try {
         const res = await api.post(
@@ -1454,10 +1566,10 @@ const handleQuickRefine = async () => {
                 quality: settings.value.quality,
                 subject: settings.value.subject,
                 grade: settings.value.grade,
-                model: 'gemini-3-pro-image-preview', // Force Gemini Pro for editing
+                model: settings.value.model,
                 reference_image_urls: [currentDisplayImage.value.url]
             },
-            { headers: buildModelHeaders('gemini-3-pro-image-preview') }
+            { headers: buildModelHeaders(settings.value.model) }
         )
         currentDisplayImage.value = { ...res.data, is_mine: true, prompt: quickRefineText.value }
         
@@ -1664,13 +1776,15 @@ const downloadTemplate = () => {
             }
         ]
     } else if (batchType.value === 'video') {
+        const fallbackVideoModel = batchDefaults.video.model || defaultVideoModel.value || ''
+        const soraOption = (videoModelOptionsAll.value || []).find((option) => String(option.value).toLowerCase().includes('sora'))
         template = [
             {
                 type: 'video',
                 prompt: '示例视频提示词：清晨校园航拍，阳光穿过树叶，慢速推镜。',
                 video: {
                     mode: 'text',
-                    model: batchDefaults.video.model || '',
+                    model: fallbackVideoModel,
                     aspectRatio: '16:9',
                     resolution: '720p',
                     durationSeconds: 8
@@ -1681,26 +1795,28 @@ const downloadTemplate = () => {
                 prompt: '示例图生视频提示词：让画面中的人物微笑并轻轻抬手致意。',
                 video: {
                     mode: 'image',
-                    model: 'doubao-seedance-1-0-pro-fast-251015',
+                    model: fallbackVideoModel,
                     aspectRatio: '16:9',
                     resolution: '720p',
                     durationSeconds: 8,
                     imageUrl: 'https://your-domain.com/static/uploads/your_reference.png'
                 }
-            },
-            {
+            }
+        ]
+        if (soraOption?.value) {
+            template.push({
                 type: 'video',
-                prompt: 'Sora-2 示例：在原图基础上添加轻微运镜与自然光变化。',
+                prompt: 'Sora 示例：在原图基础上添加轻微运镜与自然光变化。',
                 video: {
                     mode: 'image',
-                    model: 'sora-2-all',
+                    model: soraOption.value,
                     aspectRatio: '9:16',
                     resolution: '1080p',
                     durationSeconds: 10,
                     imageUrl: 'https://your-domain.com/static/uploads/your_reference.png'
                 }
-            }
-        ]
+            })
+        }
     } else if (batchType.value === 'digital_human') {
         template = [
             {
@@ -1713,11 +1829,12 @@ const downloadTemplate = () => {
                 },
                 audio: {
                     voice: 'Cherry',
-                    model: 'qwen3-tts-flash'
+                    model: batchDefaults.audio.model || ''
                 }
             }
         ]
     } else {
+        const imageModel = batchDefaults.image.model || settings.value.model || modelOptions.value[0]?.value || ''
         template = [
             {
                 type: 'image',
@@ -1726,7 +1843,7 @@ const downloadTemplate = () => {
                     subject: 'math',
                     aspectRatio: '1:1',
                     quality: 'standard',
-                    model: 'gemini-3-pro-image-preview',
+                    model: imageModel,
                     optimize: true
                 }
             }

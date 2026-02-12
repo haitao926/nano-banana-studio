@@ -9,6 +9,7 @@ from deps import get_current_user, get_current_user_optional
 from helpers import (
     _build_model_candidates,
     _download_public_image_bytes,
+    _get_default_model,
     _get_video_base_url,
     _get_video_credit_cost,
     _normalize_video_status,
@@ -59,7 +60,9 @@ async def generate_video(
     x_video_base_url: Optional[str] = Header(None, alias="x-video-base-url"),
 ):
     try:
-        model = (req.model or "doubao-seedance-1-0-pro-fast-251015").strip()
+        model = (req.model or _get_default_model("video") or "").strip()
+        if not model:
+            raise HTTPException(status_code=400, detail="请先在模型配置中添加视频模型")
         cost = _get_video_credit_cost(model)
         mode, runtime_key = determine_key_execution_mode(
             current_user, x_video_key, cost=cost, header_name="x-video-key"
@@ -115,6 +118,7 @@ async def generate_video(
                 duration_seconds=req.duration_seconds,
                 api_key=candidate.get("key") or runtime_key,
                 base_url=candidate.get("base_url") or video_base_url,
+                platform=candidate.get("platform"),
             )
             error_msg = video_gen.extract_error(result)
             if not error_msg:

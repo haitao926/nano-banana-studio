@@ -97,7 +97,7 @@ class VideoGenerateRequest(BaseModel):
 class TTSRequest(BaseModel):
     text: constr(min_length=1, max_length=5000)
     voice: str = "Cherry"
-    model: str = "qwen3-tts-flash"
+    model: Optional[str] = None
     language_type: str = "Auto"
     instructions: Optional[constr(max_length=1600)] = None
     optimize_instructions: bool = True
@@ -127,13 +127,12 @@ class SystemVideoConfig(BaseModel):
 class ModelCatalogItem(BaseModel):
     model: str
     label: Optional[str] = None
-    service: Literal["image", "video", "audio", "digital_human"]
+    service: Literal["image", "video", "audio", "digital_human", "prompt"]
     platform: Optional[str] = None
     api_key: Optional[str] = None
     backup_keys: List[str] = Field(default_factory=list)
     base_url: Optional[str] = None
     cost: Optional[int] = None
-    priority: Optional[int] = None
     enabled: bool = True
 
 

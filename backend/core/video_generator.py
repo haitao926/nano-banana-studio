@@ -1,5 +1,4 @@
 import base64
-import os
 from typing import Any, Dict, Optional, Iterable
 
 import requests
@@ -48,11 +47,11 @@ class VideoGenerator:
 
     @staticmethod
     def _resolve_api_key(api_key: Optional[str]) -> Optional[str]:
-        return api_key or os.getenv("GEMINI_API_KEY") or os.getenv("VIDEO_API_KEY")
+        return api_key
 
     @staticmethod
     def _resolve_ark_key(api_key: Optional[str]) -> Optional[str]:
-        return api_key or os.getenv("ARK_API_KEY")
+        return api_key
 
     @staticmethod
     def _normalize_ark_base_url(base_url: Optional[str]) -> str:
@@ -217,7 +216,43 @@ class VideoGenerator:
         duration_seconds: Optional[int] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        platform: Optional[str] = None,
     ) -> Dict[str, Any]:
+        normalized_platform = (platform or "").strip().lower()
+        if normalized_platform == "ark":
+            return self.submit_task_ark(
+                prompt=prompt,
+                model=model,
+                image_url=image_url,
+                resolution=resolution,
+                duration_seconds=duration_seconds,
+                api_key=api_key,
+                base_url=base_url,
+            )
+        if normalized_platform == "vector":
+            if self._is_sora_model(model):
+                return self.submit_task_sora(
+                    prompt=prompt,
+                    model=model,
+                    image_url=image_url,
+                    image_urls=image_urls,
+                    aspect_ratio=aspect_ratio,
+                    resolution=resolution,
+                    duration_seconds=duration_seconds,
+                    api_key=api_key,
+                    base_url=base_url,
+                )
+            return self.submit_task_veo(
+                prompt=prompt,
+                model=model,
+                image_url=image_url,
+                aspect_ratio=aspect_ratio,
+                api_key=api_key,
+                base_url=base_url,
+            )
+        if normalized_platform == "bailian":
+            return {"error": "Bailian video is not supported in this endpoint. Please use digital human models."}
+
         if self._is_sora_model(model):
             return self.submit_task_sora(
                 prompt=prompt,
@@ -252,7 +287,7 @@ class VideoGenerator:
 
         resolved_key = self._resolve_api_key(api_key)
         if not resolved_key:
-            return {"error": "Missing Gemini API Key (provide x-video-key or GEMINI_API_KEY)."}
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
 
         resolved_base = self._normalize_base_url(base_url, self.default_base_url)
         url = f"{resolved_base}/models/{model}:predictLongRunning"
@@ -352,7 +387,7 @@ class VideoGenerator:
     ) -> Dict[str, Any]:
         resolved_key = self._resolve_ark_key(api_key)
         if not resolved_key:
-            return {"error": "Missing Ark API Key (provide x-video-key or ARK_API_KEY)."}
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
         if Ark is None:
             return {"error": "volcengine-python-sdk[ark] is not installed."}
 
@@ -388,7 +423,7 @@ class VideoGenerator:
 
         resolved_key = self._resolve_api_key(api_key)
         if not resolved_key:
-            return {"error": "Missing Gemini API Key (provide x-video-key or GEMINI_API_KEY)."}
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
 
         resolved_base = self._normalize_base_url(base_url, self.default_base_url)
         op = (operation_name or "").strip()
@@ -431,7 +466,7 @@ class VideoGenerator:
     ) -> Dict[str, Any]:
         resolved_key = self._resolve_ark_key(api_key)
         if not resolved_key:
-            return {"error": "Missing Ark API Key (provide x-video-key or ARK_API_KEY)."}
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
         if Ark is None:
             return {"error": "volcengine-python-sdk[ark] is not installed."}
 

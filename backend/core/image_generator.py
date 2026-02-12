@@ -605,7 +605,7 @@ class ImageGenerator:
                       实际推理仍然使用 self.model (System LLM)。
         """
         # 1. 确定 LLM 和 目标风格
-        llm_model = get_env_str("IMAGE_LLM_MODEL") or self.llm_model or self.model or model
+        llm_model = model or self.llm_model or self.model
         target_model = model or self.model
         if not llm_model:
             print("⚠️ 缺少 LLM 模型配置，无法优化提示词")

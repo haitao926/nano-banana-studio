@@ -1,5 +1,4 @@
 import json
-import os
 from typing import Optional, Dict, Any, Iterable
 
 import requests
@@ -61,7 +60,7 @@ class DigitalHumanGenerator:
 
     @staticmethod
     def _resolve_api_key(api_key: Optional[str]) -> Optional[str]:
-        return api_key or os.getenv("DASHSCOPE_API_KEY") or os.getenv("DASHSCOPE_VIDEO_API_KEY")
+        return api_key
 
     def _normalize_base_url(self, base_url: Optional[str]) -> str:
         value = (base_url or "").strip().rstrip("/")
@@ -162,7 +161,7 @@ class DigitalHumanGenerator:
     ) -> Dict[str, Any]:
         resolved_key = self._resolve_api_key(api_key)
         if not resolved_key:
-            return {"error": "Missing DashScope API Key (video.api_key or DASHSCOPE_API_KEY)."}
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
 
         try:
             resolved_base = self._normalize_base_url(base_url)
@@ -201,7 +200,7 @@ class DigitalHumanGenerator:
     def get_task_result(self, task_id: str, api_key: Optional[str] = None, base_url: Optional[str] = None) -> Dict[str, Any]:
         resolved_key = self._resolve_api_key(api_key)
         if not resolved_key:
-            return {"error": "Missing DashScope API Key (video.api_key or DASHSCOPE_API_KEY)."}
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
 
         try:
             resolved_base = self._normalize_base_url(base_url)
