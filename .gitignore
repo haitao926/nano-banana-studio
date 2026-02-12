@@ -3,11 +3,17 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+.env.nbs
+.DS_Store
+.gemini/
 
 # Node artifacts
 node_modules/
 frontend/node_modules/
 frontend/dist/
+.local-cache/
+frontend/.local-cache/
+backend.log
 
 # Local data/secrets
 backend/data/config.json
@@ -23,3 +29,6 @@ verify_native_api.py
 # Generated Content
 backend/static/generated/
 backend/static/uploads/
+backend/static/audio/
+backend/static/batch/
+backend/static/clips/

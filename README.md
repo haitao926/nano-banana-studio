@@ -20,10 +20,31 @@
 *   **防刷限流**：
     *   单 IP 每分钟限生成 1 张。
     *   单 IP 每周限生成 20 张（SQLite 持久化存储，重启不丢失）。
+    *   上传接口支持时间窗内频控（默认 60 秒 30 次，可配置）。
     *   额度不足时引导联系信息组。
 *   **图库管理**：
     *   **精选机制**：管理员可对优质图片“加星”，普通用户默认只看到精选图片。
-    *   **展示区域**：所有被标记为精选的图片将优先展示在画廊中。
+*   **展示区域**：所有被标记为精选的图片将优先展示在画廊中。
+
+### 4. 🗣️ 数字人视频生成 (wan2.2-s2v / DashScope)
+*   **输入**：单张图片 + 音频 + 可选提示词，生成数字人视频。
+*   **支持**：中文/英文/日语/韩语/墨西哥语/印尼语提示词，支持运镜与动作描述。
+*   **约束**：图片 < 5MB、最长边 < 4096；音频 < 60 秒（推荐 ≤ 15 秒）；提示词 ≤ 300 字符。
+
+### 5. 🎬 视频模型信息 (Veo 3.1 / Veo 3.1 Fast)
+*   **模型定位**：Veo 3.1 为 Google 高保真视频生成模型，可生成 8 秒 720p/1080p/4k 视频并原生生成音频。
+*   **主要能力**：支持文生视频、首/尾帧插值、视频延展、最多 3 张参考图，以及 16:9 / 9:16 画幅。
+*   **Fast 版本**：`veo-3.1-fast-generate-preview` 面向速度与业务场景，输出含音频；定价约 $0.15/秒（标准版 $0.40/秒）。
+*   **API 端点**：
+    * Gemini API (Veo 3.1)：  
+      ```text
+      https://generativelanguage.googleapis.com/v1beta
+      POST /models/veo-3.1-generate-preview:predictLongRunning
+      ```
+    * OpenAI 视频 API（Sora）：  
+      ```text
+      POST https://api.openai.com/v1/videos
+      ```
 
 ---
 
@@ -88,6 +109,41 @@ journalctl -u nano-banana.service -f
 
 ---
 
+## 🗣️ 数字人 (OmniHuman1.5) 配置
+
+数字人功能依赖火山引擎视觉服务，请在运行前配置以下环境变量（不要提交密钥到仓库）：
+
+```bash
+export VOLC_ACCESS_KEY="你的 Access Key ID"
+export VOLC_SECRET_KEY="你的 Secret Access Key"
+export EXTERNAL_BASE_URL="https://你的公网域名"
+```
+
+**说明：**
+* `EXTERNAL_BASE_URL` 用于将 `/static/uploads/...` 拼成公网可访问地址（模型服务需要公网 URL）。
+* 如已泄露密钥，请立即在控制台禁用/删除并重新生成。
+* 也可以将环境变量写入项目根目录的 `.env.nbs`（参考 `.env.example`），`run_dev.sh` / `run_prod.sh` 会自动加载。
+* `.env.nbs` 中的 `IMAGE_* / TTS_* / VIDEO_*` 会覆盖 `backend/data/config.json`（后台系统配置）。
+* `IMAGE_MODEL_KEY_MAP` 支持为不同模型指定不同 Key（格式：`model=key,model2=key2` 或 JSON 字典）。
+* `IMAGE_MODEL` / `IMAGE_LLM_MODEL` 可分别指定绘图模型与润色用的文本模型（不填则沿用配置里的 model）。
+* `KEY_POOLS` 可配置多 Key 池与路由规则（JSON 或简化配置），用于多服务/多模型的 Key 分流。
+
+### 可选：OSS 公网上传
+默认上传使用 `/api/upload`（本地存储）。如需直接返回 OSS 公网 URL，请配置以下环境变量，并在前端设置 `VITE_PUBLIC_UPLOAD_URL=/api/upload_public`：
+
+```bash
+export OSS_BUCKET="你的 Bucket"
+export OSS_ENDPOINT="你的 Endpoint"
+export OSS_ACCESS_KEY_ID="你的 Access Key ID"
+export OSS_ACCESS_KEY_SECRET="你的 Secret Access Key"
+```
+
+**可选：**
+* `OSS_PUBLIC_BASE_URL`：自定义公网访问域名
+* `OSS_UPLOAD_PREFIX`：上传前缀（默认 `uploads`）
+
+---
+
 ## 📁 目录结构说明
 
 ```text
@@ -96,7 +152,11 @@ nano-banana-studio/
 ├── run_dev.sh              # 开发环境启动脚本
 ├── backend/                # Python 后端 (FastAPI)
 │   ├── main.py             # API 入口
+│   ├── api/                # 路由分层 (auth/generate/upload/...)
 │   ├── core/               # 核心逻辑 (AI生成、限流等)
+│   ├── app_state.py        # 环境与核心实例初始化
+│   ├── helpers.py          # 通用工具与配置封装
+│   ├── schemas.py          # Pydantic Schema
 │   └── static/generated/   # 图片存储区
 └── frontend/               # Vue3 前端
     └── dist/               # 构建后的静态文件 (由 run_prod.sh 生成)

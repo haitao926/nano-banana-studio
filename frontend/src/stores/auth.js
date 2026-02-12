@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import axios from 'axios'
+import api from '../services/api'
 import { useMessage } from 'naive-ui'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -12,7 +12,7 @@ export const useAuthStore = defineStore('auth', () => {
     async function checkAuth() {
         if (!token.value) return
         try {
-            const res = await axios.get('/api/auth/me', { 
+            const res = await api.get('/api/auth/me', { 
                 headers: { Authorization: `Bearer ${token.value}` } 
             })
             user.value = res.data
@@ -32,7 +32,7 @@ export const useAuthStore = defineStore('auth', () => {
         const formData = new FormData()
         formData.append('username', username)
         formData.append('password', password)
-        const res = await axios.post('/api/auth/login', formData)
+        const res = await api.post('/api/auth/login', formData)
         token.value = res.data.access_token
         localStorage.setItem('token', token.value)
         isGuest.value = false
@@ -40,7 +40,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     async function register(username, password) {
-        await axios.post('/api/auth/register', { username, password })
+        await api.post('/api/auth/register', { username, password })
     }
 
     function logout() {

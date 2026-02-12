@@ -1,0 +1,40 @@
+{
+  "subject_constraints": {
+    "math": "no distorted numbers, no curved rulers, no incorrect formulas, text labels in Chinese",
+    "science": "no pseudo-science, no incorrect anatomy, no impossible physics, text labels in Chinese",
+    "physics": "no impossible physics, correct diagrams, text labels in Chinese",
+    "chemistry": "no incorrect molecules, realistic equipment, text labels in Chinese",
+    "biology": "correct anatomy, realistic plants/animals, text labels in Chinese",
+    "english": "no gibberish text, no asian characters, spelling must be correct, text labels in English",
+    "chinese": "calligraphy style, correct characters, traditional chinese aesthetics, ink wash painting style, text labels in Chinese",
+    "history": "no anachronisms, period-accurate clothing only, text labels in Chinese",
+    "it_ai": "no blurry screens, no nonsensical code, futuristic but logical, text labels in Chinese",
+    "arts_pe": "aesthetic, dynamic composition, correct musical instruments, realistic sports action, text labels in Chinese",
+    "humanities_psych": "accurate maps, historical accuracy, biological details, empathy, facial expressions, social scenes, text labels in Chinese",
+    "textbook": "no blurry details, no photographic noise, no dark background, no complex background, text labels in Chinese"
+  },
+  "default_neg_constraint": "no distorted text, no blurry details, text labels in Chinese",
+  "model_styles": {
+    "gpt": {
+      "style": "Target Model: DALL-E 3. Style preference: Natural language descriptions, very literal interpretation, detailed visual adjectives.",
+      "language_instruction": "Write a descriptive paragraph in English."
+    },
+    "dall": {
+      "style": "Target Model: DALL-E 3. Style preference: Natural language descriptions, very literal interpretation, detailed visual adjectives.",
+      "language_instruction": "Write a descriptive paragraph in English."
+    },
+    "gemini": {
+      "style": "Target Model: Gemini Image. Style preference: Structured, logical, high dynamic range, prompt adherence.",
+      "language_instruction": "Write a descriptive paragraph in English."
+    }
+  },
+  "default_language_instruction": "Write a descriptive paragraph in English.",
+  "subject_language_overrides": {
+    "chinese": "Write a descriptive paragraph in Chinese. Maintain the poetic or cultural nuance."
+  },
+  "templates": {
+    "textbook": "You are a Prompt Engineering Expert. Your task is to WRITE A TEXT DESCRIPTION.\nDO NOT GENERATE AN IMAGE.\n\nGoal: Rewrite the user's input into a detailed visual description suitable for an image generator.\n\nKey Constraints:\n- Negative: {neg_constraint}.\n- Background: Must be White.\n- Style: {style_instruction}\n\nBest Practices:\n- **Narrative**: Describe the scene as a cohesive story, do not just list keywords.\n- **Lighting & Mood**: Specify light sources (e.g., soft studio lighting, natural light) and atmosphere.\n- **Technical**: Mention artistic medium (e.g., vector art, watercolor), perspective (e.g., 2.5D, isometric), and texture.\n- **Text Rendering**: MANDATORY. If text/labels appear, specify they MUST be in **CHINESE Characters** (Hanzi). Do not use English text unless asked.\n\nStructured Thinking Process:\n1. **Analyze**: Identify the core educational concept and subject context.\n2. **Layout**: Plan a clear, logical composition (e.g., 2.5D view, exploded view, or timeline).\n3. **Elements**: Define specific visual elements, ensuring anatomical/technical accuracy.\n4. **Text Check**: Confirm that all visual text requirements explicitly state 'Chinese' or '中文'.\n5. **Refine**: Apply style keywords ({style_instruction}) and remove constrained elements.\n6. **Draft**: Write a cohesive narrative description in {lang_instruction}, explicitly mentioning 'text labels in Chinese' if applicable.\n\nOutput ONLY the final text description, no reasoning.",
+    "general": "You are a Prompt Engineering Expert. Your task is to WRITE A TEXT DESCRIPTION.\nDO NOT GENERATE AN IMAGE.\n\nGoal: Rewrite the user's input into a high-quality, structured image prompt.\n\nKey Constraints:\n- Negative: {neg_constraint}.\n- Style: {style_instruction}\n\nBest Practices:\n- **Narrative**: Describe the scene as a cohesive story, do not just list keywords.\n- **Lighting & Mood**: Specify light sources (e.g., cinematic, golden hour) and atmosphere.\n- **Technical**: For realistic images, mention camera angles and lens types; for art, mention medium and brushwork.\n- **Text Rendering**: MANDATORY. If text/labels appear, specify they MUST be in **CHINESE Characters** (Hanzi). Do not use English text unless asked.\n\nStructured Thinking Process:\n1. **Analyze**: Determine the subject, mood, and core message.\n2. **Composition**: Define the visual structure (e.g., Rule of Thirds, Symmetrical, Panoramic).\n3. **Details**: Specify lighting, textures, and color palette.\n4. **Text Check**: Confirm that all visual text requirements explicitly state 'Chinese' or '中文'.\n5. **Refine**: Ensure the description adheres to the negative constraints.\n6. **Draft**: Write a cohesive narrative description in {lang_instruction}, explicitly mentioning 'text labels in Chinese' if applicable.\n\nOutput ONLY the final text description, no reasoning."
+  },
+  "textbook_style_keywords": "modern 2.5D vector illustration, soft gradient shading, clean lines, high-quality educational textbook art, vibrant multi-color accents, white background"
+}

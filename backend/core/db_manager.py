@@ -51,6 +51,44 @@ class DBManager:
                 )
             """)
 
+            # Audio History Table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS audios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    filename TEXT,
+                    url TEXT,
+                    prompt TEXT,
+                    voice TEXT,
+                    model TEXT,
+                    duration REAL,
+                    mode TEXT,
+                    created_at REAL,
+                    metadata TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+
+            # Video History Table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS videos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER,
+                    task_id TEXT UNIQUE,
+                    image_url TEXT,
+                    audio_url TEXT,
+                    video_url TEXT,
+                    prompt TEXT,
+                    resolution INTEGER,
+                    style TEXT,
+                    duration REAL,
+                    status TEXT,
+                    created_at REAL,
+                    metadata TEXT,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+
             # Rate Limit Log (Legacy support / IP tracking if needed, or purely for audit)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS usage_logs (
@@ -64,11 +102,16 @@ class DBManager:
             conn.commit()
 
     # --- User Management ---
-    def create_user(self, username, password_hash, is_pro=False):
+    def create_user(self, username, password_hash, is_pro=False, quota_limit: Optional[int] = None):
         try:
             with self._get_conn() as conn:
                 cursor = conn.cursor()
                 limit = 20 # Default 20 points (Gemini=2pts, Others=1pt)
+                if quota_limit is not None:
+                    try:
+                        limit = int(quota_limit)
+                    except Exception:
+                        limit = 20
                 cursor.execute(
                     "INSERT INTO users (username, password_hash, is_pro, quota_limit, created_at, last_quota_reset) VALUES (?, ?, ?, ?, ?, ?)",
                     (username, password_hash, is_pro, limit, time.time(), time.time())
@@ -129,6 +172,15 @@ class DBManager:
             conn.execute("UPDATE users SET is_pro = ?, quota_limit = ? WHERE id = ?", (is_pro, quota_limit, user_id))
             conn.commit()
 
+    def delete_user(self, user_id: int) -> bool:
+        with self._get_conn() as conn:
+            conn.execute("UPDATE images SET user_id = NULL WHERE user_id = ?", (user_id,))
+            conn.execute("UPDATE audios SET user_id = NULL WHERE user_id = ?", (user_id,))
+            conn.execute("UPDATE videos SET user_id = NULL WHERE user_id = ?", (user_id,))
+            cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
     # --- Image Management ---
     def log_image(self, user_id, filename, prompt, subject, grade, metadata=None):
         with self._get_conn() as conn:
@@ -137,6 +189,89 @@ class DBManager:
                 (user_id, filename, prompt, subject, grade, time.time(), json.dumps(metadata or {}))
             )
             conn.commit()
+
+    def log_audio(self, user_id, filename, url, prompt, voice, model, duration, mode="speech", metadata=None):
+        created_at = time.time()
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO audios (user_id, filename, url, prompt, voice, model, duration, mode, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, filename, url, prompt, voice, model, duration, mode, created_at, json.dumps(metadata or {}))
+            )
+            conn.commit()
+            return {
+                "id": cursor.lastrowid,
+                "user_id": user_id,
+                "filename": filename,
+                "url": url,
+                "prompt": prompt,
+                "voice": voice,
+                "model": model,
+                "duration": duration,
+                "mode": mode,
+                "created_at": created_at
+            }
+
+    def get_audio_history(self, user_id: int, limit: int = 50) -> List[Dict]:
+        with self._get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM audios WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def create_video_task(self, user_id, task_id, image_url, audio_url, prompt, resolution, style, duration, status="pending", metadata=None):
+        created_at = time.time()
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR IGNORE INTO videos (user_id, task_id, image_url, audio_url, prompt, resolution, style, duration, status, created_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (user_id, task_id, image_url, audio_url, prompt, resolution, style, duration, status, created_at, json.dumps(metadata or {}))
+            )
+            conn.commit()
+            return cursor.lastrowid
+
+    def update_video_task(self, task_id: str, video_url: Optional[str] = None, status: Optional[str] = None):
+        if not task_id:
+            return
+        updates = []
+        params = []
+        if video_url is not None:
+            updates.append("video_url = ?")
+            params.append(video_url)
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+        if not updates:
+            return
+        params.append(task_id)
+        with self._get_conn() as conn:
+            conn.execute(f"UPDATE videos SET {', '.join(updates)} WHERE task_id = ?", params)
+            conn.commit()
+
+    def get_video_task(self, task_id: str) -> Optional[Dict]:
+        if not task_id:
+            return None
+        with self._get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM videos WHERE task_id = ? LIMIT 1", (task_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_video_history(self, user_id: int, limit: int = 50) -> List[Dict]:
+        with self._get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM videos WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+                (user_id, limit)
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
 
     def get_gallery_images(self, user_id: Optional[int] = None, show_featured_only=False, show_all=False):
         """

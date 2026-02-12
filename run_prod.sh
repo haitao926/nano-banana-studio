@@ -4,6 +4,14 @@
 cd "$(dirname "$0")"
 PROJECT_ROOT="$(pwd)"
 
+ENV_FILE="${NBS_ENV_FILE:-$PROJECT_ROOT/.env.nbs}"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    set +a
+fi
+
 # Parse arguments
 SKIP_BUILD=false
 if [[ "$*" == *"--no-build"* ]]; then

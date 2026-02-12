@@ -2,6 +2,17 @@
 
 # Nano Banana Studio Development Startup Script
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+
+ENV_FILE="${NBS_ENV_FILE:-$SCRIPT_DIR/.env.nbs}"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "$ENV_FILE"
+    set +a
+fi
+
 # Function to kill child processes on exit
 cleanup() {
     echo "Stopping services..."

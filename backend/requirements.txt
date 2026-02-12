@@ -3,8 +3,10 @@ uvicorn>=0.27.0
 requests>=2.31.0
 Pillow>=10.0.0
 google-genai>=0.1.0
+dashscope>=1.24.6
 passlib[bcrypt]
 bcrypt==4.0.1
 python-jose[cryptography]
 python-multipart
-volcengine
+oss2>=2.18.4
+volcengine-python-sdk[ark]>=1.0.0

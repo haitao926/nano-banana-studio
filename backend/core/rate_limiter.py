@@ -28,8 +28,16 @@ class RateLimiter:
                     timestamp REAL NOT NULL
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS upload_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ip TEXT NOT NULL,
+                    timestamp REAL NOT NULL
+                )
+            """)
             # 创建索引加速查询
             conn.execute("CREATE INDEX IF NOT EXISTS idx_ip_time ON usage_logs (ip, timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_upload_ip_time ON upload_logs (ip, timestamp)")
             conn.commit()
 
     def check_limit(self, ip: str) -> Tuple[bool, str]:
@@ -72,6 +80,34 @@ class RateLimiter:
         with self._get_conn() as conn:
             conn.execute(
                 "INSERT INTO usage_logs (ip, timestamp) VALUES (?, ?)", 
+                (ip, time.time())
+            )
+            conn.commit()
+
+    def check_upload_limit(self, ip: str, window_seconds: int, max_count: int) -> Tuple[bool, int]:
+        """
+        Check upload limits within a time window.
+        Returns: (allowed, remaining_seconds)
+        """
+        now = time.time()
+        window_start = now - window_seconds
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*), MIN(timestamp) FROM upload_logs WHERE ip = ? AND timestamp > ?",
+                (ip, window_start),
+            )
+            count, oldest = cursor.fetchone()
+            if count >= max_count:
+                remaining = int(window_seconds - (now - (oldest or now)))
+                return False, max(1, remaining)
+        return True, 0
+
+    def record_upload(self, ip: str):
+        """记录一次上传"""
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO upload_logs (ip, timestamp) VALUES (?, ?)",
                 (ip, time.time())
             )
             conn.commit()

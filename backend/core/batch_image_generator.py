@@ -137,8 +137,17 @@ class BatchImageGenerator:
         for i, prompt in enumerate(self.requirement_prompts):
             print(f"  {i+1}. {prompt}")
 
-    def generate_batch(self, system_key: str = None, requirement_indices: List[int] = None,
-                      custom_combinations: List[Dict] = None) -> Dict[str, Any]:
+    def generate_batch(
+        self,
+        system_key: str = None,
+        requirement_indices: List[int] = None,
+        custom_combinations: List[Dict] = None,
+        model: str = None,
+        base_url: str = None,
+        api_key: str = None,
+        optimize: bool = False,
+        output_dir: str = None,
+    ) -> Dict[str, Any]:
         """
         批量生成图片
 
@@ -168,7 +177,8 @@ class BatchImageGenerator:
             "successful": 0,
             "failed": 0,
             "files": {},
-            "errors": []
+            "errors": [],
+            "items": []
         }
 
         start_time = time.time()
@@ -179,17 +189,39 @@ class BatchImageGenerator:
             print(f"   需求提示: {task.requirement_prompt[:50]}...")
 
             try:
+                if output_dir:
+                    os.makedirs(output_dir, exist_ok=True)
+                    task.folder = output_dir
+
+                prompt = task.get_full_prompt()
+                if optimize:
+                    try:
+                        optimized = self.generator.optimize_prompt(prompt, model=model)
+                        prompt = optimized or task.get_full_prompt()
+                    except Exception:
+                        prompt = task.get_full_prompt()
+
                 # 生成图片
                 file_path = self.generator.generate_and_download(
-                    task.get_full_prompt(),
+                    prompt,
                     task.filename,
-                    task.folder
+                    task.folder,
+                    base_url=base_url,
+                    api_key=api_key,
+                    model=model
                 )
 
                 if file_path:
                     results["files"][task.id] = file_path
                     results["successful"] += 1
                     print(f"   成功: {file_path}")
+                    results["items"].append({
+                        "id": task.id,
+                        "system_prompt": task.system_prompt,
+                        "requirement_prompt": task.requirement_prompt,
+                        "prompt": prompt,
+                        "file_path": file_path
+                    })
 
                     # 记录到历史
                     self.generation_history.append({
@@ -204,6 +236,14 @@ class BatchImageGenerator:
                     error_msg = f"图片生成失败: {task.id}"
                     results["errors"].append(error_msg)
                     print(f"   失败: {error_msg}")
+                    results["items"].append({
+                        "id": task.id,
+                        "system_prompt": task.system_prompt,
+                        "requirement_prompt": task.requirement_prompt,
+                        "prompt": prompt,
+                        "file_path": None,
+                        "error": error_msg
+                    })
 
                 # 添加延迟避免API限制
                 if i < len(tasks) - 1:
