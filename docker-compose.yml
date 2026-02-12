@@ -12,8 +12,7 @@ services:
     volumes:
       - ./backend/data:/app/backend/data
       - ./backend/static:/app/backend/static
-    ports:
-      - "18081:8000"
+    # No public port; frontend proxies to backend over the Docker network
 
   frontend:
     build:
