@@ -54,6 +54,7 @@ class ImageGenerator:
         self.config = self._load_config(config_path)
         self._apply_config(self.config)
         self.prompt_config = self._load_prompt_config()
+        self.last_error: Optional[Dict[str, Any]] = None
 
     def _load_config(self, config_path: str) -> Dict:
         if not os.path.exists(config_path):
@@ -314,7 +315,8 @@ class ImageGenerator:
              print(f"🔑 使用专用Key池 (针对模型: {model})")
              keys_to_try = self.special_keys
         
-        last_error = None
+        last_error: Optional[Dict[str, Any]] = None
+        self.last_error = None
         
         for key_idx, current_key in enumerate(keys_to_try):
             headers = {
@@ -344,6 +346,21 @@ class ImageGenerator:
                 
                 # If error is recoverable by switching keys (401 Auth, 429 Rate, 402 Payment, 500/503 Provider Error)
                 if response.status_code in [401, 403, 429, 402, 500, 503]:
+                    message = None
+                    try:
+                        payload = response.json()
+                        if isinstance(payload, dict):
+                            if isinstance(payload.get("error"), dict):
+                                message = payload["error"].get("message") or payload["error"].get("message_zh")
+                            message = message or payload.get("message") or payload.get("msg")
+                    except Exception:
+                        payload = None
+                    if not message:
+                        message = response.text.strip() if response.text else None
+                    last_error = {
+                        "status_code": response.status_code,
+                        "message": message or f"HTTP {response.status_code}",
+                    }
                     print(f"⚠️ Key #{key_idx} failed with {response.status_code}. Trying next key...")
                     # Break inner loop (retries) to go to next key
                     break 
@@ -361,8 +378,10 @@ class ImageGenerator:
             
             # If we broke out of inner loop, it means this key failed. Continue to next key.
             
+        if last_error:
+            self.last_error = last_error
         print("❌ All keys failed.")
-        return None
+        return {"error": last_error or {"message": "All keys failed"}, "status_code": (last_error or {}).get("status_code")}
 
     @staticmethod
     def _normalize_data_uri(value: str) -> str:

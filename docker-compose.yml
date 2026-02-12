@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nbs-backend
+    restart: unless-stopped
+    environment:
+      EXTERNAL_BASE_URL: "https://kj4rk2oakpguf7.xuanyuan.run"
+    volumes:
+      - ./backend/data:/app/backend/data
+      - ./backend/static:/app/backend/static
+    ports:
+      - "18081:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: nbs-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "18080:80"

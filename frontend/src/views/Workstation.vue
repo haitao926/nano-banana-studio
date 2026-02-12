@@ -439,46 +439,53 @@
                     </div>
                 </div>
 
-                <div v-if="batchType === 'digital_human'" class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
-                    <div class="space-y-2 md:col-span-2">
-                        <label class="typo-label pl-1">{{ localeStore.t('batch.avatar_upload') }}</label>
-                        <div v-if="batchDefaults.digital_human.avatarUrl" class="relative w-full h-32 rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
-                            <img :src="batchDefaults.digital_human.avatarUrl" class="w-full h-full object-cover" />
-                            <button @click="batchDefaults.digital_human.avatarUrl = ''" class="absolute top-2 right-2 bg-white/80 text-slate-600 hover:text-red-500 rounded-full w-7 h-7 flex items-center justify-center shadow">×</button>
-                        </div>
-                        <n-upload v-else action="/api/upload" :max="1" accept="image/*" :show-file-list="false" @finish="handleBatchAvatarUpload">
-                            <div class="w-full h-32 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-400 flex items-center justify-center text-indigo-500 transition-all cursor-pointer">
-                                <span class="typo-button-compact">{{ localeStore.t('batch.avatar_upload') }}</span>
+                <div v-if="batchType === 'digital_human'" class="mt-6 space-y-4">
+                    <div class="flex items-center justify-between px-1">
+                        <span class="typo-label">{{ tSettings('settings.model_service_dh', '数字人') }}</span>
+                        <span class="typo-caption-compact text-slate-400">{{ localeStore.t('batch.dh_audio_hint') }}</span>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 bg-slate-50/70 border border-slate-200 rounded-2xl p-4">
+                        <div class="space-y-2 lg:col-span-1">
+                            <label class="typo-label pl-1">{{ localeStore.t('batch.avatar_upload') }}</label>
+                            <div v-if="batchDefaults.digital_human.avatarUrl" class="relative w-full h-36 rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                                <img :src="batchDefaults.digital_human.avatarUrl" class="w-full h-full object-cover" />
+                                <button @click="batchDefaults.digital_human.avatarUrl = ''" class="absolute top-2 right-2 bg-white/80 text-slate-600 hover:text-red-500 rounded-full w-7 h-7 flex items-center justify-center shadow">×</button>
                             </div>
-                        </n-upload>
-                    </div>
-                    <div class="space-y-1.5 md:col-span-2">
-                        <label class="typo-label pl-1">{{ tSettings('settings.model_service_dh', '数字人') }}</label>
-                        <select v-model="batchDefaults.digital_human.model" :disabled="!digitalHumanModelOptions.length" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                            <option v-if="!digitalHumanModelOptions.length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
-                            <option v-for="option in digitalHumanModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                        </select>
-                    </div>
-                    <div class="space-y-1.5">
-                        <label class="typo-label pl-1">{{ localeStore.t('batch.dh_provider') }}</label>
-                        <select v-model="batchDefaults.digital_human.provider" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
-                            <option v-for="option in digitalHumanProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                        </select>
-                    </div>
-                    <div class="space-y-1.5">
-                        <label class="typo-label pl-1">{{ localeStore.t('batch.dh_resolution') }}</label>
-                        <select v-model="batchDefaults.digital_human.resolution" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
-                            <option v-for="option in digitalHumanResolutionOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                        </select>
-                    </div>
-                    <div class="space-y-1.5">
-                        <label class="typo-label pl-1">{{ localeStore.t('batch.dh_style') }}</label>
-                        <select v-model="batchDefaults.digital_human.style" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
-                            <option v-for="option in digitalHumanStyleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                        </select>
+                            <n-upload v-else action="/api/upload" :max="1" accept="image/*" :show-file-list="false" @finish="handleBatchAvatarUpload">
+                                <div class="w-full h-36 rounded-xl border-2 border-dashed border-indigo-200 bg-white hover:bg-indigo-50 hover:border-indigo-400 flex items-center justify-center text-indigo-500 transition-all cursor-pointer">
+                                    <span class="typo-button-compact">{{ localeStore.t('batch.avatar_upload') }}</span>
+                                </div>
+                            </n-upload>
+                        </div>
+                        <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-1.5">
+                                <label class="typo-label pl-1">{{ localeStore.t('batch.dh_provider') }}</label>
+                                <select v-model="batchDefaults.digital_human.provider" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                                    <option v-for="option in digitalHumanProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                </select>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="typo-label pl-1">{{ localeStore.t('batch.dh_resolution') }}</label>
+                                <select v-model="batchDefaults.digital_human.resolution" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                                    <option v-for="option in digitalHumanResolutionOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                </select>
+                            </div>
+                            <div class="space-y-1.5 md:col-span-2">
+                                <label class="typo-label pl-1">{{ tSettings('settings.model_service_dh', '数字人') }}</label>
+                                <select v-model="batchDefaults.digital_human.model" :disabled="!digitalHumanModelOptions.length" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <option v-if="!digitalHumanModelOptions.length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                    <option v-for="option in digitalHumanModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                </select>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="typo-label pl-1">{{ localeStore.t('batch.dh_style') }}</label>
+                                <select v-model="batchDefaults.digital_human.style" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                                    <option v-for="option in digitalHumanStyleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <p v-if="batchType === 'digital_human'" class="mt-4 typo-caption-compact text-slate-400">{{ localeStore.t('batch.dh_audio_hint') }}</p>
             </div>
 
             <!-- Queue List -->
@@ -1069,7 +1076,7 @@ const batchDefaults = reactive({
     digital_human: {
         model: '',
         avatarUrl: '',
-        resolution: 720,
+        resolution: 480,
         style: 'speech',
         provider: 'auto'
     }
@@ -1199,9 +1206,7 @@ const batchTypeOptions = computed(() => [
 ])
 
 const digitalHumanResolutionOptions = [
-    { label: '480P', value: 480 },
-    { label: '720P', value: 720 },
-    { label: '1080P', value: 1080 }
+    { label: '480P', value: 480 }
 ]
 
 const digitalHumanProviderOptions = computed(() => [
@@ -1824,7 +1829,7 @@ const downloadTemplate = () => {
                 prompt: '示例数字人脚本：大家好，我是今天的讲解员，让我们开始吧。',
                 digital_human: {
                     avatarUrl: 'https://your-domain.com/static/uploads/your_avatar.png',
-                    resolution: 720,
+                    resolution: 480,
                     style: 'speech'
                 },
                 audio: {

@@ -1,5 +1,6 @@
 import base64
 from typing import Any, Dict, Optional, Iterable
+from urllib.parse import quote
 
 import requests
 
@@ -414,6 +415,11 @@ class VideoGenerator:
         base_url: Optional[str] = None,
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if not model:
+            base_text = (base_url or "").lower()
+            op_text = (operation_name or "").lower()
+            if "vectorengine.ai" in base_text or op_text.startswith("video_") or "veo" in op_text:
+                return self.get_task_result_veo(operation_name, api_key=api_key, base_url=base_url)
         if self._is_sora_model(model):
             return self.get_task_result_veo(operation_name, api_key=api_key, base_url=base_url)
         if self._is_veo_model(model):
@@ -442,6 +448,14 @@ class VideoGenerator:
         if not api_key:
             return {"error": "Missing Veo API Key (provide x-video-key)."}
         resolved_base = self._normalize_veo_base_url(base_url)
+        if "vectorengine.ai" not in resolved_base.lower():
+            resolved_base = DEFAULT_VEO_BASE_URL
+        encoded_id = quote(task_id, safe="")
+        # VectorEngine uses /v1/videos/{id}
+        primary_url = f"{resolved_base}/v1/videos/{encoded_id}"
+        result = self._request_veo("GET", primary_url, api_key, payload=None, timeout=60)
+        if not self.extract_error(result):
+            return result
         # Try common status endpoints with multiple id field variants
         payload = {"id": task_id, "task_id": task_id, "taskId": task_id}
         for method, path, body in (

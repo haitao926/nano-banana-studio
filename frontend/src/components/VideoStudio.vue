@@ -338,7 +338,8 @@ const statusMsg = computed(() => {
 
 const filteredHistory = computed(() => {
   if (activeMode.value === 'digital_human') return []
-  return videoHistory.value.filter((item) => (item.mode || 'digital_human') === activeMode.value)
+  const items = Array.isArray(videoHistory.value) ? videoHistory.value : []
+  return items.filter((item) => (item.mode || 'text') === activeMode.value)
 })
 
 const setMode = (mode) => {
@@ -460,6 +461,8 @@ const fetchVideoHistory = async () => {
     const res = await api.get('/api/video/history', { headers: buildVideoHeaders(settings.value.model) })
     videoHistory.value = Array.isArray(res.data) ? res.data : []
   } catch (e) {
+    const status = e?.response?.status
+    if (status === 401) message.warning('请先登录后查看历史记录')
     videoHistory.value = []
   }
 }

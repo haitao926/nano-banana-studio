@@ -69,6 +69,8 @@ def scan_and_sync_db():
     """后台任务：扫描文件夹，生成缩略图，同步DB"""
     print("🔄 Syncing files and database...")
 
+    _sanitize_generated_filenames()
+
     # 1. 扫描并生成缩略图
     files = glob.glob(os.path.join(GENERATED_DIR, "*.png"))
     for f in files:
@@ -129,9 +131,89 @@ def scan_and_sync_db():
 
 
 def sanitize_filename(text: str) -> str:
-    clean_text = text.replace(" ", "_")
+    clean_text = (text or "").strip()
+    if not clean_text:
+        return "image"
+    clean_text = re.sub(r"\s+", "_", clean_text)
     clean_text = re.sub(r'[\\/:*?"<>|]', "", clean_text)
-    return clean_text[:50]
+    clean_text = re.sub(r"[\u0000-\u001f]", "", clean_text)
+    clean_text = re.sub(r"_+", "_", clean_text).strip("_")
+    return clean_text[:50] or "image"
+
+
+def _sanitize_existing_basename(name: str) -> str:
+    clean_text = (name or "").strip()
+    if not clean_text:
+        return "image"
+    clean_text = re.sub(r"\s+", "_", clean_text)
+    clean_text = re.sub(r'[\\/:*?"<>|]', "", clean_text)
+    clean_text = re.sub(r"[\u0000-\u001f]", "", clean_text)
+    clean_text = re.sub(r"_+", "_", clean_text).strip("_")
+    return clean_text or "image"
+
+
+def _ensure_unique_generated_name(filename: str) -> str:
+    if not os.path.exists(os.path.join(GENERATED_DIR, filename)):
+        return filename
+    base, ext = os.path.splitext(filename)
+    counter = 1
+    while True:
+        candidate = f"{base}_{counter}{ext}"
+        if not os.path.exists(os.path.join(GENERATED_DIR, candidate)):
+            return candidate
+        counter += 1
+
+
+def _sanitize_generated_filenames():
+    try:
+        entries = os.listdir(GENERATED_DIR)
+    except Exception as e:
+        print(f"Error reading generated dir: {e}")
+        return
+    image_exts = {".png", ".jpg", ".jpeg", ".webp"}
+    for filename in entries:
+        if not filename or filename.startswith("."):
+            continue
+        if filename.endswith(".thumb.jpg") or filename.endswith(".json"):
+            continue
+        base, ext = os.path.splitext(filename)
+        if ext.lower() not in image_exts:
+            continue
+        safe_base = _sanitize_existing_basename(base)
+        if safe_base == base:
+            continue
+        new_filename = _ensure_unique_generated_name(f"{safe_base}{ext}")
+        old_path = os.path.join(GENERATED_DIR, filename)
+        new_path = os.path.join(GENERATED_DIR, new_filename)
+        try:
+            os.rename(old_path, new_path)
+        except Exception as e:
+            print(f"Rename failed: {filename} -> {new_filename}, {e}")
+            continue
+
+        old_thumb = os.path.join(GENERATED_DIR, f"{base}.thumb.jpg")
+        new_thumb = os.path.join(GENERATED_DIR, f"{os.path.splitext(new_filename)[0]}.thumb.jpg")
+        if os.path.exists(old_thumb):
+            try:
+                os.rename(old_thumb, new_thumb)
+            except Exception as e:
+                print(f"Rename thumb failed: {old_thumb} -> {new_thumb}, {e}")
+
+        old_json = os.path.join(GENERATED_DIR, f"{base}.json")
+        new_json = os.path.join(GENERATED_DIR, f"{os.path.splitext(new_filename)[0]}.json")
+        if os.path.exists(old_json):
+            try:
+                os.rename(old_json, new_json)
+            except Exception as e:
+                print(f"Rename json failed: {old_json} -> {new_json}, {e}")
+
+        try:
+            conn = db._get_conn()
+            conn.execute("UPDATE images SET filename = ? WHERE filename = ?", (new_filename, filename))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"DB filename update failed: {filename} -> {new_filename}, {e}")
 
 
 def _is_private_host(host: Optional[str]) -> bool:

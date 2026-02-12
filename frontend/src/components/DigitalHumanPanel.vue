@@ -29,8 +29,7 @@
                 <label class="typo-label">{{ localeStore.t('dh.resolution') }}</label>
                 <div class="relative group">
                   <select v-model.number="resolution" class="w-full pl-3 pr-8 py-2 bg-white border border-slate-200 hover:border-indigo-300 rounded-lg typo-input outline-none appearance-none cursor-pointer transition-colors">
-                    <option :value="720">HD 720P</option>
-                    <option :value="1080">FHD 1080P</option>
+                    <option :value="480">480P</option>
                   </select>
                   <div class="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none typo-caption-compact text-slate-400">▼</div>
                 </div>
@@ -259,7 +258,7 @@ const imagePreviewUrl = ref('')
 const audioPreviewUrl = ref('')
 const prompt = ref('')
 const model = ref('')
-const resolution = ref(720)
+const resolution = ref(480)
 const style = 'speech'
 const seedInput = ref('')
 const fastMode = ref(false)

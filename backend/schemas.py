@@ -78,7 +78,7 @@ class DigitalHumanRequest(BaseModel):
     prompt: Optional[constr(max_length=300)] = None
     model: Optional[str] = None
     seed: int = -1
-    resolution: Literal[480, 720, 1080] = 720
+    resolution: Literal[480, 720, 1080] = 480
     fast_mode: bool = False
     style: Optional[constr(max_length=30)] = None
 

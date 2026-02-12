@@ -89,6 +89,7 @@ async def submit_digital_human_task(
             style=req.style,
             api_key=candidate.get("key") or runtime_key,
             base_url=candidate.get("base_url") or video_base_url,
+            model=model_name,
         )
         error_msg = digital_human_gen.extract_error(result)
         if not error_msg:
@@ -171,6 +172,7 @@ async def get_digital_human_status(
             task_id,
             api_key=candidate.get("key"),
             base_url=candidate.get("base_url") or video_base_url,
+            model=model_name,
         )
         error_msg = digital_human_gen.extract_error(result)
         if not error_msg:

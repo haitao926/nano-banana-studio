@@ -46,7 +46,7 @@ async def get_video_history(current_user: Dict = Depends(get_current_user)):
                 "status": item.get("status"),
                 "created_at": item.get("created_at"),
                 "metadata": meta,
-                "mode": meta.get("mode") or "digital_human",
+                "mode": meta.get("mode") or "text",
             }
         )
     return results

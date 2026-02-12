@@ -1,9 +1,17 @@
 import json
-from typing import Optional, Dict, Any, Iterable
+from typing import Optional, Dict, Any, Iterable, Tuple
+from urllib.parse import urlparse
 
 import requests
 
+try:
+    from volcengine.visual.VisualService import VisualService
+except Exception:
+    VisualService = None
+
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
+DEFAULT_VISUAL_BASE_URL = "https://visual.volcengineapi.com"
+OMNIHUMAN_REQ_KEY = "jimeng_realman_avatar_picture_omni_v15"
 DETECT_PATH = "/services/aigc/image2video/face-detect"
 SYNTH_PATH = "/services/aigc/image2video/video-synthesis/"
 TASK_PATH = "/tasks/{task_id}"
@@ -103,6 +111,63 @@ class DigitalHumanGenerator:
         return None
 
     @staticmethod
+    def _is_visual_service(model: Optional[str], base_url: Optional[str]) -> bool:
+        if base_url and "visual.volcengineapi.com" in str(base_url).lower():
+            return True
+        text = str(model or "").strip().lower()
+        return "jimeng_realman" in text or "omnihuman" in text
+
+    @staticmethod
+    def _normalize_visual_base_url(base_url: Optional[str]) -> str:
+        value = (base_url or "").strip()
+        return value or DEFAULT_VISUAL_BASE_URL
+
+    @staticmethod
+    def _normalize_visual_resolution(resolution: Any) -> int:
+        if resolution is None:
+            return 1080
+        try:
+            value = int(resolution)
+        except Exception:
+            value = 1080
+        return 720 if value <= 720 else 1080
+
+    @staticmethod
+    def _split_volc_key(api_key: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        if not api_key:
+            return None, None
+        text = str(api_key).strip()
+        if "|" in text:
+            parts = [p.strip() for p in text.split("|", 1)]
+        elif ":" in text:
+            parts = [p.strip() for p in text.split(":", 1)]
+        else:
+            return None, None
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            return None, None
+        return parts[0], parts[1]
+
+    @staticmethod
+    def _build_visual_service(api_key: Optional[str], base_url: Optional[str]) -> Optional["VisualService"]:
+        if VisualService is None:
+            return None
+        ak, sk = DigitalHumanGenerator._split_volc_key(api_key)
+        if not ak or not sk:
+            return None
+        svc = VisualService()
+        svc.set_ak(ak)
+        svc.set_sk(sk)
+        normalized = DigitalHumanGenerator._normalize_visual_base_url(base_url)
+        parsed = urlparse(normalized)
+        if parsed.hostname:
+            svc.set_host(parsed.hostname)
+        if parsed.scheme:
+            svc.set_scheme(parsed.scheme)
+        svc.set_connection_timeout(30)
+        svc.set_socket_timeout(120)
+        return svc
+
+    @staticmethod
     def _coerce_response(resp: requests.Response) -> Dict[str, Any]:
         try:
             data = resp.json()
@@ -158,7 +223,29 @@ class DigitalHumanGenerator:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         style: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if self._is_visual_service(model, base_url):
+            service = self._build_visual_service(api_key, base_url)
+            if service is None:
+                return {"error": "Missing Volcengine AccessKey/SecretKey (use AK|SK in API Key)."}
+            req_key = (model or "").strip() or OMNIHUMAN_REQ_KEY
+            form: Dict[str, Any] = {
+                "req_key": req_key,
+                "image_url": image_url,
+                "audio_url": audio_url,
+                "output_resolution": self._normalize_visual_resolution(resolution),
+                "pe_fast_mode": bool(fast_mode),
+            }
+            if seed is not None and int(seed) >= 0:
+                form["seed"] = int(seed)
+            if prompt:
+                form["prompt"] = prompt
+            try:
+                return service.cv_submit_task(form)
+            except Exception as exc:
+                return {"error": str(exc)}
+
         resolved_key = self._resolve_api_key(api_key)
         if not resolved_key:
             return {"error": "Missing API Key (configure model or provide x-video-key)."}
@@ -197,7 +284,24 @@ class DigitalHumanGenerator:
         url = f"{resolved_base}{SYNTH_PATH}"
         return self._request("POST", url, resolved_key, payload=payload, async_call=True, timeout=120)
 
-    def get_task_result(self, task_id: str, api_key: Optional[str] = None, base_url: Optional[str] = None) -> Dict[str, Any]:
+    def get_task_result(
+        self,
+        task_id: str,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if self._is_visual_service(model, base_url):
+            service = self._build_visual_service(api_key, base_url)
+            if service is None:
+                return {"error": "Missing Volcengine AccessKey/SecretKey (use AK|SK in API Key)."}
+            req_key = (model or "").strip() or OMNIHUMAN_REQ_KEY
+            form = {"req_key": req_key, "task_id": task_id}
+            try:
+                return service.cv_get_result(form)
+            except Exception as exc:
+                return {"error": str(exc)}
+
         resolved_key = self._resolve_api_key(api_key)
         if not resolved_key:
             return {"error": "Missing API Key (configure model or provide x-video-key)."}
@@ -248,13 +352,30 @@ class DigitalHumanGenerator:
         return {"task_id": task_id} if task_id else {}
 
     def normalize_status_response(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        raw_status = self._extract_value(
-            payload,
-            ["task_status", "taskStatus", "status", "Status", "state", "State"],
-        )
+        raw_status = None
+        raw_video_url = None
+        if isinstance(payload, dict):
+            data = payload.get("data")
+            if isinstance(data, dict):
+                raw_status = data.get("status") or data.get("Status")
+                raw_video_url = data.get("video_url") or data.get("videoUrl") or data.get("VideoURL")
+        if raw_status is None:
+            raw_status = self._extract_value(
+                payload,
+                ["task_status", "taskStatus", "status", "Status", "state", "State"],
+            )
         status = self._normalize_status(raw_status)
-        video_url = self._extract_value(payload, ["video_url", "videoUrl", "VideoURL", "VideoUrl"])
-        error_message = self._extract_value(payload, ["message", "Message", "error", "Error"])
+        video_url = raw_video_url or self._extract_value(payload, ["video_url", "videoUrl", "VideoURL", "VideoUrl"])
+        extracted_error = self.extract_error(payload)
+        error_message = None
+        if extracted_error:
+            error_message = extracted_error
+        else:
+            message = self._extract_value(payload, ["message", "Message", "error", "Error"])
+            if message:
+                text = str(message).strip()
+                if text and text.lower() not in ("success", "ok", "succeeded"):
+                    error_message = text
 
         data: Dict[str, Any] = {}
         if status is not None:

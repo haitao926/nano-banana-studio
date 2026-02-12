@@ -124,8 +124,20 @@ async def generate_single(
                                 create_thumbnail(save_path)
                                 seedream_files.append(filename_i)
                         if not seedream_files:
+                            last_error = getattr(img_gen, "last_error", None) or {}
+                            if last_error.get("message"):
+                                status_code = int(last_error.get("status_code") or 502)
+                                if status_code < 400:
+                                    status_code = 502
+                                raise HTTPException(status_code=status_code, detail=last_error.get("message"))
                             raise HTTPException(status_code=500, detail="Failed to download generated image")
                     else:
+                        last_error = getattr(img_gen, "last_error", None) or {}
+                        if last_error.get("message"):
+                            status_code = int(last_error.get("status_code") or 502)
+                            if status_code < 400:
+                                status_code = 502
+                            raise HTTPException(status_code=status_code, detail=last_error.get("message"))
                         raise HTTPException(status_code=500, detail="Seedream generation failed")
                 else:
                     ref_paths = []
@@ -199,6 +211,13 @@ async def generate_single(
                             if img_gen.download_image(image_url, save_path):
                                 create_thumbnail(save_path)
                                 seedream_files.append(filename_i)
+                    if not seedream_files and not seedream_urls:
+                        last_error = getattr(img_gen, "last_error", None) or {}
+                        if last_error.get("message"):
+                            status_code = int(last_error.get("status_code") or 502)
+                            if status_code < 400:
+                                status_code = 502
+                            raise HTTPException(status_code=status_code, detail=last_error.get("message"))
                 else:
                     candidates = _build_model_candidates(
                         "image",
