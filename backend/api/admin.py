@@ -1,14 +1,34 @@
-from typing import Dict
+import os
+import secrets
+import time
+from typing import Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app_state import db, img_gen
+from app_state import AUDIO_DIR, db, digital_human_gen, img_gen, video_gen
 from core.auth_utils import get_password_hash
 from core.env_utils import normalize_key_list
 from core.key_pools import normalize_key_pools
+from core.qwen_tts import synthesize_tts
 from deps import get_current_user
-from helpers import _get_model_catalog, _get_system_config_with_env, _load_system_config, _save_system_config, normalize_model_catalog
-from schemas import AdminCreateUserRequest, SystemConfigUpdateRequest, ToggleFeatureRequest, UserUpdateRequest
+from helpers import (
+    _build_model_candidates,
+    _get_model_catalog,
+    _get_system_config_with_env,
+    _get_tts_base_url,
+    _get_video_base_url,
+    _load_system_config,
+    _merge_candidates,
+    _save_system_config,
+    normalize_model_catalog,
+)
+from schemas import (
+    AdminCreateUserRequest,
+    ModelTestRequest,
+    SystemConfigUpdateRequest,
+    ToggleFeatureRequest,
+    UserUpdateRequest,
+)
 
 router = APIRouter()
 
@@ -91,6 +111,146 @@ async def update_system_config(req: SystemConfigUpdateRequest, current_user: Dic
     _save_system_config(cfg)
     img_gen._apply_config(cfg)
     return {"success": True}
+
+
+def _build_test_candidates(req: ModelTestRequest) -> List[Dict]:
+    model_name = (req.model or "").strip()
+    candidates = _build_model_candidates(req.service, model_name)
+    override_keys = normalize_key_list([req.api_key] + (req.backup_keys or []))
+    if not override_keys and not req.base_url:
+        return candidates
+    base_url = (req.base_url or "").strip() or (candidates[0].get("base_url") if candidates else None)
+    override = [
+        {"key": key, "base_url": base_url, "platform": req.platform}
+        for key in override_keys
+        if key
+    ]
+    if not override and base_url:
+        override = [{"key": None, "base_url": base_url, "platform": req.platform}]
+    return _merge_candidates(override, candidates)
+
+
+@router.post("/api/admin/model_test")
+async def test_model(req: ModelTestRequest, current_user: Dict = Depends(get_current_user)):
+    if current_user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    model_name = (req.model or "").strip()
+    if not model_name:
+        raise HTTPException(status_code=400, detail="Model ID is required")
+
+    candidates = _build_test_candidates(req)
+    if not candidates:
+        raise HTTPException(status_code=400, detail="Missing model configuration or key")
+
+    service = (req.service or "").strip().lower()
+    last_error = None
+
+    if service == "image":
+        prompt = (req.prompt or "测试图片生成").strip()
+        size = req.size
+        if not size:
+            size = "1K" if "seedream" in model_name.lower() else "1024x1024"
+        for candidate in candidates:
+            result = img_gen.generate_image(
+                prompt,
+                size=size,
+                base_url=candidate.get("base_url"),
+                api_key=candidate.get("key"),
+                model=model_name,
+            )
+            if result:
+                return {"success": True, "service": service, "model": model_name, "result": {"url": result}}
+            last_error = img_gen.last_error or {"message": "Image generation failed"}
+        raise HTTPException(status_code=502, detail=last_error.get("message") if isinstance(last_error, dict) else str(last_error))
+
+    if service == "audio":
+        prompt = (req.prompt or "这是一次模型连通性测试").strip()
+        voice = (req.voice or "Cherry").strip()
+        tts_base_url = _get_tts_base_url()
+        audio_id = f"tts_test_{int(time.time())}_{secrets.token_hex(3)}"
+        for candidate in candidates:
+            try:
+                output_path, mime_type = synthesize_tts(
+                    text=prompt,
+                    output_dir=AUDIO_DIR,
+                    filename_base=audio_id,
+                    voice=voice,
+                    model=model_name,
+                    api_key=candidate.get("key"),
+                    base_url=candidate.get("base_url") or tts_base_url,
+                )
+                return {
+                    "success": True,
+                    "service": service,
+                    "model": model_name,
+                    "result": {
+                        "url": f"/static/audio/{os.path.basename(output_path)}",
+                        "type": mime_type,
+                        "voice": voice,
+                    },
+                }
+            except Exception as exc:
+                last_error = str(exc)
+        raise HTTPException(status_code=502, detail=last_error or "TTS failed")
+
+    if service == "video":
+        prompt = (req.prompt or "测试视频生成").strip()
+        video_base_url = _get_video_base_url()
+        for candidate in candidates:
+            response = video_gen.submit_task(
+                prompt=prompt,
+                model=model_name,
+                api_key=candidate.get("key"),
+                base_url=candidate.get("base_url") or video_base_url,
+                platform=candidate.get("platform") or req.platform,
+                resolution=req.resolution,
+                duration_seconds=req.duration_seconds,
+            )
+            error = video_gen.extract_error(response)
+            if not error:
+                return {"success": True, "service": service, "model": model_name, "result": response}
+            last_error = error
+        raise HTTPException(status_code=502, detail=last_error or "Video test failed")
+
+    if service == "digital_human":
+        if not req.image_url or not req.audio_url:
+            raise HTTPException(status_code=400, detail="Digital human test requires image_url and audio_url")
+        prompt = (req.prompt or "").strip() or None
+        for candidate in candidates:
+            response = digital_human_gen.submit_task(
+                image_url=req.image_url,
+                audio_url=req.audio_url,
+                prompt=prompt,
+                resolution=480,
+                api_key=candidate.get("key"),
+                base_url=candidate.get("base_url"),
+                model=model_name,
+            )
+            error = digital_human_gen.extract_error(response)
+            if not error:
+                return {"success": True, "service": service, "model": model_name, "result": response}
+            last_error = error
+        raise HTTPException(status_code=502, detail=last_error or "Digital human test failed")
+
+    if service == "prompt":
+        prompt = (req.prompt or "测试提示词优化").strip()
+        for candidate in candidates:
+            try:
+                optimized = img_gen.optimize_prompt(
+                    raw_prompt=prompt,
+                    subject="general",
+                    model=model_name,
+                    api_key=candidate.get("key"),
+                    base_url=candidate.get("base_url"),
+                )
+                if optimized:
+                    return {"success": True, "service": service, "model": model_name, "result": {"text": optimized}}
+            except Exception as exc:
+                last_error = str(exc)
+        raise HTTPException(status_code=502, detail=last_error or "Prompt test failed")
+
+    raise HTTPException(status_code=400, detail="Unsupported service")
 
 
 @router.get("/api/admin/users")

@@ -147,3 +147,19 @@ class SystemConfigUpdateRequest(BaseModel):
 class CropRequest(BaseModel):
     image_url: str
     crops: List[Dict[str, int]]  # [{x, y, w, h}, ...]
+
+
+class ModelTestRequest(BaseModel):
+    service: Literal["image", "video", "audio", "digital_human", "prompt"]
+    model: str
+    platform: Optional[str] = None
+    prompt: Optional[str] = None
+    voice: Optional[str] = None
+    image_url: Optional[str] = None
+    audio_url: Optional[str] = None
+    api_key: Optional[str] = None
+    backup_keys: List[str] = Field(default_factory=list)
+    base_url: Optional[str] = None
+    resolution: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    size: Optional[str] = None

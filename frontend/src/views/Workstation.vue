@@ -673,9 +673,18 @@
                     <div v-for="entry in filteredSystemModels" :key="entry.index" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
                         <div class="flex items-center justify-between">
                             <div class="text-xs text-slate-400">#{{ entry.index + 1 }}</div>
-                            <button @click="removeSystemModel(entry.index)" class="text-xs text-red-400 hover:text-red-600">
-                                {{ tSettings('settings.model_remove', '删除') }}
-                            </button>
+                            <div class="flex items-center gap-3">
+                                <button
+                                    @click="runModelTest(entry)"
+                                    :disabled="modelTestLoading[entry.index]"
+                                    class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_test', '测试') }}
+                                </button>
+                                <button @click="removeSystemModel(entry.index)" class="text-xs text-red-400 hover:text-red-600">
+                                    {{ tSettings('settings.model_remove', '删除') }}
+                                </button>
+                            </div>
                         </div>
                         <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
                             <div v-if="modelViewMode !== 'platform'" class="space-y-1">
@@ -721,6 +730,21 @@
                                     {{ tSettings('settings.model_enabled', '启用') }}
                                 </label>
                             </div>
+                        </div>
+                        <div v-if="modelTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
+                            <span
+                                :class="modelTestStates[entry.index].status === 'success' ? 'text-emerald-600' : modelTestStates[entry.index].status === 'error' ? 'text-red-500' : 'text-slate-500'"
+                            >
+                                {{ modelTestStates[entry.index].message }}
+                            </span>
+                            <a
+                                v-if="modelTestStates[entry.index].url"
+                                :href="modelTestStates[entry.index].url"
+                                target="_blank"
+                                class="text-indigo-500 hover:text-indigo-700 underline"
+                            >
+                                {{ tSettings('settings.model_test_view', '查看结果') }}
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -1283,6 +1307,106 @@ const filteredSystemModels = computed(() => {
     }
     return list.filter(({ item }) => String(item?.service || 'image').trim().toLowerCase() === activeModelGroup.value)
 })
+
+const modelTestStates = reactive({})
+const modelTestLoading = reactive({})
+
+const normalizeTestUrl = (url) => {
+    if (!url) return ''
+    if (url.startsWith('http://') || url.startsWith('https://')) return url
+    return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
+const buildModelTestPayload = (entry) => {
+    const item = entry?.item || {}
+    return {
+        service: item.service || 'image',
+        model: item.model,
+        platform: item.platform,
+        api_key: item.api_key,
+        backup_keys: Array.isArray(item.backup_keys)
+            ? item.backup_keys
+            : String(item.backup_keys || '')
+                .split('\n')
+                .map((v) => v.trim())
+                .filter(Boolean),
+        base_url: item.base_url
+    }
+}
+
+const runModelTest = async (entry) => {
+    const item = entry?.item || {}
+    const model = String(item.model || '').trim()
+    if (!model) {
+        message.warning(tSettings('settings.model_id_required', '请填写 Model ID'))
+        return
+    }
+    if (modelTestLoading[entry.index]) return
+    modelTestLoading[entry.index] = true
+    modelTestStates[entry.index] = {
+        status: 'running',
+        message: tSettings('settings.model_test_running', '测试中...')
+    }
+
+    try {
+        const payload = buildModelTestPayload(entry)
+        const service = payload.service
+        if (service === 'digital_human') {
+            const imageUrl = window.prompt(tSettings('settings.model_test_image', '请输入可公网访问的人像图片 URL'), '')
+            if (!imageUrl) {
+                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
+                return
+            }
+            const audioUrl = window.prompt(tSettings('settings.model_test_audio', '请输入可公网访问的音频 URL'), '')
+            if (!audioUrl) {
+                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
+                return
+            }
+            payload.image_url = imageUrl
+            payload.audio_url = audioUrl
+        } else {
+            const promptHint = service === 'audio'
+                ? tSettings('settings.model_test_prompt_audio', '输入测试文本')
+                : tSettings('settings.model_test_prompt', '输入测试提示词')
+            const defaultPrompt = service === 'audio'
+                ? tSettings('settings.model_test_prompt_audio_default', '这是一次模型连通性测试')
+                : tSettings('settings.model_test_prompt_default', '测试生成内容')
+            const prompt = window.prompt(promptHint, defaultPrompt)
+            if (prompt === null) {
+                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
+                return
+            }
+            payload.prompt = prompt || defaultPrompt
+        }
+
+        const res = await api.post('/api/admin/model_test', payload)
+        const data = res?.data || {}
+        let messageText = tSettings('settings.model_test_success', '测试成功')
+        let url = ''
+        if (data?.result?.url) {
+            url = normalizeTestUrl(data.result.url)
+            messageText = tSettings('settings.model_test_success', '测试成功')
+        } else if (data?.result?.task_id || data?.result?.taskId) {
+            const taskId = data.result.task_id || data.result.taskId
+            messageText = `${tSettings('settings.model_test_submitted', '已提交任务')}: ${taskId}`
+        } else if (data?.result?.text) {
+            messageText = `${tSettings('settings.model_test_success', '测试成功')}: ${data.result.text.slice(0, 60)}`
+        }
+        modelTestStates[entry.index] = {
+            status: 'success',
+            message: messageText,
+            url
+        }
+    } catch (e) {
+        const detail = e?.response?.data?.detail || e?.message || tSettings('settings.model_test_failed', '测试失败')
+        modelTestStates[entry.index] = {
+            status: 'error',
+            message: `${tSettings('settings.model_test_failed', '测试失败')}: ${detail}`
+        }
+    } finally {
+        modelTestLoading[entry.index] = false
+    }
+}
 
 const getVideoCreditCost = (model) => {
     if (!model) return 0
