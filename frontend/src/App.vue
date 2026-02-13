@@ -16,12 +16,11 @@
             <!-- 1. Big Icon (Left) -->
             <img :src="logoMarkUrl" class="w-20 h-20 object-contain shrink-0 relative z-20" alt="Logo Mark" />
 
-            <!-- 2. Text & Logo Stack (Right) -->
+            <!-- 2. Text Stack (Right) -->
             <div class="flex flex-col items-start gap-2 relative z-20 min-w-0">
                 <h1 class="text-[18px] font-bold tracking-tight text-slate-900 leading-none">
                   <span class="text-blue-500">R</span>e<span class="text-indigo-500">O</span>pen<span class="text-purple-500">I</span>nno<span class="text-orange-400">L</span>ab
                 </h1>
-                <img :src="logoUrl" class="h-8 w-auto object-contain filter invert opacity-90" alt="School Logo" />
             </div>
           </div>
         
@@ -147,7 +146,6 @@ import AudioStudio from './views/AudioStudio.vue'
 import VideoStudio from './components/VideoStudio.vue'
 import { useAuthStore } from './stores/auth'
 import { useLocaleStore } from './stores/locale'
-import logoUrl from './assets/logo.png'
 import logoMarkUrl from './assets/logo-mark.svg'
 
 const authStore = useAuthStore()
