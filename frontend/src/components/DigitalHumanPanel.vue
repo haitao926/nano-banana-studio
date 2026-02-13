@@ -388,18 +388,30 @@ const clearAudio = () => {
 const uploadFileToPublic = async (rawFile, onProgress) => {
     const form = new FormData()
     form.append('file', rawFile)
-    const res = await api.post(uploadAction, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (evt) => {
-            if (!onProgress || !evt.total) return
-            const percent = Math.round((evt.loaded / evt.total) * 100)
-            onProgress({ percent })
+    const tryUpload = async (action) => {
+        const res = await api.post(action, form, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            onUploadProgress: (evt) => {
+                if (!onProgress || !evt.total) return
+                const percent = Math.round((evt.loaded / evt.total) * 100)
+                onProgress({ percent })
+            }
+        })
+        if (res?.data?.success && res?.data?.url) {
+            return res.data.url
         }
-    })
-    if (res?.data?.success && res?.data?.url) {
-        return res.data.url
+        throw new Error(res?.data?.detail || 'Upload Failed')
     }
-    throw new Error(res?.data?.detail || 'Upload Failed')
+
+    try {
+        return await tryUpload(uploadAction)
+    } catch (err) {
+        if (uploadAction !== '/api/upload') {
+            message.warning('OSS 上传失败，已自动切换本地存储')
+            return await tryUpload('/api/upload')
+        }
+        throw err
+    }
 }
 
 const handleImageCustomUpload = async ({ file, onFinish, onError, onProgress }) => {

@@ -369,20 +369,33 @@ const handleImageUpload = async ({ file, onProgress }) => {
   const form = new FormData()
   form.append('file', file.file)
   try {
-    const res = await api.post(uploadAction, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (evt) => {
-        if (!onProgress || !evt.total) return
-        const percent = Math.round((evt.loaded / evt.total) * 100)
-        onProgress({ percent })
+    const tryUpload = async (action) => {
+      const res = await api.post(action, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (evt) => {
+          if (!onProgress || !evt.total) return
+          const percent = Math.round((evt.loaded / evt.total) * 100)
+          onProgress({ percent })
+        }
+      })
+      if (res.data?.success) {
+        imageUrl.value = res.data.url
+        imagePreviewUrl.value = res.data.url
+        message.success(localeStore.t('video.upload_success'))
+      } else {
+        throw new Error(res.data?.detail || 'Upload failed')
       }
-    })
-    if (res.data?.success) {
-      imageUrl.value = res.data.url
-      imagePreviewUrl.value = res.data.url
-      message.success(localeStore.t('video.upload_success'))
-    } else {
-      message.error(res.data?.detail || 'Upload failed')
+    }
+
+    try {
+      await tryUpload(uploadAction)
+    } catch (err) {
+      if (uploadAction !== '/api/upload') {
+        message.warning('OSS 上传失败，已自动切换本地存储')
+        await tryUpload('/api/upload')
+      } else {
+        throw err
+      }
     }
   } catch (e) {
     message.error(e?.response?.data?.detail || e?.message || 'Upload failed')
