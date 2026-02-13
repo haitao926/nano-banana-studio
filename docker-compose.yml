@@ -7,6 +7,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: nbs-backend
     restart: unless-stopped
+    env_file:
+      - .env.nbs
     environment:
       EXTERNAL_BASE_URL: "https://kj4rk2oakpguf7.xuanyuan.run"
     volumes:
