@@ -611,13 +611,89 @@
                 </div>
             </div>
             <div class="space-y-8">
-                <!-- User Config Card -->
-                <div v-if="activeSettingsTab === 'user'" class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
-                    <div class="flex items-center gap-4">
-                        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-white/70 shadow-inner flex items-center justify-center icon-md">ℹ️</div>
-                        <div>
-                            <h3 class="typo-card-title">{{ tSettings('settings.user_tip_title', '使用说明') }}</h3>
-                            <p class="typo-page-subtitle">{{ tSettings('settings.user_tip_desc', '账号池已并入模型配置，请联系管理员在「模型配置」中添加可用模型与 Key。') }}</p>
+                <div v-if="activeSettingsTab === 'user'" class="space-y-6">
+                    <div class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 space-y-4">
+                        <div class="flex items-center justify-between gap-4 flex-wrap">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-white/70 shadow-inner flex items-center justify-center icon-md">🔑</div>
+                                <div>
+                                    <h3 class="typo-card-title">{{ tSettings('settings.key_pools_title', '账号池') }}</h3>
+                                    <p class="typo-page-subtitle">{{ tSettings('settings.user_tip_desc', '在此配置个人 Key（支持阿里百炼 / 火山方舟等），仅当前浏览器生效；保存后优先使用你的 Key。') }}</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button @click="addUserKeyPool" class="typo-button-compact text-indigo-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-indigo-700 transition-all">
+                                    {{ tSettings('settings.key_pool_add', '添加') }}
+                                </button>
+                                <button @click="reorderUserKeyPools" class="typo-button-compact text-slate-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-slate-700 transition-all">
+                                    {{ tSettings('settings.key_pool_sort', '按优先级重排') }}
+                                </button>
+                                <button @click="handleSaveUserPools" class="typo-button-compact text-white bg-slate-900 px-3 py-1.5 rounded-lg shadow-sm hover:bg-black transition-all">
+                                    {{ tSettings('settings.save', '保存') }}
+                                </button>
+                            </div>
+                        </div>
+                        <div v-if="userPoolsDirty" class="text-xs text-amber-500">{{ tSettings('settings.unsaved_hint', '有未保存的更改') }}</div>
+                        <div class="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+                            <div v-if="!userKeyPools.length" class="text-xs text-slate-400">{{ tSettings('settings.key_pool_empty', '暂无账号池配置') }}</div>
+                            <div v-for="(pool, idx) in userKeyPools" :key="idx" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="flex items-center gap-3 text-xs text-slate-400">
+                                        <span>#{{ idx + 1 }}</span>
+                                        <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-500 border border-indigo-100 text-[10px]">{{ tSettings('settings.tag_personal', '个人') }}</span>
+                                        <span class="text-slate-500">{{ poolSummary(pool) }}</span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-xs">
+                                        <button @click="moveUserKeyPool(idx, -1)" class="text-slate-500 hover:text-slate-700">{{ tSettings('settings.key_pool_up', '上移') }}</button>
+                                        <button @click="moveUserKeyPool(idx, 1)" class="text-slate-500 hover:text-slate-700">{{ tSettings('settings.key_pool_down', '下移') }}</button>
+                                        <button @click="toggleUserPoolExpand(idx)" class="text-indigo-500 hover:text-indigo-700">
+                                            {{ expandedUserPools.has(idx) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '展开') }}
+                                        </button>
+                                        <button @click="removeUserKeyPool(idx)" class="text-red-400 hover:text-red-600">{{ tSettings('settings.key_pool_remove', '删除') }}</button>
+                                    </div>
+                                </div>
+                                <div v-if="expandedUserPools.has(idx)" class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+                                    <div class="space-y-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_service_label', '用途（单选）') }}</label>
+                                        <select v-model="pool.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                            <option value="image">{{ tSettings('settings.key_pool_service_image', '绘图') }}</option>
+                                            <option value="audio">{{ tSettings('settings.key_pool_service_audio', '音频') }}</option>
+                                            <option value="video">{{ tSettings('settings.key_pool_service_video', '视频/数字人') }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_provider_label', '通道/厂商（可选）') }}</label>
+                                        <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                            <option value="">{{ tSettings('settings.key_pool_provider_any', '不限') }}</option>
+                                            <option value="bailian">{{ tSettings('settings.key_pool_provider_bailian', '百炼') }}</option>
+                                            <option value="ark">{{ tSettings('settings.key_pool_provider_ark', '火山方舟') }}</option>
+                                            <option value="openai">{{ tSettings('settings.key_pool_provider_openai', 'GPT / OpenAI') }}</option>
+                                            <option value="gemini">{{ tSettings('settings.key_pool_provider_gemini', 'Gemini') }}</option>
+                                            <option value="other">{{ tSettings('settings.key_pool_provider_other', '其他') }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-2">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_models_placeholder', '模型名称（逗号分隔）') }}</label>
+                                        <input v-model="pool.models" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.key_pool_models_placeholder', '模型名称（逗号分隔）')" />
+                                        <div class="text-[10px] text-slate-400 mt-1">{{ tSettings('settings.key_pool_models_hint', '先选用途；模型可留空表示通用，填写后仅对匹配模型生效') }}</div>
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-2">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_base_url', '接口地址（可选）') }}</label>
+                                        <input v-model="pool.base_url" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.base_url_placeholder', '可选，例如 https://api.xxx.com')" />
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-3">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
+                                        <input v-model="pool.key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_enabled', '启用') }}</label>
+                                        <label class="flex items-center gap-2 text-xs text-slate-600 mt-2">
+                                            <input type="checkbox" v-model="pool.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                            {{ tSettings('settings.key_pool_enabled', '启用') }}
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -875,7 +951,7 @@ import api from '../services/api'
 import { fetchModelCatalog, clearModelCatalogCache } from '../services/modelCatalog'
 import { useAuthStore } from '../stores/auth'
 import { useLocaleStore } from '../stores/locale'
-import { readUserKeyPools, saveUserKeyPools, buildLegacyPools } from '../utils/userKeyPools'
+import { readUserKeyPools, saveUserKeyPools, buildLegacyPools, selectUserPoolWithFallback } from '../utils/userKeyPools'
 import DigitalHumanPanel from '../components/DigitalHumanPanel.vue'
 import { voiceCatalog } from '../data/voiceCatalog'
 
@@ -1508,22 +1584,39 @@ const resetSettings = () => {
     refImageUrls.value = []
 }
 
+const applyUserPoolHeaders = (headers, service, model) => {
+    const pool = selectUserPoolWithFallback(service, model)
+    if (!pool?.key) return headers
+    if (service === 'audio') {
+        headers['x-tts-key'] = pool.key
+        return headers
+    }
+    if (service === 'video') {
+        headers['x-video-key'] = pool.key
+        if (pool.base_url) headers['x-video-base-url'] = pool.base_url
+        return headers
+    }
+    headers['x-model-key'] = pool.key
+    if (pool.base_url) headers['x-model-base-url'] = pool.base_url
+    return headers
+}
+
 const buildModelHeaders = (model) => {
     const headers = {}
     if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
-    return headers
+    return applyUserPoolHeaders(headers, 'image', model)
 }
 
 const buildTtsHeaders = (model) => {
     const headers = {}
     if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
-    return headers
+    return applyUserPoolHeaders(headers, 'audio', model)
 }
 
 const buildVideoHeaders = (model) => {
     const headers = {}
     if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
-    return headers
+    return applyUserPoolHeaders(headers, 'video', model)
 }
 
 const resolveImageSize = (ratio, model) => {

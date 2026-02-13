@@ -268,7 +268,8 @@ export const useLocaleStore = defineStore('locale', () => {
         video_key_placeholder: '请输入视频密钥（Veo / 数字人）',
         video_base_url: '视频接口地址',
         video_base_url_placeholder: '可选，例如 https://generativelanguage.googleapis.com/v1beta',
-        save: '保存配置',
+        save: '保存',
+        user_tip_desc: '在此配置个人 Key（支持阿里百炼 / 火山方舟等），仅当前浏览器生效；保存后优先使用你的 Key。',
         save_success: '保存成功',
         save_system: '保存系统配置',
         system_keys_title: '系统密钥',
@@ -386,7 +387,7 @@ export const useLocaleStore = defineStore('locale', () => {
         legacy_hide: '收起',
         key_pool_service_image: '绘图',
         key_pool_service_audio: '音频',
-        key_pool_service_video: '视频'
+        key_pool_service_video: '视频/数字人'
       }
     },
     en: {
@@ -645,7 +646,8 @@ export const useLocaleStore = defineStore('locale', () => {
         video_key_placeholder: 'Enter video key (Veo / Digital Human)',
         video_base_url: 'Video Base URL',
         video_base_url_placeholder: 'Optional, e.g. https://generativelanguage.googleapis.com/v1beta',
-        save: 'Save Configuration',
+        save: 'Save',
+        user_tip_desc: 'Configure your own keys here (Bailian / Volcengine Ark, etc.). Stored locally in this browser and will take priority once saved.',
         save_success: 'Saved',
         system_pool_title: 'System Key Pools',
         system_title: 'System Resources',
@@ -761,7 +763,7 @@ export const useLocaleStore = defineStore('locale', () => {
         legacy_hide: 'Hide',
         key_pool_service_image: 'Image',
         key_pool_service_audio: 'Audio',
-        key_pool_service_video: 'Video'
+        key_pool_service_video: 'Video / Digital Human'
       }
     }
   }
