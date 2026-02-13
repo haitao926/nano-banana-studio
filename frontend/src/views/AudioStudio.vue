@@ -289,6 +289,22 @@ const formatTime = (timestamp) => {
     }
 }
 
+const normalizeAssetUrl = (url) => {
+    if (!url) return ''
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        try {
+            const parsed = new URL(url)
+            if (parsed.pathname.startsWith('/static/')) {
+                return `${window.location.origin}${parsed.pathname}`
+            }
+        } catch (e) {
+            // ignore
+        }
+        return url
+    }
+    return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
 const buildTtsHeaders = (model) => {
     const headers = {}
     if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
@@ -300,7 +316,10 @@ const fetchAudioHistory = async () => {
     try {
         const res = await api.get('/api/audio/history', { headers: buildTtsHeaders(settings.model) })
         if (Array.isArray(res.data)) {
-            history.value = res.data
+            history.value = res.data.map((item) => ({
+                ...item,
+                url: normalizeAssetUrl(item.url)
+            }))
             if (!currentAudio.value && history.value.length) {
                 currentAudio.value = history.value[0]
             }
@@ -362,6 +381,7 @@ const handleGenerate = async () => {
             }
             const newAudio = {
                 ...historyItem,
+                url: normalizeAssetUrl(historyItem.url || res.data.url),
                 type: historyItem.type || res.data.type || 'audio/wav'
             }
             currentAudio.value = newAudio

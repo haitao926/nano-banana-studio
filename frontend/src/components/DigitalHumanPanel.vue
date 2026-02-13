@@ -212,7 +212,7 @@ import { useAuthStore } from '../stores/auth'
 const localeStore = useLocaleStore()
 const message = useMessage()
 const authStore = useAuthStore()
-const uploadAction = import.meta.env.VITE_PUBLIC_UPLOAD_URL || '/api/upload_public'
+const uploadAction = import.meta.env.VITE_PUBLIC_UPLOAD_URL || '/api/upload'
 
 const MIN_IMAGE_DIM = 400
 const MAX_IMAGE_DIM = 7000

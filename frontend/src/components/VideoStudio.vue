@@ -248,7 +248,7 @@ const loadModelCatalog = async () => {
   }
 }
 
-const uploadAction = import.meta.env.VITE_PUBLIC_UPLOAD_URL || '/api/upload_public'
+const uploadAction = import.meta.env.VITE_PUBLIC_UPLOAD_URL || '/api/upload'
 
 const formatCatalogLabel = (item, withCost = false) => {
   const name = item?.label || item?.model || ''
