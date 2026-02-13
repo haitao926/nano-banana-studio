@@ -20,6 +20,8 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        VITE_PUBLIC_UPLOAD_URL: ${VITE_PUBLIC_UPLOAD_URL:-/api/upload}
     container_name: nbs-frontend
     restart: unless-stopped
     depends_on:
