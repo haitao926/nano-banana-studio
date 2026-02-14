@@ -10,6 +10,8 @@ const PROVIDER_ALIASES = {
   volc: 'ark',
   方舟: 'ark',
   火山: 'ark',
+  豆包: 'ark',
+  doubao: 'ark',
   vector: 'vector',
   vectorengine: 'vector',
   reopeninnolab: 'vector',
