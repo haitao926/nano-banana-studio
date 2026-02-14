@@ -678,11 +678,9 @@
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_provider_label', '通道/厂商（可选）') }}</label>
                                         <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
                                             <option value="">{{ tSettings('settings.key_pool_provider_any', '不限') }}</option>
+                                            <option value="vector">{{ tSettings('settings.key_pool_provider_vector', '向量（reopeninnolab）') }}</option>
                                             <option value="bailian">{{ tSettings('settings.key_pool_provider_bailian', '百炼') }}</option>
                                             <option value="ark">{{ tSettings('settings.key_pool_provider_ark', '火山方舟') }}</option>
-                                            <option value="openai">{{ tSettings('settings.key_pool_provider_openai', 'GPT / OpenAI') }}</option>
-                                            <option value="gemini">{{ tSettings('settings.key_pool_provider_gemini', 'Gemini') }}</option>
-                                            <option value="other">{{ tSettings('settings.key_pool_provider_other', '其他') }}</option>
                                         </select>
                                     </div>
                                     <div class="space-y-1 lg:col-span-2">
@@ -2579,17 +2577,19 @@ const poolSummary = (pool) => {
             ? tSettings('settings.key_pool_service_video', '视频')
             : tSettings('settings.key_pool_service_image', '绘图')
     const providerValue = (pool.provider || '').toString().trim().toLowerCase()
-    const providerLabel = providerValue === 'gemini'
-        ? tSettings('settings.key_pool_provider_gemini', 'Gemini')
-        : providerValue === 'openai'
-            ? tSettings('settings.key_pool_provider_openai', 'GPT / OpenAI')
-            : providerValue === 'bailian'
-                ? tSettings('settings.key_pool_provider_bailian', '百炼')
-                : providerValue === 'ark'
-                    ? tSettings('settings.key_pool_provider_ark', '火山方舟')
-                    : providerValue === 'other'
-                        ? tSettings('settings.key_pool_provider_other', '其他')
-                        : tSettings('settings.key_pool_provider_any', '不限')
+    const providerLabel = providerValue === 'vector'
+        ? tSettings('settings.key_pool_provider_vector', '向量')
+        : providerValue === 'bailian'
+            ? tSettings('settings.key_pool_provider_bailian', '百炼')
+            : providerValue === 'ark'
+                ? tSettings('settings.key_pool_provider_ark', '火山方舟')
+                : providerValue === 'gemini'
+                    ? tSettings('settings.key_pool_provider_gemini', 'Gemini')
+                    : providerValue === 'openai'
+                        ? tSettings('settings.key_pool_provider_openai', 'GPT / OpenAI')
+                        : providerValue === 'other'
+                            ? tSettings('settings.key_pool_provider_other', '其他')
+                            : tSettings('settings.key_pool_provider_any', '不限')
     const usageTextLabel = `用途:${serviceLabel}`
     const providerTextLabel = `通道:${providerLabel}`
     const modelTextLabel = models.length ? `模型:${models.join(',')}` : '模型:通用'

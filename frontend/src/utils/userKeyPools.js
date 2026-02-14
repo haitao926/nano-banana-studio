@@ -10,6 +10,10 @@ const PROVIDER_ALIASES = {
   volc: 'ark',
   方舟: 'ark',
   火山: 'ark',
+  vector: 'vector',
+  vectorengine: 'vector',
+  reopeninnolab: 'vector',
+  向量: 'vector',
   bailian: 'bailian',
   dashscope: 'bailian',
   aliyun: 'bailian',
@@ -49,6 +53,7 @@ const inferProvider = (model) => {
   if (!model) return ''
   const text = String(model).trim().toLowerCase()
   if (!text) return ''
+  if (text.includes('vector') || text.includes('reopeninnolab')) return 'vector'
   if (text.includes('ark') || text.includes('volc') || text.includes('wan2-') || text.includes('doubao') || text.includes('seedance') || text.includes('seedream')) return 'ark'
   if (text.includes('gemini') || text.includes('imagen') || text.includes('veo') || text.includes('sora')) return 'gemini'
   if (text.includes('gpt') || text.includes('openai') || text.startsWith('o1') || text.startsWith('o3') || text.startsWith('o4')) return 'openai'
@@ -92,7 +97,7 @@ const selectFromPools = (pools, service, model) => {
   const candidates = pools.filter((pool) => {
     if (!pool.enabled) return false
     if (reqService && !pool.services.includes(reqService)) return false
-    if (pool.provider && reqProvider && pool.provider !== reqProvider) return false
+    if (pool.provider && pool.provider !== 'vector' && reqProvider && pool.provider !== reqProvider) return false
     if (pool.models.length && modelLower) {
       return pool.models.some((m) => String(m).trim().toLowerCase() === modelLower)
     }
