@@ -647,12 +647,12 @@
                                         <button @click="moveUserKeyPool(idx, -1)" class="text-slate-500 hover:text-slate-700">{{ tSettings('settings.key_pool_up', '上移') }}</button>
                                         <button @click="moveUserKeyPool(idx, 1)" class="text-slate-500 hover:text-slate-700">{{ tSettings('settings.key_pool_down', '下移') }}</button>
                                         <button @click="toggleUserPoolExpand(idx)" class="text-indigo-500 hover:text-indigo-700">
-                                            {{ expandedUserPools.has(idx) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '展开') }}
+                                            {{ expandedUserPools.has(idx) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '更多设置') }}
                                         </button>
                                         <button @click="removeUserKeyPool(idx)" class="text-red-400 hover:text-red-600">{{ tSettings('settings.key_pool_remove', '删除') }}</button>
                                     </div>
                                 </div>
-                                <div v-if="expandedUserPools.has(idx)" class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+                                <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
                                     <div class="space-y-1">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_service_label', '用途（单选）') }}</label>
                                         <select v-model="pool.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
@@ -661,6 +661,19 @@
                                             <option value="video">{{ tSettings('settings.key_pool_service_video', '视频/数字人') }}</option>
                                         </select>
                                     </div>
+                                    <div class="space-y-1 lg:col-span-4">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
+                                        <input v-model="pool.key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_enabled', '启用') }}</label>
+                                        <label class="flex items-center gap-2 text-xs text-slate-600 mt-2">
+                                            <input type="checkbox" v-model="pool.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                            {{ tSettings('settings.key_pool_enabled', '启用') }}
+                                        </label>
+                                    </div>
+                                </div>
+                                <div v-if="expandedUserPools.has(idx)" class="grid grid-cols-1 lg:grid-cols-6 gap-3 pt-2">
                                     <div class="space-y-1">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_provider_label', '通道/厂商（可选）') }}</label>
                                         <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
@@ -677,20 +690,9 @@
                                         <input v-model="pool.models" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.key_pool_models_placeholder', '模型名称（逗号分隔）')" />
                                         <div class="text-[10px] text-slate-400 mt-1">{{ tSettings('settings.key_pool_models_hint', '先选用途；模型可留空表示通用，填写后仅对匹配模型生效') }}</div>
                                     </div>
-                                    <div class="space-y-1 lg:col-span-2">
+                                    <div class="space-y-1 lg:col-span-3">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_base_url', '接口地址（可选）') }}</label>
                                         <input v-model="pool.base_url" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.base_url_placeholder', '可选，例如 https://api.xxx.com')" />
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-3">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
-                                        <input v-model="pool.key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-1">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_enabled', '启用') }}</label>
-                                        <label class="flex items-center gap-2 text-xs text-slate-600 mt-2">
-                                            <input type="checkbox" v-model="pool.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
-                                            {{ tSettings('settings.key_pool_enabled', '启用') }}
-                                        </label>
                                     </div>
                                 </div>
                             </div>
@@ -2378,7 +2380,6 @@ const addUserKeyPool = () => {
         service: 'image',
         provider: ''
     })
-    expandedUserPools.add(userKeyPools.value.length - 1)
     reorderUserKeyPools()
     userPoolsDirty.value = true
 }
