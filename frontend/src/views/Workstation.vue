@@ -1118,7 +1118,8 @@ const getSystemModelOptionsForSelection = (service, platform) => {
     const normalizedPlatform = normalizePlatform(platform)
     return systemModelOptions.value.filter((opt) => {
         const matchesService = !normalizedService || String(opt.service || '').trim().toLowerCase() === normalizedService
-        const matchesPlatform = !normalizedPlatform || normalizePlatform(opt.platform) === normalizedPlatform
+        const optPlatform = normalizePlatform(opt.platform)
+        const matchesPlatform = !normalizedPlatform || !optPlatform || optPlatform === normalizedPlatform
         return matchesService && matchesPlatform
     })
 }
