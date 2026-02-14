@@ -65,7 +65,12 @@ async def generate_video(
             raise HTTPException(status_code=400, detail="请先在模型配置中添加视频模型")
         cost = _get_video_credit_cost(model)
         mode, runtime_key = determine_key_execution_mode(
-            current_user, x_video_key, cost=cost, header_name="x-video-key"
+            current_user,
+            x_video_key,
+            cost=cost,
+            header_name="x-video-key",
+            service="video",
+            model=model,
         )
 
         prompt = req.prompt.strip()
@@ -95,11 +100,12 @@ async def generate_video(
             image_mime = image_payload.get("mime_type")
 
         video_base_url = _get_video_base_url()
+        runtime_base_url = x_video_base_url if runtime_key else None
         candidates = _build_model_candidates(
             "video",
             model=model,
-            runtime_key=x_video_key,
-            runtime_base_url=x_video_base_url,
+            runtime_key=runtime_key,
+            runtime_base_url=runtime_base_url,
             fallback_base_url=video_base_url,
         )
 

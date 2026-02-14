@@ -57,7 +57,13 @@ async def generate_single(
         cost = model_cost if isinstance(model_cost, int) else (2 if "gemini" in model_text else 1)
         is_seedream = img_gen._is_seedream_model(request_model)
 
-        mode, runtime_key, runtime_base_url = determine_execution_mode(current_user, x_model_key, cost=cost)
+        mode, runtime_key, runtime_base_url = determine_execution_mode(
+            current_user,
+            x_model_key,
+            cost=cost,
+            service="image",
+            model=request_model,
+        )
         if runtime_base_url is None and x_model_base_url:
             runtime_base_url = x_model_base_url
         _enforce_rate_limit(request, current_user)
@@ -334,7 +340,13 @@ async def generate_modify(
         model_cost = _get_model_cost("image", base_model)
         cost = model_cost if isinstance(model_cost, int) else (2 if base_model and "gemini" in base_model.lower() else 1)
 
-        mode, runtime_key, runtime_base_url = determine_execution_mode(current_user, x_model_key, cost=cost)
+        mode, runtime_key, runtime_base_url = determine_execution_mode(
+            current_user,
+            x_model_key,
+            cost=cost,
+            service="image",
+            model=base_model,
+        )
         if runtime_base_url is None and x_model_base_url:
             runtime_base_url = x_model_base_url
         _enforce_rate_limit(request, current_user)
@@ -433,7 +445,13 @@ async def generate_batch(
         cost_per = model_cost if isinstance(model_cost, int) else (2 if request_model and "gemini" in request_model.lower() else 1)
         total_cost = cost_per * (len(system_keys) * len(req_indices))
 
-        mode, runtime_key, runtime_base_url = determine_execution_mode(current_user, x_model_key, cost=total_cost)
+        mode, runtime_key, runtime_base_url = determine_execution_mode(
+            current_user,
+            x_model_key,
+            cost=total_cost,
+            service="image",
+            model=request_model,
+        )
         if runtime_base_url is None and x_model_base_url:
             runtime_base_url = x_model_base_url
         _enforce_rate_limit(request, current_user)
@@ -520,7 +538,13 @@ async def optimize_prompt_endpoint(
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
     try:
-        _, runtime_key, runtime_base_url = determine_execution_mode(current_user, x_model_key, cost=1)
+        _, runtime_key, runtime_base_url = determine_execution_mode(
+            current_user,
+            x_model_key,
+            cost=1,
+            service=prompt_service,
+            model=prompt_model,
+        )
         if runtime_base_url is None and x_model_base_url:
             runtime_base_url = x_model_base_url
         _enforce_rate_limit(request, current_user)

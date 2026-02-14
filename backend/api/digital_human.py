@@ -63,7 +63,14 @@ async def submit_digital_human_task(
     else:
         cost = max(1, int(cost_per_sec))
 
-    mode, runtime_key = determine_key_execution_mode(current_user, x_video_key, cost=cost, header_name="x-video-key")
+    mode, runtime_key = determine_key_execution_mode(
+        current_user,
+        x_video_key,
+        cost=cost,
+        header_name="x-video-key",
+        service="digital_human",
+        model=req.model,
+    )
 
     result = None
     last_error = None
@@ -71,11 +78,12 @@ async def submit_digital_human_task(
     provider = "dashscope"
 
     video_base_url = _get_video_base_url()
+    runtime_base_url = x_video_base_url if runtime_key else None
     candidates = _build_model_candidates(
         "digital_human",
         model=model_name,
-        runtime_key=x_video_key,
-        runtime_base_url=x_video_base_url,
+        runtime_key=runtime_key,
+        runtime_base_url=runtime_base_url,
         fallback_base_url=video_base_url,
     )
     for candidate in candidates:

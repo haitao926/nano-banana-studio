@@ -615,26 +615,33 @@ def _normalize_video_status(payload: Dict[str, Any]) -> str:
     return "processing"
 
 
-def _has_system_image_key() -> bool:
-    for item in _get_model_catalog():
-        if item.get("service") == "image" and (item.get("api_key") or item.get("backup_keys")):
+def _has_system_model_key(service: Optional[str], model: Optional[str]) -> bool:
+    if not service or not model:
+        return False
+    for item in _select_model_configs(service, model):
+        if item.get("api_key") or item.get("backup_keys"):
             return True
     return False
 
 
-def determine_execution_mode(current_user: Optional[Dict], x_model_key: Optional[str], cost: int = 1):
-    if x_model_key:
-        return "user", x_model_key, None
-
+def determine_execution_mode(
+    current_user: Optional[Dict],
+    x_model_key: Optional[str],
+    cost: int = 1,
+    service: Optional[str] = None,
+    model: Optional[str] = None,
+):
     if not current_user:
+        if x_model_key:
+            return "user", x_model_key, None
         raise HTTPException(status_code=401, detail="Login required or provide x-model-key.")
 
-    if not _has_system_image_key():
-        raise HTTPException(status_code=403, detail="系统未配置API Key，请联系管理员。")
-
-    if current_user:
+    system_has_key = _has_system_model_key(service or "image", model)
+    if system_has_key:
         user = db.get_user_by_id(current_user["id"])
         if user["quota_used"] + cost > user["quota_limit"]:
+            if x_model_key:
+                return "user", x_model_key, None
             raise HTTPException(
                 status_code=403,
                 detail=(
@@ -642,25 +649,44 @@ def determine_execution_mode(current_user: Optional[Dict], x_model_key: Optional
                     f"{user['quota_limit'] - user['quota_used']}). Please provide Custom API Key."
                 ),
             )
+        return "system", None, None
 
-    return "system", None, None
+    if x_model_key:
+        return "user", x_model_key, None
+    raise HTTPException(status_code=403, detail="系统未配置API Key，请联系管理员。")
 
 
-def determine_key_execution_mode(current_user: Optional[Dict], provided_key: Optional[str], cost: int, header_name: str):
+def determine_key_execution_mode(
+    current_user: Optional[Dict],
+    provided_key: Optional[str],
+    cost: int,
+    header_name: str,
+    service: Optional[str] = None,
+    model: Optional[str] = None,
+):
+    if not current_user:
+        if provided_key:
+            return "user", provided_key
+        raise HTTPException(status_code=401, detail=f"Login required or provide {header_name}.")
+
+    system_has_key = _has_system_model_key(service, model)
+    if system_has_key:
+        user = db.get_user_by_id(current_user["id"])
+        if user["quota_used"] + cost > user["quota_limit"]:
+            if provided_key:
+                return "user", provided_key
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Quota exceeded (Cost: {cost}, Remaining: "
+                    f"{user['quota_limit'] - user['quota_used']}). Please provide Custom API Key."
+                ),
+            )
+        return "system", None
+
     if provided_key:
         return "user", provided_key
-    if current_user:
-        user = db.get_user_by_id(current_user["id"])
-        if user["quota_used"] + cost <= user["quota_limit"]:
-            return "system", None
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"Quota exceeded (Cost: {cost}, Remaining: "
-                f"{user['quota_limit'] - user['quota_used']}). Please provide Custom API Key."
-            ),
-        )
-    raise HTTPException(status_code=401, detail=f"Login required or provide {header_name}.")
+    raise HTTPException(status_code=403, detail="系统未配置API Key，请联系管理员。")
 
 
 def _get_wav_duration_seconds(path: str) -> Optional[float]:

@@ -60,14 +60,21 @@ async def generate_tts(
             raise HTTPException(status_code=400, detail="请先在模型配置中添加音频模型")
         model_cost = _get_model_cost("audio", model_name)
         cost = model_cost if isinstance(model_cost, int) else 1
-        mode, runtime_key = determine_key_execution_mode(current_user, x_tts_key, cost=cost, header_name="x-tts-key")
+        mode, runtime_key = determine_key_execution_mode(
+            current_user,
+            x_tts_key,
+            cost=cost,
+            header_name="x-tts-key",
+            service="audio",
+            model=req.model,
+        )
 
         audio_id = f"tts_{int(time.time())}_{secrets.token_hex(4)}"
         tts_base_url = _get_tts_base_url()
         candidates = _build_model_candidates(
             "audio",
             model=model_name,
-            runtime_key=x_tts_key,
+            runtime_key=runtime_key,
             fallback_base_url=tts_base_url,
         )
 
