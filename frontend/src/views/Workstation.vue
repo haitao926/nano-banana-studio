@@ -759,8 +759,8 @@
                                 >
                                     {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_test', '测试') }}
                                 </button>
-                                <button @click="removeSystemModel(entry.index)" class="text-xs text-red-400 hover:text-red-600">
-                                    {{ tSettings('settings.model_remove', '删除') }}
+                                <button @click="clearSystemModelKey(entry.index)" class="text-xs text-red-400 hover:text-red-600">
+                                    {{ tSettings('settings.model_remove', '清空Key') }}
                                 </button>
                             </div>
                         </div>
@@ -1177,8 +1177,12 @@ const addSystemModelForActiveGroup = () => {
     }
 }
 
-const removeSystemModel = (idx) => {
-    systemModels.value.splice(idx, 1)
+const clearSystemModelKey = (idx) => {
+    const item = systemModels.value[idx]
+    if (!item) return
+    item.api_key = ''
+    item.backup_keys = ''
+    systemConfigDirty.value = true
 }
 
 const loadModelCatalog = async () => {
