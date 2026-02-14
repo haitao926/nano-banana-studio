@@ -763,18 +763,9 @@
                             </div>
                         </div>
                         <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
-                            <div v-if="modelViewMode !== 'platform'" class="space-y-1">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
-                                <select v-model="entry.item.platform" disabled class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-600 focus:outline-none transition-all">
-                                    <option value="vector">{{ tSettings('settings.model_platform_vector', 'ReOpenInnoLab') }}</option>
-                                    <option value="bailian">{{ tSettings('settings.model_platform_bailian', '阿里百炼') }}</option>
-                                    <option value="ark">{{ tSettings('settings.model_platform_ark', '火山方舟') }}</option>
-                                </select>
-                                <div class="text-[10px] text-slate-400 mt-1">{{ tSettings('settings.model_base_url', '接口地址') }}: {{ getPlatformBaseUrl(entry.item.platform) || entry.item.base_url || '—' }}</div>
-                            </div>
-                            <div v-if="modelViewMode !== 'service'" class="space-y-1">
+                            <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_service', '用途') }}</label>
-                                <select v-model="entry.item.service" disabled class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-600 focus:outline-none transition-all">
+                                <select v-model="entry.item.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemServiceChange(entry.item)">
                                     <option value="image">{{ tSettings('settings.model_service_image', '绘图') }}</option>
                                     <option value="video">{{ tSettings('settings.model_service_video', '视频') }}</option>
                                     <option value="audio">{{ tSettings('settings.model_service_audio', '音频') }}</option>
@@ -782,29 +773,24 @@
                                     <option value="prompt">{{ tSettings('settings.model_service_prompt', '提示词优化') }}</option>
                                 </select>
                             </div>
-                            <div class="space-y-1">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', 'Model ID') }}</label>
+                            <div class="space-y-1 lg:col-span-3">
+                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
                                 <select
                                     v-model="entry.item.model"
                                     class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                     @change="applyModelTemplate(entry.item, entry.item.model)"
                                 >
-                                    <option v-if="!systemModelOptions.length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
-                                    <option v-for="opt in systemModelOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                                    <option v-if="!getSystemModelOptionsForService(entry.item.service).length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                    <option v-for="opt in getSystemModelOptionsForService(entry.item.service)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                                 </select>
+                                <div class="text-[10px] text-slate-400 mt-1">
+                                    {{ tSettings('settings.model_platform', '平台') }}: {{ getPlatformLabel(entry.item.platform) }}
+                                </div>
                             </div>
-                            <div class="space-y-1">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_name', '模型名称') }}</label>
-                                <input v-model="entry.item.label" disabled type="text" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-600 focus:outline-none transition-all" placeholder="e.g. Seedream 4.5" />
-                            </div>
-                            <div class="space-y-1">
+                            <div class="space-y-1 lg:col-span-2">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_api_key', 'API Key') }}</label>
                                 <input v-model="entry.item.api_key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_cost', '积分') }}</label>
-                                <input v-model.number="entry.item.cost" disabled type="number" min="0" class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-600 focus:outline-none transition-all" placeholder="1" />
-                                <label class="flex items-center gap-2 text-[11px] text-slate-500 mt-1">
+                                <label class="flex items-center gap-2 text-[11px] text-slate-500 mt-2">
                                     <input type="checkbox" v-model="entry.item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
                                     {{ tSettings('settings.model_enabled', '启用') }}
                                 </label>
@@ -1107,6 +1093,7 @@ const serializeSystemModels = () => {
 
 const applyModelTemplate = (item, modelValue) => {
     const template = modelCatalog.value.find((m) => m?.model === modelValue)
+        || systemModels.value.find((m) => m?.model === modelValue)
     if (!template) return
     const platform = normalizePlatform(template.platform) || inferPlatformFromBaseUrl(template.base_url) || item.platform
     item.model = template.model
@@ -1114,6 +1101,25 @@ const applyModelTemplate = (item, modelValue) => {
     item.service = template.service || item.service
     item.platform = platform || item.platform
     item.cost = Number.isFinite(Number(template.cost)) ? Number(template.cost) : item.cost
+}
+
+const getSystemModelOptionsForService = (service) => {
+    const normalized = String(service || '').trim().toLowerCase()
+    return systemModelOptions.value.filter((opt) => {
+        if (!normalized) return true
+        return String(opt.service || '').trim().toLowerCase() === normalized
+    })
+}
+
+const handleSystemServiceChange = (item) => {
+    const options = getSystemModelOptionsForService(item.service)
+    const match = options.find((opt) => opt.value === item.model)
+    if (!match) {
+        item.model = ''
+        item.label = ''
+        item.platform = normalizePlatform(item.platform) || ''
+        item.cost = null
+    }
 }
 
 const getDefaultTemplateForGroup = () => {
@@ -1370,6 +1376,13 @@ const getQualityLabel = (v) => qualityOptions.value.find(o=>o.value===v)?.label 
 const tSettings = (key, fallback) => {
     const val = localeStore.t(key)
     return val === key ? fallback : val
+}
+const getPlatformLabel = (platform) => {
+    const value = String(platform || '').trim().toLowerCase()
+    if (value === 'vector') return tSettings('settings.model_platform_vector', 'ReOpenInnoLab')
+    if (value === 'bailian') return tSettings('settings.model_platform_bailian', '阿里百炼')
+    if (value === 'ark') return tSettings('settings.model_platform_ark', '火山方舟')
+    return value || '—'
 }
 
 const modelViewModes = computed(() => [
