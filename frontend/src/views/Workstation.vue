@@ -652,16 +652,23 @@
                                         <button @click="removeUserKeyPool(idx)" class="text-red-400 hover:text-red-600">{{ tSettings('settings.key_pool_remove', '删除') }}</button>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+                                <div class="grid grid-cols-1 lg:grid-cols-7 gap-3">
                                     <div class="space-y-1">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_service_label', '用途（单选）') }}</label>
-                                        <select v-model="pool.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                        <select v-model="pool.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleUserServiceChange(pool)">
                                             <option value="image">{{ tSettings('settings.key_pool_service_image', '绘图') }}</option>
                                             <option value="audio">{{ tSettings('settings.key_pool_service_audio', '音频') }}</option>
                                             <option value="video">{{ tSettings('settings.key_pool_service_video', '视频/数字人') }}</option>
                                         </select>
                                     </div>
-                                    <div class="space-y-1 lg:col-span-4">
+                                    <div class="space-y-1 lg:col-span-2">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
+                                        <select v-model="pool.models" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                            <option value="">{{ tSettings('settings.key_pool_provider_any', '通用') }}</option>
+                                            <option v-for="opt in getUserModelOptionsForService(pool.service)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-3">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
                                         <input v-model="pool.key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
                                     </div>
@@ -682,11 +689,6 @@
                                             <option value="bailian">{{ tSettings('settings.key_pool_provider_bailian', '百炼') }}</option>
                                             <option value="ark">{{ tSettings('settings.key_pool_provider_ark', '火山方舟') }}</option>
                                         </select>
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-2">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_models_placeholder', '模型名称（逗号分隔）') }}</label>
-                                        <input v-model="pool.models" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.key_pool_models_placeholder', '模型名称（逗号分隔）')" />
-                                        <div class="text-[10px] text-slate-400 mt-1">{{ tSettings('settings.key_pool_models_hint', '先选用途；模型可留空表示通用，填写后仅对匹配模型生效') }}</div>
                                     </div>
                                     <div class="space-y-1 lg:col-span-3">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_base_url', '接口地址（可选）') }}</label>
@@ -2438,6 +2440,25 @@ const addUserKeyPool = () => {
     })
     reorderUserKeyPools()
     userPoolsDirty.value = true
+}
+
+const getUserModelOptionsForService = (service) => {
+    const normalized = String(service || '').trim().toLowerCase()
+    const items = modelCatalog.value || []
+    return items
+        .filter((item) => !normalized || String(item?.service || '').trim().toLowerCase() === normalized)
+        .map((item) => ({
+            label: formatCatalogLabel(item, true),
+            value: item.model
+        }))
+}
+
+const handleUserServiceChange = (pool) => {
+    const options = getUserModelOptionsForService(pool.service)
+    const current = String(pool.models || '').trim()
+    if (current && !options.some((opt) => opt.value === current)) {
+        pool.models = ''
+    }
 }
 
 const removeUserKeyPool = (idx) => {
