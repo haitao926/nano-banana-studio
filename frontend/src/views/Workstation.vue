@@ -766,6 +766,14 @@
                         </div>
                         <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
                             <div class="space-y-1">
+                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
+                                <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemPlatformChange(entry.item)">
+                                    <option value="vector">{{ tSettings('settings.model_platform_vector', 'ReOpenInnoLab') }}</option>
+                                    <option value="bailian">{{ tSettings('settings.model_platform_bailian', '阿里百炼') }}</option>
+                                    <option value="ark">{{ tSettings('settings.model_platform_ark', '火山方舟') }}</option>
+                                </select>
+                            </div>
+                            <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_service', '用途') }}</label>
                                 <select v-model="entry.item.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemServiceChange(entry.item)">
                                     <option value="image">{{ tSettings('settings.model_service_image', '绘图') }}</option>
@@ -775,15 +783,15 @@
                                     <option value="prompt">{{ tSettings('settings.model_service_prompt', '提示词优化') }}</option>
                                 </select>
                             </div>
-                            <div class="space-y-1 lg:col-span-3">
+                            <div class="space-y-1 lg:col-span-2">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
                                 <select
                                     v-model="entry.item.model"
                                     class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                     @change="applyModelTemplate(entry.item, entry.item.model)"
                                 >
-                                    <option v-if="!getSystemModelOptionsForService(entry.item.service).length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
-                                    <option v-for="opt in getSystemModelOptionsForService(entry.item.service)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                                    <option v-if="!getSystemModelOptionsForSelection(entry.item.service, entry.item.platform).length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                    <option v-for="opt in getSystemModelOptionsForSelection(entry.item.service, entry.item.platform)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                                 </select>
                                 <div class="text-[10px] text-slate-400 mt-1">
                                     {{ tSettings('settings.model_platform', '平台') }}: {{ getPlatformLabel(entry.item.platform) }}
@@ -1105,23 +1113,32 @@ const applyModelTemplate = (item, modelValue) => {
     item.cost = Number.isFinite(Number(template.cost)) ? Number(template.cost) : item.cost
 }
 
-const getSystemModelOptionsForService = (service) => {
-    const normalized = String(service || '').trim().toLowerCase()
+const getSystemModelOptionsForSelection = (service, platform) => {
+    const normalizedService = String(service || '').trim().toLowerCase()
+    const normalizedPlatform = normalizePlatform(platform)
     return systemModelOptions.value.filter((opt) => {
-        if (!normalized) return true
-        return String(opt.service || '').trim().toLowerCase() === normalized
+        const matchesService = !normalizedService || String(opt.service || '').trim().toLowerCase() === normalizedService
+        const matchesPlatform = !normalizedPlatform || normalizePlatform(opt.platform) === normalizedPlatform
+        return matchesService && matchesPlatform
     })
 }
 
+const resetSystemModelSelection = (item) => {
+    item.model = ''
+    item.label = ''
+    item.cost = null
+}
+
 const handleSystemServiceChange = (item) => {
-    const options = getSystemModelOptionsForService(item.service)
+    const options = getSystemModelOptionsForSelection(item.service, item.platform)
     const match = options.find((opt) => opt.value === item.model)
-    if (!match) {
-        item.model = ''
-        item.label = ''
-        item.platform = normalizePlatform(item.platform) || ''
-        item.cost = null
-    }
+    if (!match) resetSystemModelSelection(item)
+}
+
+const handleSystemPlatformChange = (item) => {
+    const options = getSystemModelOptionsForSelection(item.service, item.platform)
+    const match = options.find((opt) => opt.value === item.model)
+    if (!match) resetSystemModelSelection(item)
 }
 
 const getDefaultTemplateForGroup = () => {
