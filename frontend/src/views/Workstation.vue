@@ -678,7 +678,7 @@
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_provider_label', '通道/厂商（可选）') }}</label>
                                         <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
                                             <option value="">{{ tSettings('settings.key_pool_provider_any', '不限') }}</option>
-                                            <option value="vector">{{ tSettings('settings.key_pool_provider_vector', '向量（reopeninnolab）') }}</option>
+                                            <option value="vector">{{ tSettings('settings.key_pool_provider_vector', 'ReOpenInnoLab') }}</option>
                                             <option value="bailian">{{ tSettings('settings.key_pool_provider_bailian', '百炼') }}</option>
                                             <option value="ark">{{ tSettings('settings.key_pool_provider_ark', '火山方舟') }}</option>
                                         </select>
@@ -766,7 +766,7 @@
                             <div v-if="modelViewMode !== 'platform'" class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
                                 <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
-                                    <option value="vector">{{ tSettings('settings.model_platform_vector', '向量') }}</option>
+                                    <option value="vector">{{ tSettings('settings.model_platform_vector', 'ReOpenInnoLab') }}</option>
                                     <option value="bailian">{{ tSettings('settings.model_platform_bailian', '阿里百炼') }}</option>
                                     <option value="ark">{{ tSettings('settings.model_platform_ark', '火山方舟') }}</option>
                                 </select>
@@ -1341,7 +1341,7 @@ const modelServiceGroups = computed(() => [
 ])
 
 const modelPlatformGroups = computed(() => [
-    { id: 'vector', label: tSettings('settings.model_platform_vector', '向量') },
+    { id: 'vector', label: tSettings('settings.model_platform_vector', 'ReOpenInnoLab') },
     { id: 'bailian', label: tSettings('settings.model_platform_bailian', '阿里百炼') },
     { id: 'ark', label: tSettings('settings.model_platform_ark', '火山方舟') }
 ])
@@ -2578,7 +2578,7 @@ const poolSummary = (pool) => {
             : tSettings('settings.key_pool_service_image', '绘图')
     const providerValue = (pool.provider || '').toString().trim().toLowerCase()
     const providerLabel = providerValue === 'vector'
-        ? tSettings('settings.key_pool_provider_vector', '向量')
+        ? tSettings('settings.key_pool_provider_vector', 'ReOpenInnoLab')
         : providerValue === 'bailian'
             ? tSettings('settings.key_pool_provider_bailian', '百炼')
             : providerValue === 'ark'
