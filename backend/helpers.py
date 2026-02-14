@@ -631,9 +631,9 @@ def determine_execution_mode(
     service: Optional[str] = None,
     model: Optional[str] = None,
 ):
+    if x_model_key:
+        return "user", x_model_key, None
     if not current_user:
-        if x_model_key:
-            return "user", x_model_key, None
         raise HTTPException(status_code=401, detail="Login required or provide x-model-key.")
 
     system_has_key = _has_system_model_key(service or "image", model)
@@ -651,8 +651,6 @@ def determine_execution_mode(
             )
         return "system", None, None
 
-    if x_model_key:
-        return "user", x_model_key, None
     raise HTTPException(status_code=403, detail="系统未配置API Key，请联系管理员。")
 
 
@@ -664,9 +662,9 @@ def determine_key_execution_mode(
     service: Optional[str] = None,
     model: Optional[str] = None,
 ):
+    if provided_key:
+        return "user", provided_key
     if not current_user:
-        if provided_key:
-            return "user", provided_key
         raise HTTPException(status_code=401, detail=f"Login required or provide {header_name}.")
 
     system_has_key = _has_system_model_key(service, model)
@@ -684,8 +682,6 @@ def determine_key_execution_mode(
             )
         return "system", None
 
-    if provided_key:
-        return "user", provided_key
     raise HTTPException(status_code=403, detail="系统未配置API Key，请联系管理员。")
 
 
