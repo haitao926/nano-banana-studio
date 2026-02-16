@@ -211,6 +211,7 @@ import { fetchModelCatalog } from '../services/modelCatalog'
 import DigitalHumanPanel from './DigitalHumanPanel.vue'
 import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
+import { selectUserPoolWithFallback } from '../utils/userKeyPools'
 
 const localeStore = useLocaleStore()
 const authStore = useAuthStore()
@@ -298,13 +299,20 @@ const formatVideoCostHint = (cost) => {
 
 const videoCostHint = computed(() => (settings.value.model ? formatVideoCostHint(getVideoCreditCost(settings.value.model)) : ''))
 const isSoraModel = computed(() => String(settings.value.model || '').trim().toLowerCase().includes('sora'))
-const requiresImage = computed(() => activeMode.value === 'image' || isSoraModel.value)
+const isBailianI2vModel = computed(() => {
+  const text = String(settings.value.model || '').trim().toLowerCase()
+  return text.includes('i2v') || text.includes('wanx') || text.includes('wan2.')
+})
+const requiresImage = computed(() => activeMode.value === 'image' || isSoraModel.value || isBailianI2vModel.value)
 
 watch(
   () => [activeMode.value, settings.value.model],
   ([mode, model]) => {
     if (mode !== 'image' && String(model || '').toLowerCase().includes('sora')) {
       settings.value.model = defaultVideoModel.value
+    }
+    if (mode !== 'image' && isBailianI2vModel.value) {
+      activeMode.value = 'image'
     }
   }
 )
@@ -359,10 +367,27 @@ const resetState = () => {
   stopPolling()
 }
 
+const applyUserPoolHeaders = (headers, service, model) => {
+  const pool = selectUserPoolWithFallback(service, model)
+  if (!pool?.key) return headers
+  if (service === 'audio') {
+    headers['x-tts-key'] = pool.key
+    return headers
+  }
+  if (service === 'video') {
+    headers['x-video-key'] = pool.key
+    if (pool.base_url) headers['x-video-base-url'] = pool.base_url
+    return headers
+  }
+  headers['x-model-key'] = pool.key
+  if (pool.base_url) headers['x-model-base-url'] = pool.base_url
+  return headers
+}
+
 const buildVideoHeaders = (model) => {
   const headers = {}
   if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
-  return headers
+  return applyUserPoolHeaders(headers, 'video', model)
 }
 
 const handleImageUpload = async ({ file, onProgress }) => {

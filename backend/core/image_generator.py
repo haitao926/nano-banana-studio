@@ -8,7 +8,7 @@ Nano Banana (Gemini) 图片生成器
 import json
 import requests
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 import os
 import base64
 import re
@@ -287,6 +287,16 @@ class ImageGenerator:
         if not model:
             return False
         return "seedream" in str(model).lower()
+
+    @staticmethod
+    def _supports_seedream_group(model: Optional[str]) -> bool:
+        if not model:
+            return False
+        return "seedream-4" in str(model).lower()
+
+    @staticmethod
+    def _supports_seedream_multi_image(model: Optional[str]) -> bool:
+        return ImageGenerator._supports_seedream_group(model)
 
     def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0, base_url: str = None, api_key: str = None, model: str = None) -> Optional[Dict]:
         """发送API请求 (支持多Key轮询)"""
@@ -732,7 +742,7 @@ class ImageGenerator:
         self,
         prompt: str,
         size: str = None,
-        image_url: str = None,
+        image_url: Optional[Union[str, List[str]]] = None,
         max_images: int = 4,
         group_mode: bool = False,
         base_url: str = None,
@@ -750,8 +760,16 @@ class ImageGenerator:
         if size:
             data["size"] = size
         if image_url:
-            data["image"] = image_url
-        if image_url or group_mode:
+            if isinstance(image_url, (list, tuple)):
+                images = [u for u in image_url if u]
+                if images:
+                    if not self._supports_seedream_multi_image(target_model):
+                        data["image"] = images[0]
+                    else:
+                        data["image"] = images
+            else:
+                data["image"] = image_url
+        if group_mode and self._supports_seedream_group(target_model):
             data["sequential_image_generation"] = "auto"
             data["sequential_image_generation_options"] = {"max_images": max_images}
         response = self._make_request(

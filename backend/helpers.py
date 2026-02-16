@@ -18,6 +18,7 @@ from PIL import Image
 
 from core.env_utils import get_env_list, get_env_str, normalize_key_list
 from core.key_pools import normalize_key_pools, select_key_pools
+from core.oss_uploader import upload_path_to_oss
 
 MODEL_PLATFORM_BASE_URLS = {
     "vector": "https://api.vectorengine.ai",
@@ -232,6 +233,8 @@ def _is_private_host(host: Optional[str]) -> bool:
 
 
 def _ensure_public_url(url: str, label: str):
+    if url.startswith("oss://"):
+        return
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail=f"{label} must be a public http(s) URL.")
     parsed = urlparse(url)
@@ -243,6 +246,76 @@ def _ensure_public_url(url: str, label: str):
                 "Set EXTERNAL_BASE_URL to a public domain or use a public URL."
             ),
         )
+
+
+def _resolve_oss_url(url: str, expires: int = 3600) -> str:
+    if not url or not url.startswith("oss://"):
+        return url
+
+    parsed = urlparse(url)
+    bucket = parsed.netloc
+    key = parsed.path.lstrip("/")
+    if not bucket or not key:
+        return url
+
+    public_base = os.getenv("OSS_PUBLIC_BASE_URL", "").strip()
+    endpoint = os.getenv("OSS_ENDPOINT", "").strip()
+    access_key_id = os.getenv("OSS_ACCESS_KEY_ID", "").strip()
+    access_key_secret = os.getenv("OSS_ACCESS_KEY_SECRET", "").strip()
+
+    def _normalize_endpoint(endpoint_value: str) -> str:
+        value = endpoint_value.strip()
+        if not value:
+            return ""
+        if value.startswith("http://") or value.startswith("https://"):
+            return value
+        return f"https://{value}"
+
+    normalized_endpoint = _normalize_endpoint(endpoint)
+
+    if normalized_endpoint and access_key_id and access_key_secret:
+        try:
+            import oss2
+
+            auth = oss2.Auth(access_key_id, access_key_secret)
+            bucket_obj = oss2.Bucket(auth, normalized_endpoint, bucket)
+            return bucket_obj.sign_url("GET", key, expires)
+        except Exception:
+            pass
+
+    if public_base:
+        return f"{public_base.rstrip('/')}/{key}"
+
+    if normalized_endpoint:
+        parsed_endpoint = urlparse(normalized_endpoint)
+        host = parsed_endpoint.netloc or parsed_endpoint.path
+        scheme = parsed_endpoint.scheme or "https"
+        if host:
+            return f"{scheme}://{bucket}.{host}/{key}"
+
+    return url
+
+
+def _resolve_public_media_url(url: str) -> str:
+    if not url:
+        return url
+    if url.startswith("oss://"):
+        return _resolve_oss_url(url)
+    if url.startswith(("http://", "https://")):
+        return url
+    if url.startswith("/static/") or url.startswith("static/"):
+        if url.startswith("/static/"):
+            relative_path = url[len("/static/"):]
+        else:
+            relative_path = url[len("static/"):]
+        local_path = os.path.join(STATIC_DIR, relative_path)
+        if os.path.exists(local_path):
+            content_type, _ = mimetypes.guess_type(local_path)
+            try:
+                return upload_path_to_oss(local_path, content_type or "")
+            except Exception:
+                return url
+    return url
 
 
 def _load_system_config() -> Dict:
@@ -278,6 +351,30 @@ def _get_system_config_with_env() -> Dict:
 def _get_tts_config() -> Dict:
     cfg = _get_system_config_with_env()
     return cfg.get("tts", {}) or {}
+
+
+def _get_image_config() -> Dict:
+    cfg = _get_system_config_with_env()
+    auth_cfg = cfg.get("auth", {}) or {}
+    api_cfg = cfg.get("api", {}) or {}
+    return {
+        "api_key": auth_cfg.get("api_key", ""),
+        "backup_keys": normalize_key_list(auth_cfg.get("backup_keys", [])),
+        "base_url": api_cfg.get("base_url", ""),
+    }
+
+
+def _get_image_keys() -> List[str]:
+    image_cfg = _get_image_config()
+    primary = image_cfg.get("api_key", "")
+    backups = normalize_key_list(image_cfg.get("backup_keys", []))
+    return [k for k in [primary] + backups if k]
+
+
+def _get_image_base_url() -> Optional[str]:
+    image_cfg = _get_image_config()
+    base_url = image_cfg.get("base_url")
+    return base_url.strip() if isinstance(base_url, str) and base_url.strip() else None
 
 
 def _get_key_pools() -> List[Dict]:
@@ -474,6 +571,14 @@ def _build_model_candidates(
             seen_keys.add(key)
             preferred.append({"key": key, "base_url": base_url, "platform": cfg.get("platform")})
     if preferred:
+        # For image service, append system-level backup keys as last resort
+        if (service or "").strip().lower() == "image":
+            image_keys = _get_image_keys()
+            if image_keys:
+                image_base_url = _get_image_base_url() or preferred_base_url
+                platform_hint = _infer_platform_from_base_url(image_base_url, model_cfgs[0].get("platform") if model_cfgs else "")
+                extra = [{"key": key, "base_url": image_base_url, "platform": platform_hint} for key in image_keys]
+                return _merge_candidates(preferred, extra)
         return preferred
     if preferred_base_url:
         return [{"key": None, "base_url": preferred_base_url, "platform": model_cfgs[0].get("platform") if model_cfgs else None}]
@@ -599,11 +704,13 @@ def _normalize_video_status(payload: Dict[str, Any]) -> str:
     status_code = payload.get("status_code")
     if isinstance(status_code, int) and status_code >= 400:
         return "failed"
-    raw_status = VideoGenerator._extract_value(payload, ["status", "state", "Status", "State"])
+    raw_status = VideoGenerator._extract_value(payload, ["status", "state", "Status", "State", "task_status", "taskStatus"])
     if raw_status:
         text = str(raw_status).strip().upper()
         if text in ("PENDING", "QUEUED", "RUNNING"):
             return "processing"
+        if text in ("EXPIRED",):
+            return "expired"
         if text in ("SUCCEEDED", "SUCCESS", "DONE", "COMPLETED"):
             return "done"
         if text in ("FAILED", "ERROR", "CANCELED", "CANCELLED"):

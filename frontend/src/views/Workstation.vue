@@ -94,6 +94,20 @@
                            </button>
                         </n-popselect>
                      </div>
+                     <div v-if="isSeedreamGroupModel" class="col-span-2 space-y-2 bg-slate-50/60 border border-slate-100 rounded-xl p-4">
+                        <div class="flex items-center justify-between">
+                           <label class="typo-label">{{ tSettings('settings.seedream_group', 'Seedream 组图') }}</label>
+                           <label class="flex items-center gap-2 text-xs text-slate-600">
+                              <input type="checkbox" v-model="settings.seedreamGroup" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                              {{ tSettings('settings.seedream_group_enable', '启用组图') }}
+                           </label>
+                        </div>
+                        <div class="flex items-center gap-3">
+                           <span class="text-[11px] text-slate-400">{{ tSettings('settings.seedream_max_images', '最大张数') }}</span>
+                           <input v-model.number="settings.seedreamMaxImages" type="number" min="1" max="15" :disabled="!settings.seedreamGroup" class="w-20 px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed" />
+                           <span class="text-[10px] text-slate-400">{{ tSettings('settings.seedream_max_images_hint', '最多 15（含参考图）') }}</span>
+                        </div>
+                     </div>
                   </div>
               </div>
 
@@ -353,6 +367,22 @@
                             <input type="checkbox" v-model="batchDefaults.image.optimize" class="accent-indigo-500" />
                             {{ localeStore.t('batch.prompt_optimize') }}
                         </label>
+                    </div>
+                    <div v-if="isBatchSeedreamGroupModel" class="md:col-span-4">
+                        <div class="space-y-2 bg-slate-50 border border-slate-100 rounded-xl p-4">
+                            <div class="flex items-center justify-between">
+                                <label class="typo-label">{{ tSettings('settings.seedream_group', 'Seedream 组图') }}</label>
+                                <label class="flex items-center gap-2 text-xs text-slate-600">
+                                    <input type="checkbox" v-model="batchDefaults.image.seedreamGroup" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                    {{ tSettings('settings.seedream_group_enable', '启用组图') }}
+                                </label>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-[11px] text-slate-400">{{ tSettings('settings.seedream_max_images', '最大张数') }}</span>
+                                <input v-model.number="batchDefaults.image.seedreamMaxImages" type="number" min="1" max="15" :disabled="!batchDefaults.image.seedreamGroup" class="w-20 px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:border-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed" />
+                                <span class="text-[10px] text-slate-400">{{ tSettings('settings.seedream_max_images_hint', '最多 15（含参考图）') }}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -663,10 +693,15 @@
                                     </div>
                                     <div class="space-y-1 lg:col-span-2">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
-                                        <select v-model="pool.models" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
-                                            <option value="">{{ tSettings('settings.key_pool_provider_any', '通用') }}</option>
+                                        <input
+                                            v-model="pool.models"
+                                            :list="`user-model-options-${idx}`"
+                                            class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                            :placeholder="tSettings('settings.key_pool_models_hint', '支持输入自定义模型 ID，多个用逗号分隔')"
+                                        />
+                                        <datalist :id="`user-model-options-${idx}`">
                                             <option v-for="opt in getUserModelOptionsForService(pool.service)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                                        </select>
+                                        </datalist>
                                     </div>
                                     <div class="space-y-1 lg:col-span-3">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
@@ -683,7 +718,7 @@
                                 <div v-if="expandedUserPools.has(idx)" class="grid grid-cols-1 lg:grid-cols-6 gap-3 pt-2">
                                     <div class="space-y-1">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_provider_label', '通道/厂商（可选）') }}</label>
-                                        <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                        <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleUserProviderChange(pool)">
                                             <option value="">{{ tSettings('settings.key_pool_provider_any', '不限') }}</option>
                                             <option value="vector">{{ tSettings('settings.key_pool_provider_vector', 'ReOpenInnoLab') }}</option>
                                             <option value="bailian">{{ tSettings('settings.key_pool_provider_bailian', '百炼') }}</option>
@@ -899,6 +934,11 @@
                 <!-- Image Container -->
                 <div class="flex-1 checker-bg flex items-center justify-center p-8 relative overflow-hidden group">
                      <img :src="selectedImage.url" class="max-w-full max-h-full object-contain shadow-2xl rounded-lg transition-transform duration-500 hover:scale-[1.02]" />
+                     <div v-if="selectedImage.urls && selectedImage.urls.length > 1" class="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-wrap gap-2 bg-white/80 backdrop-blur-sm border border-white/60 rounded-2xl p-2 shadow-lg">
+                         <button v-for="(imgUrl, idx) in selectedImage.urls" :key="imgUrl" @click.stop="selectedImage.url = imgUrl" class="w-12 h-12 rounded-lg overflow-hidden border border-transparent hover:border-indigo-400 transition-all" :class="imgUrl === selectedImage.url ? 'border-indigo-500 ring-2 ring-indigo-200' : ''">
+                             <img :src="imgUrl" class="w-full h-full object-cover" :alt="`seedream-${idx + 1}`" />
+                         </button>
+                     </div>
                 </div>
                 
                 <!-- Info Sidebar -->
@@ -1033,6 +1073,8 @@ const MODEL_PLATFORM_BASE_URLS = {
     bailian: 'https://dashscope.aliyuncs.com/api/v1',
     ark: 'https://ark.cn-beijing.volces.com/api/v3'
 }
+
+const USER_PROVIDER_BASE_URLS = MODEL_PLATFORM_BASE_URLS
 
 const normalizePlatform = (value) => {
     if (!value) return ''
@@ -1200,7 +1242,9 @@ const settings = ref({
     grade: 'general', 
     aspectRatio: '1:1', 
     quality: 'standard',
-    model: ''
+    model: '',
+    seedreamGroup: false,
+    seedreamMaxImages: 4
 })
 
 const batchType = ref('image')
@@ -1211,7 +1255,9 @@ const batchDefaults = reactive({
         aspectRatio: settings.value.aspectRatio,
         quality: settings.value.quality,
         model: '',
-        optimize: false
+        optimize: false,
+        seedreamGroup: false,
+        seedreamMaxImages: 4
     },
     video: {
         mode: 'text',
@@ -1238,6 +1284,55 @@ const batchDefaults = reactive({
 })
 
 // Options
+const seedreamModelText = computed(() => String(settings.value.model || '').toLowerCase())
+const isSeedreamGroupModel = computed(() => seedreamModelText.value.includes('seedream-4'))
+const batchSeedreamModelText = computed(() => String(batchDefaults.image.model || '').toLowerCase())
+const isBatchSeedreamGroupModel = computed(() => batchSeedreamModelText.value.includes('seedream-4'))
+
+watch(
+    () => settings.value.seedreamMaxImages,
+    (value) => {
+        const num = Number(value)
+        if (!Number.isFinite(num)) {
+            settings.value.seedreamMaxImages = 4
+            return
+        }
+        if (num < 1) settings.value.seedreamMaxImages = 1
+        if (num > 15) settings.value.seedreamMaxImages = 15
+    }
+)
+
+watch(
+    seedreamModelText,
+    (value) => {
+        if (!String(value || '').includes('seedream-4')) {
+            settings.value.seedreamGroup = false
+        }
+    }
+)
+
+watch(
+    () => batchDefaults.image.seedreamMaxImages,
+    (value) => {
+        const num = Number(value)
+        if (!Number.isFinite(num)) {
+            batchDefaults.image.seedreamMaxImages = 4
+            return
+        }
+        if (num < 1) batchDefaults.image.seedreamMaxImages = 1
+        if (num > 15) batchDefaults.image.seedreamMaxImages = 15
+    }
+)
+
+watch(
+    batchSeedreamModelText,
+    (value) => {
+        if (!String(value || '').includes('seedream-4')) {
+            batchDefaults.image.seedreamGroup = false
+        }
+    }
+)
+
 const formatCatalogLabel = (item, withCost = false) => {
     const name = item?.label || item?.model || ''
     const costValue = Number.isFinite(Number(item?.cost)) ? Number(item.cost) : null
@@ -1369,6 +1464,14 @@ watch(
             return
         }
         if (!list.some((o) => o.value === batchDefaults.digital_human.model)) batchDefaults.digital_human.model = list[0].value
+    },
+    { immediate: true }
+)
+
+watch(
+    modelCatalog,
+    () => {
+        ensureUserPoolModelDefaults()
     },
     { immediate: true }
 )
@@ -1509,6 +1612,8 @@ const runModelTest = async (entry) => {
     try {
         const payload = buildModelTestPayload(entry)
         const service = payload.service
+        const modelLower = String(model || '').toLowerCase()
+        const videoNeedsImage = service === 'video' && (modelLower.includes('sora') || modelLower.includes('i2v') || modelLower.includes('wanx') || modelLower.includes('wan2.'))
         if (service === 'digital_human') {
             const imageUrl = window.prompt(tSettings('settings.model_test_image', '请输入可公网访问的人像图片 URL'), '')
             if (!imageUrl) {
@@ -1522,6 +1627,13 @@ const runModelTest = async (entry) => {
             }
             payload.image_url = imageUrl
             payload.audio_url = audioUrl
+        } else if (videoNeedsImage) {
+            const imageUrl = window.prompt(tSettings('settings.model_test_image', '请输入可公网访问的人像图片 URL'), '')
+            if (!imageUrl) {
+                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
+                return
+            }
+            payload.image_url = imageUrl
         } else {
             const promptHint = service === 'audio'
                 ? tSettings('settings.model_test_prompt_audio', '输入测试文本')
@@ -1587,13 +1699,16 @@ const batchVideoCostHint = computed(() => formatVideoCostHint(getVideoCreditCost
 const batchVideoRequiresImage = computed(() => {
     const mode = batchDefaults.video.mode || 'text'
     const model = String(batchDefaults.video.model || '').trim().toLowerCase()
-    return mode === 'image' || model.includes('sora')
+    return mode === 'image' || model.includes('sora') || model.includes('i2v') || model.includes('wanx') || model.includes('wan2.')
 })
 watch(
     () => [batchDefaults.video.mode, batchDefaults.video.model],
     ([mode, model]) => {
         if (mode !== 'image' && String(model || '').toLowerCase().includes('sora')) {
             batchDefaults.video.model = defaultVideoModel.value
+        }
+        if (mode !== 'image' && (String(model || '').toLowerCase().includes('i2v') || String(model || '').toLowerCase().includes('wanx') || String(model || '').toLowerCase().includes('wan2.'))) {
+            batchDefaults.video.mode = 'image'
         }
     }
 )
@@ -1609,7 +1724,11 @@ const batchPlaceholder = computed(() => {
 const reversedBatchQueue = computed(() => [...batchQueue.value].reverse())
 const hasPending = computed(() => batchQueue.value.some(t => t.status === 'draft' || t.status === 'pending'))
 const hasDone = computed(() => batchQueue.value.some(t => t.status === 'done'))
-const hasDownloadable = computed(() => batchQueue.value.some((t) => t.status === 'done' && isLocalResultUrl(t.resultUrl)))
+const hasDownloadable = computed(() => batchQueue.value.some((t) => {
+    if (t.status !== 'done') return false
+    if (Array.isArray(t.resultUrls) && t.resultUrls.some((url) => isLocalResultUrl(url))) return true
+    return isLocalResultUrl(t.resultUrl)
+}))
 const recentHistory = computed(() => galleryImages.value.filter(i => i.is_mine).slice(0, 10))
 
 const settingsTabs = computed(() => {
@@ -1661,7 +1780,9 @@ const resetSettings = () => {
         grade: 'general',
         aspectRatio: '1:1',
         quality: 'standard',
-        model: modelOptions.value[0]?.value || ''
+        model: modelOptions.value[0]?.value || '',
+        seedreamGroup: false,
+        seedreamMaxImages: 4
     }
     refImageUrls.value = []
 }
@@ -1707,6 +1828,17 @@ const resolveImageSize = (ratio, model) => {
     if (isGpt) {
         if (ratio === '16:9') return '1536x1024'
         if (ratio === '9:16') return '1024x1536'
+        return '1024x1024'
+    }
+    if (normalized.includes('seededit')) return 'adaptive'
+    if (normalized.includes('seedream-4')) {
+        if (ratio === '16:9') return '2560x1440'
+        if (ratio === '9:16') return '1440x2560'
+        return '2048x2048'
+    }
+    if (normalized.includes('seedream-3')) {
+        if (ratio === '16:9') return '1280x720'
+        if (ratio === '9:16') return '720x1280'
         return '1024x1024'
     }
     if (ratio === '16:9') return '1792x1024'
@@ -1765,6 +1897,9 @@ const handleGenerateSingle = async () => {
     processing.value = true
     const newTask = { id: Date.now(), prompt: inputText.value, status: 'processing' }
     try {
+        const seedreamPayload = isSeedreamGroupModel.value
+            ? { seedream_group: !!settings.value.seedreamGroup, seedream_max_images: settings.value.seedreamMaxImages }
+            : {}
         const res = await api.post(
             '/api/generate/single',
             {
@@ -1774,7 +1909,8 @@ const handleGenerateSingle = async () => {
                 subject: settings.value.subject,
                 grade: settings.value.grade,
                 model: settings.value.model,
-                reference_image_urls: refImageUrls.value
+                reference_image_urls: refImageUrls.value,
+                ...seedreamPayload
             },
             { headers: buildModelHeaders(settings.value.model) }
         )
@@ -1814,7 +1950,12 @@ const fetchHistory = async () => {
 }
 
 const handleHistorySelect = (img) => currentDisplayImage.value = img
-const openImage = (img) => { selectedImage.value = img; showModal.value = true }
+const openImage = (img) => {
+    if (!img) return
+    const urls = Array.isArray(img.urls) ? [...img.urls] : undefined
+    selectedImage.value = { ...img, ...(urls ? { urls } : {}) }
+    showModal.value = true
+}
 const closeModal = () => showModal.value = false
 const copyPrompt = () => {
     const promptText = selectedImage.value?.enhanced_prompt || selectedImage.value?.prompt || ''
@@ -1826,6 +1967,7 @@ const openBatchImage = (task) => {
     if (!task?.resultUrl) return
     openImage({
         url: task.resultUrl,
+        urls: task.resultUrls || undefined,
         prompt: task.prompt,
         subject: task.settings?.image?.subject || 'general',
         aspectRatio: task.settings?.image?.aspectRatio || '1:1',
@@ -1862,6 +2004,9 @@ const handleQuickRefine = async () => {
     }
     processing.value = true
     try {
+        const seedreamPayload = isSeedreamGroupModel.value
+            ? { seedream_group: !!settings.value.seedreamGroup, seedream_max_images: settings.value.seedreamMaxImages }
+            : {}
         const res = await api.post(
             '/api/generate/single',
             {
@@ -1871,7 +2016,8 @@ const handleQuickRefine = async () => {
                 subject: settings.value.subject,
                 grade: settings.value.grade,
                 model: settings.value.model,
-                reference_image_urls: [currentDisplayImage.value.url]
+                reference_image_urls: [currentDisplayImage.value.url],
+                ...seedreamPayload
             },
             { headers: buildModelHeaders(settings.value.model) }
         )
@@ -1926,9 +2072,18 @@ const buildBatchTask = (raw) => {
         if (raw.audio && typeof raw.audio === 'object') Object.assign(baseSettings.audio, raw.audio)
         if (raw.digital_human && typeof raw.digital_human === 'object') Object.assign(baseSettings.digital_human, raw.digital_human)
 
-        const imageKeys = ['subject', 'grade', 'aspectRatio', 'quality', 'model', 'optimize']
+        const imageKeys = ['subject', 'grade', 'aspectRatio', 'quality', 'model', 'optimize', 'seedreamGroup', 'seedreamMaxImages']
         imageKeys.forEach((key) => {
             if (raw[key] !== undefined && raw[key] !== null) baseSettings.image[key] = raw[key]
+        })
+        const imageSnakeMap = {
+            aspect_ratio: 'aspectRatio',
+            seedream_group: 'seedreamGroup',
+            seedream_max_images: 'seedreamMaxImages'
+        }
+        Object.entries(imageSnakeMap).forEach(([fromKey, toKey]) => {
+            if (raw[fromKey] !== undefined && raw[fromKey] !== null) baseSettings.image[toKey] = raw[fromKey]
+            if (raw.image && raw.image[fromKey] !== undefined && raw.image[fromKey] !== null) baseSettings.image[toKey] = raw.image[fromKey]
         })
 
         if (type === 'audio' || type === 'digital_human') {
@@ -2024,10 +2179,17 @@ const getBatchTags = (task) => {
         if (task.settings?.audio?.voice) tags.push(task.settings.audio.voice)
         return tags
     }
-    return [
+    const tags = [
         task.settings?.image?.aspectRatio || '1:1',
         getSubjectLabel(task.settings?.image?.subject || 'general')
     ]
+    const imageModel = String(task.settings?.image?.model || '').toLowerCase()
+    if (imageModel.includes('seedream-4') && task.settings?.image?.seedreamGroup) {
+        const maxImages = task.resultUrls?.length || task.settings?.image?.seedreamMaxImages
+        const label = tSettings('settings.seedream_group', 'Seedream 组图')
+        tags.push(maxImages ? `${label}×${maxImages}` : label)
+    }
+    return tags
 }
 
 const handleJsonUpload = (e) => {
@@ -2139,17 +2301,23 @@ const downloadTemplate = () => {
         ]
     } else {
         const imageModel = batchDefaults.image.model || settings.value.model || modelOptions.value[0]?.value || ''
+        const isSeedreamTemplate = String(imageModel || '').toLowerCase().includes('seedream-4')
+        const imageTemplate = {
+            subject: 'math',
+            aspectRatio: '1:1',
+            quality: 'standard',
+            model: imageModel,
+            optimize: true
+        }
+        if (isSeedreamTemplate) {
+            imageTemplate.seedreamGroup = false
+            imageTemplate.seedreamMaxImages = 4
+        }
         template = [
             {
                 type: 'image',
                 prompt: '示例图片提示词',
-                image: {
-                    subject: 'math',
-                    aspectRatio: '1:1',
-                    quality: 'standard',
-                    model: imageModel,
-                    optimize: true
-                }
+                image: imageTemplate
             }
         ]
     }
@@ -2208,6 +2376,10 @@ const runImageTask = async (task) => {
             task.optimizationError = e?.response?.data?.detail || e?.message || ''
         }
     }
+    const isSeedreamGroupModel = String(cfg.model || '').toLowerCase().includes('seedream-4')
+    const seedreamPayload = isSeedreamGroupModel
+        ? { seedream_group: !!cfg.seedreamGroup, seedream_max_images: cfg.seedreamMaxImages }
+        : {}
     const res = await api.post(
         '/api/generate/single',
         {
@@ -2216,12 +2388,14 @@ const runImageTask = async (task) => {
             quality: cfg.quality,
             subject: cfg.subject,
             grade: cfg.grade,
-            model: cfg.model
+            model: cfg.model,
+            ...seedreamPayload
         },
         { headers: buildModelHeaders(cfg.model) }
     )
     if (!res?.data?.url) throw new Error(res?.data?.detail || 'Image generation failed')
     task.resultUrl = res.data.url
+    task.resultUrls = Array.isArray(res.data.urls) && res.data.urls.length > 1 ? res.data.urls : null
     task.resultType = 'image'
 }
 
@@ -2371,13 +2545,16 @@ const pauseBatchProcessing = () => {
 }
 
 const downloadBatchResults = async () => {
-    const downloadable = batchQueue.value.filter((t) => t.status === 'done' && isLocalResultUrl(t.resultUrl))
-    if (!downloadable.length) {
+    const localUrls = batchQueue.value
+        .filter((t) => t.status === 'done')
+        .flatMap((t) => (Array.isArray(t.resultUrls) && t.resultUrls.length ? t.resultUrls : [t.resultUrl]))
+        .filter((url) => isLocalResultUrl(url))
+    if (!localUrls.length) {
         message.error(localeStore.t('batch.error_no_downloadable'))
         return
     }
     try {
-        const filenames = downloadable.map((t) => decodeURIComponent(t.resultUrl.split('/').pop()))
+        const filenames = [...new Set(localUrls.map((url) => decodeURIComponent(url.split('/').pop())))]
         const res = await api.post('/api/download/batch', { filenames }, { responseType: 'blob' })
         const blob = new Blob([res.data], { type: 'application/zip' })
         const url = URL.createObjectURL(blob)
@@ -2387,7 +2564,11 @@ const downloadBatchResults = async () => {
         a.click()
         URL.revokeObjectURL(url)
 
-        const skipped = batchQueue.value.filter((t) => t.status === 'done' && !isLocalResultUrl(t.resultUrl))
+        const skipped = batchQueue.value.filter((t) => {
+            if (t.status !== 'done') return false
+            const urls = Array.isArray(t.resultUrls) && t.resultUrls.length ? t.resultUrls : [t.resultUrl]
+            return !urls.some((url) => isLocalResultUrl(url))
+        })
         if (skipped.length) message.info(localeStore.t('batch.download_partial'))
     } catch (e) {
         message.error('Download failed')
@@ -2448,6 +2629,7 @@ const loadUserKeyPools = () => {
     expandedUserPools.clear()
     if (userKeyPools.value.length) reorderUserKeyPools(false)
     userPoolsDirty.value = false
+    ensureUserPoolModelDefaults()
 }
 
 const addUserKeyPool = () => {
@@ -2477,9 +2659,35 @@ const getUserModelOptionsForService = (service) => {
 
 const handleUserServiceChange = (pool) => {
     const options = getUserModelOptionsForService(pool.service)
+    if (!options.length) {
+        return
+    }
     const current = String(pool.models || '').trim()
-    if (current && !options.some((opt) => opt.value === current)) {
-        pool.models = ''
+    if (!current) {
+        pool.models = options[0].value
+    }
+}
+
+function ensureUserPoolModelDefaults() {
+    if (!userKeyPools.value.length) return
+    userKeyPools.value.forEach((pool) => {
+        const options = getUserModelOptionsForService(pool.service)
+        if (!options.length) return
+        const current = String(pool.models || '').trim()
+        if (!current) {
+            pool.models = options[0].value
+        }
+    })
+}
+
+const handleUserProviderChange = (pool) => {
+    if (!pool) return
+    const provider = normalizePlatform(pool.provider)
+    const defaultUrl = USER_PROVIDER_BASE_URLS[provider]
+    if (!defaultUrl) return
+    const current = String(pool.base_url || '').trim()
+    if (!current) {
+        pool.base_url = defaultUrl
     }
 }
 
@@ -2553,6 +2761,8 @@ const handleSaveUserPools = () => {
     saveUserKeyPools(serializeUserKeyPools())
     userPoolsDirty.value = false
     message.success(localeStore.t('settings.save_success'))
+    clearModelCatalogCache()
+    loadModelCatalog()
 }
 
 // Admin

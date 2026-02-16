@@ -1,5 +1,5 @@
 import base64
-from typing import Any, Dict, Optional, Iterable
+from typing import Any, Dict, Optional, Iterable, List
 from urllib.parse import quote
 
 import requests
@@ -8,6 +8,9 @@ import requests
 DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_ARK_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 DEFAULT_VEO_BASE_URL = "https://api.vectorengine.ai"
+DEFAULT_BAILIAN_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
+BAILIAN_VIDEO_PATH = "/services/aigc/video-generation/video-synthesis"
+BAILIAN_TASK_PATH = "/tasks/{task_id}"
 
 try:
     from volcenginesdkarkruntime import Ark
@@ -64,11 +67,35 @@ class VideoGenerator:
         return f"{value}/api/v3"
 
     @staticmethod
+    def _normalize_ark_resolution(resolution: Optional[str]) -> Optional[str]:
+        if not resolution:
+            return None
+        text = str(resolution).strip().lower()
+        if text in ("480", "480p"):
+            return "480p"
+        if text in ("720", "720p"):
+            return "720p"
+        if text in ("1080", "1080p", "4k"):
+            return "1080p"
+        return None
+
+    @staticmethod
     def _is_ark_model(model: Optional[str]) -> bool:
         if not model:
             return False
         text = str(model).strip().lower()
         return "wan2-" in text or "doubao" in text or "seedance" in text or "ark" in text or "volc" in text
+
+    @staticmethod
+    def _is_bailian_i2v_model(model: Optional[str]) -> bool:
+        if not model:
+            return False
+        text = str(model).strip().lower()
+        if "wanx" in text:
+            return True
+        if "wan2." in text or "wan2-" in text:
+            return True
+        return False
 
     @staticmethod
     def _is_veo_model(model: Optional[str]) -> bool:
@@ -86,6 +113,29 @@ class VideoGenerator:
     def _normalize_veo_base_url(base_url: Optional[str]) -> str:
         value = (base_url or "").strip().rstrip("/")
         return value or DEFAULT_VEO_BASE_URL
+
+    @staticmethod
+    def _normalize_bailian_base_url(base_url: Optional[str]) -> str:
+        value = (base_url or "").strip().rstrip("/")
+        if not value:
+            return DEFAULT_BAILIAN_BASE_URL
+        api_index = value.find("/api/v1")
+        if api_index != -1:
+            return value[: api_index + len("/api/v1")]
+        return f"{value}/api/v1"
+
+    @staticmethod
+    def _normalize_bailian_resolution(resolution: Optional[str]) -> Optional[str]:
+        if not resolution:
+            return None
+        text = str(resolution).strip().lower()
+        if text in ("480", "480p"):
+            return "480P"
+        if text in ("720", "720p"):
+            return "720P"
+        if text in ("1080", "1080p", "4k"):
+            return "1080P"
+        return None
 
     @staticmethod
     def _map_veo_model(model: str) -> str:
@@ -125,6 +175,55 @@ class VideoGenerator:
         }
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
+        try:
+            if method.upper() == "GET":
+                resp = requests.get(url, headers=headers, timeout=timeout)
+            else:
+                resp = requests.post(url, headers=headers, json=payload or {}, timeout=timeout)
+        except Exception as exc:
+            return {"error": f"Request error: {exc}"}
+        return self._coerce_response(resp)
+
+    def _request_ark(
+        self,
+        method: str,
+        url: str,
+        api_key: Optional[str],
+        payload: Optional[Dict[str, Any]] = None,
+        timeout: int = 120,
+    ) -> Dict[str, Any]:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        try:
+            if method.upper() == "GET":
+                resp = requests.get(url, headers=headers, timeout=timeout)
+            else:
+                resp = requests.post(url, headers=headers, json=payload or {}, timeout=timeout)
+        except Exception as exc:
+            return {"error": f"Request error: {exc}"}
+        return self._coerce_response(resp)
+
+    def _request_bailian(
+        self,
+        method: str,
+        url: str,
+        api_key: Optional[str],
+        payload: Optional[Dict[str, Any]] = None,
+        async_call: bool = False,
+        timeout: int = 120,
+    ) -> Dict[str, Any]:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+        if async_call:
+            headers["X-DashScope-Async"] = "enable"
         try:
             if method.upper() == "GET":
                 resp = requests.get(url, headers=headers, timeout=timeout)
@@ -225,6 +324,7 @@ class VideoGenerator:
                 prompt=prompt,
                 model=model,
                 image_url=image_url,
+                aspect_ratio=aspect_ratio,
                 resolution=resolution,
                 duration_seconds=duration_seconds,
                 api_key=api_key,
@@ -252,7 +352,15 @@ class VideoGenerator:
                 base_url=base_url,
             )
         if normalized_platform == "bailian":
-            return {"error": "Bailian video is not supported in this endpoint. Please use digital human models."}
+            return self.submit_task_bailian_i2v(
+                prompt=prompt,
+                model=model,
+                image_url=image_url,
+                resolution=resolution,
+                duration_seconds=duration_seconds,
+                api_key=api_key,
+                base_url=base_url,
+            )
 
         if self._is_sora_model(model):
             return self.submit_task_sora(
@@ -275,11 +383,22 @@ class VideoGenerator:
                 api_key=api_key,
                 base_url=base_url,
             )
+        if self._is_bailian_i2v_model(model):
+            return self.submit_task_bailian_i2v(
+                prompt=prompt,
+                model=model,
+                image_url=image_url,
+                resolution=resolution,
+                duration_seconds=duration_seconds,
+                api_key=api_key,
+                base_url=base_url,
+            )
         if self._is_ark_model(model):
             return self.submit_task_ark(
                 prompt=prompt,
                 model=model,
                 image_url=image_url,
+                aspect_ratio=aspect_ratio,
                 resolution=resolution,
                 duration_seconds=duration_seconds,
                 api_key=api_key,
@@ -316,6 +435,44 @@ class VideoGenerator:
             payload["parameters"] = parameters
 
         return self._request("POST", url, resolved_key, payload=payload, timeout=120)
+
+    def submit_task_bailian_i2v(
+        self,
+        prompt: str,
+        model: str,
+        image_url: Optional[str] = None,
+        resolution: Optional[str] = None,
+        duration_seconds: Optional[int] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        resolved_key = self._resolve_api_key(api_key)
+        if not resolved_key:
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
+        if not image_url:
+            return {"error": "Bailian i2v requires image_url."}
+
+        resolved_base = self._normalize_bailian_base_url(base_url)
+        url = f"{resolved_base}{BAILIAN_VIDEO_PATH}"
+        payload: Dict[str, Any] = {
+            "model": model,
+            "input": {
+                "img_url": image_url,
+            }
+        }
+        if prompt:
+            payload["input"]["prompt"] = prompt
+
+        params: Dict[str, Any] = {}
+        normalized_resolution = self._normalize_bailian_resolution(resolution)
+        if normalized_resolution:
+            params["resolution"] = normalized_resolution
+        if duration_seconds is not None:
+            params["duration"] = int(duration_seconds)
+        if params:
+            payload["parameters"] = params
+
+        return self._request_bailian("POST", url, resolved_key, payload=payload, async_call=True, timeout=120)
 
     def submit_task_sora(
         self,
@@ -381,6 +538,7 @@ class VideoGenerator:
         prompt: str,
         model: str,
         image_url: Optional[str] = None,
+        aspect_ratio: Optional[str] = None,
         resolution: Optional[str] = None,
         duration_seconds: Optional[int] = None,
         api_key: Optional[str] = None,
@@ -389,24 +547,34 @@ class VideoGenerator:
         resolved_key = self._resolve_ark_key(api_key)
         if not resolved_key:
             return {"error": "Missing API Key (configure model or provide x-video-key)."}
-        if Ark is None:
-            return {"error": "volcengine-python-sdk[ark] is not installed."}
-
         resolved_base = self._normalize_ark_base_url(base_url)
-        final_prompt = self._append_ark_flags(prompt, resolution, duration_seconds)
-        content = [{"type": "text", "text": final_prompt}]
+        url = f"{resolved_base}/contents/generations/tasks"
+
+        content: List[Dict[str, Any]] = []
+        if prompt:
+            content.append({"type": "text", "text": prompt})
         if image_url:
             content.append({
                 "type": "image_url",
-                "image_url": {"url": image_url}
+                "image_url": {"url": image_url},
+                "role": "first_frame",
             })
+        if not content:
+            return {"error": "Ark request requires prompt or image_url."}
 
-        client = Ark(base_url=resolved_base, api_key=resolved_key)
-        try:
-            result = client.content_generation.tasks.create(model=model, content=content)
-        except Exception as exc:
-            return {"error": f"Ark request error: {exc}"}
-        return self._coerce_ark_payload(result)
+        payload: Dict[str, Any] = {
+            "model": model,
+            "content": content,
+        }
+        normalized_resolution = self._normalize_ark_resolution(resolution)
+        if normalized_resolution:
+            payload["resolution"] = normalized_resolution
+        if aspect_ratio:
+            payload["ratio"] = aspect_ratio
+        if duration_seconds is not None:
+            payload["duration"] = int(duration_seconds)
+
+        return self._request_ark("POST", url, resolved_key, payload=payload, timeout=120)
 
     def get_task_result(
         self,
@@ -420,10 +588,16 @@ class VideoGenerator:
             op_text = (operation_name or "").lower()
             if "vectorengine.ai" in base_text or op_text.startswith("video_") or "veo" in op_text:
                 return self.get_task_result_veo(operation_name, api_key=api_key, base_url=base_url)
+            if "dashscope.aliyuncs.com" in base_text or "dashscope" in base_text:
+                return self.get_task_result_bailian(operation_name, api_key=api_key, base_url=base_url)
+            if "volces.com" in base_text or "ark" in base_text:
+                return self.get_task_result_ark(operation_name, api_key=api_key, base_url=base_url)
         if self._is_sora_model(model):
             return self.get_task_result_veo(operation_name, api_key=api_key, base_url=base_url)
         if self._is_veo_model(model):
             return self.get_task_result_veo(operation_name, api_key=api_key, base_url=base_url)
+        if self._is_bailian_i2v_model(model):
+            return self.get_task_result_bailian(operation_name, api_key=api_key, base_url=base_url)
         if self._is_ark_model(model):
             return self.get_task_result_ark(operation_name, api_key=api_key, base_url=base_url)
 
@@ -438,6 +612,19 @@ class VideoGenerator:
         else:
             url = f"{resolved_base}/{op.lstrip('/')}"
         return self._request("GET", url, resolved_key, timeout=60)
+
+    def get_task_result_bailian(
+        self,
+        task_id: str,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        resolved_key = self._resolve_api_key(api_key)
+        if not resolved_key:
+            return {"error": "Missing API Key (configure model or provide x-video-key)."}
+        resolved_base = self._normalize_bailian_base_url(base_url)
+        url = f"{resolved_base}{BAILIAN_TASK_PATH.format(task_id=task_id)}"
+        return self._request_bailian("GET", url, resolved_key, payload=None, timeout=60)
 
     def get_task_result_veo(
         self,
@@ -481,16 +668,9 @@ class VideoGenerator:
         resolved_key = self._resolve_ark_key(api_key)
         if not resolved_key:
             return {"error": "Missing API Key (configure model or provide x-video-key)."}
-        if Ark is None:
-            return {"error": "volcengine-python-sdk[ark] is not installed."}
-
         resolved_base = self._normalize_ark_base_url(base_url)
-        client = Ark(base_url=resolved_base, api_key=resolved_key)
-        try:
-            result = client.content_generation.tasks.get(task_id=task_id)
-        except Exception as exc:
-            return {"error": f"Ark request error: {exc}"}
-        return self._coerce_ark_payload(result)
+        url = f"{resolved_base}/contents/generations/tasks/{task_id}"
+        return self._request_ark("GET", url, resolved_key, payload=None, timeout=60)
 
     @staticmethod
     def extract_error(payload: Dict[str, Any]) -> Optional[str]:
@@ -505,6 +685,11 @@ class VideoGenerator:
         if isinstance(status_code, int) and status_code >= 400:
             message = payload.get("message") or payload.get("error") or payload.get("raw")
             return str(message) if message else f"HTTP {status_code}"
+        code = payload.get("code")
+        if code not in (None, "", "0", 0, "200", 200, "SUCCESS", "OK"):
+            message = payload.get("message") or payload.get("error") or payload.get("raw")
+            if message:
+                return str(message)
         if payload.get("done") is True and payload.get("response") is None:
             return "Video generation failed without response."
         return None

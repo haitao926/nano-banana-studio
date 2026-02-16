@@ -14,6 +14,8 @@ from helpers import (
     _get_model_cost,
     _get_video_base_url,
     _get_wav_duration_seconds,
+    _resolve_public_media_url,
+    _resolve_oss_url,
     _resolve_local_audio_path,
     _safe_log_payload,
     determine_key_execution_mode,
@@ -39,12 +41,19 @@ async def submit_digital_human_task(
     raw_audio_url = req.audio_url.strip()
     audio_url = raw_audio_url
 
+    img_url = _resolve_public_media_url(img_url)
+    audio_url = _resolve_public_media_url(audio_url)
+
     if ext_base:
         if img_url.startswith("/"):
             img_url = f"{ext_base}{img_url}"
         if audio_url.startswith("/"):
             audio_url = f"{ext_base}{audio_url}"
-
+    if img_url.startswith("oss://") or audio_url.startswith("oss://"):
+        raise HTTPException(
+            status_code=400,
+            detail="oss:// URL is not supported for digital human. Please provide a public http(s) URL or configure OSS credentials.",
+        )
     _ensure_public_url(img_url, "image_url")
     _ensure_public_url(audio_url, "audio_url")
 

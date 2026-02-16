@@ -208,6 +208,7 @@ import api from '../services/api'
 import { fetchModelCatalog } from '../services/modelCatalog'
 import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
+import { selectUserPoolWithFallback } from '../utils/userKeyPools'
 
 const localeStore = useLocaleStore()
 const message = useMessage()
@@ -348,10 +349,27 @@ watch(
     { immediate: true }
 )
 
+const applyUserPoolHeaders = (headers, service, model) => {
+    const pool = selectUserPoolWithFallback(service, model)
+    if (!pool?.key) return headers
+    if (service === 'audio') {
+        headers['x-tts-key'] = pool.key
+        return headers
+    }
+    if (service === 'video') {
+        headers['x-video-key'] = pool.key
+        if (pool.base_url) headers['x-video-base-url'] = pool.base_url
+        return headers
+    }
+    headers['x-model-key'] = pool.key
+    if (pool.base_url) headers['x-model-base-url'] = pool.base_url
+    return headers
+}
+
 const buildVideoHeaders = (modelHint) => {
     const headers = {}
     if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
-    return headers
+    return applyUserPoolHeaders(headers, 'video', modelHint)
 }
 
 const handleUploadError = ({ event, message: errorMessage }) => {

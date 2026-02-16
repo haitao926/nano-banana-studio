@@ -79,3 +79,41 @@ def upload_file_to_oss(file: UploadFile) -> str:
 
     public_base = _build_public_base_url(cfg["bucket"], cfg["endpoint"], cfg["public_base_url"])
     return f"{public_base}/{object_key}"
+
+
+def upload_path_to_oss(file_path: str, content_type: str = "") -> str:
+    cfg = get_oss_config()
+    if not cfg["bucket"] or not cfg["endpoint"] or not cfg["access_key_id"] or not cfg["access_key_secret"]:
+        raise HTTPException(status_code=500, detail="OSS is not configured. Set OSS_BUCKET/OSS_ENDPOINT/OSS_ACCESS_KEY_ID/OSS_ACCESS_KEY_SECRET.")
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+
+    try:
+        import oss2
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"OSS SDK not installed: {exc}")
+
+    _, ext = os.path.splitext(file_path)
+    safe_ext = ext if ext else ""
+    key_base = f"upload_{int(time.time())}_{secrets.token_hex(4)}{safe_ext}"
+    prefix = cfg["prefix"].strip("/")
+    object_key = f"{prefix}/{key_base}" if prefix else key_base
+
+    auth = oss2.Auth(cfg["access_key_id"], cfg["access_key_secret"])
+    endpoint = _normalize_endpoint(cfg["endpoint"])
+    bucket = oss2.Bucket(auth, endpoint, cfg["bucket"])
+
+    try:
+        headers = {}
+        if content_type:
+            headers["Content-Type"] = content_type
+        result = bucket.put_object_from_file(object_key, file_path, headers=headers)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"OSS upload failed: {exc}")
+
+    if not (200 <= result.status < 300):
+        raise HTTPException(status_code=500, detail=f"OSS upload failed with status {result.status}")
+
+    public_base = _build_public_base_url(cfg["bucket"], cfg["endpoint"], cfg["public_base_url"])
+    return f"{public_base}/{object_key}"

@@ -146,8 +146,7 @@
                   
                   <!-- Player Card -->
                   <div class="w-full max-w-xl bg-white/90 backdrop-blur-xl p-6 rounded-[24px] border border-white/60 shadow-2xl">
-                      <audio controls class="w-full mb-4 accent-indigo-600">
-                          <source :src="currentAudio.url" :type="currentAudio.type || 'audio/wav'">
+                      <audio :key="currentAudio.url" :src="currentAudio.url" controls class="w-full mb-4 accent-indigo-600">
                           Your browser does not support the audio element.
                       </audio>
                       <div class="text-center">
@@ -196,6 +195,7 @@ import { fetchModelCatalog } from '../services/modelCatalog'
 import { useMessage } from 'naive-ui'
 import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
+import { selectUserPoolWithFallback } from '../utils/userKeyPools'
 import { voiceCatalog } from '../data/voiceCatalog'
 
 const localeStore = useLocaleStore()
@@ -305,10 +305,27 @@ const normalizeAssetUrl = (url) => {
     return `${window.location.origin}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
+const applyUserPoolHeaders = (headers, service, model) => {
+    const pool = selectUserPoolWithFallback(service, model)
+    if (!pool?.key) return headers
+    if (service === 'audio') {
+        headers['x-tts-key'] = pool.key
+        return headers
+    }
+    if (service === 'video') {
+        headers['x-video-key'] = pool.key
+        if (pool.base_url) headers['x-video-base-url'] = pool.base_url
+        return headers
+    }
+    headers['x-model-key'] = pool.key
+    if (pool.base_url) headers['x-model-base-url'] = pool.base_url
+    return headers
+}
+
 const buildTtsHeaders = (model) => {
     const headers = {}
     if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
-    return headers
+    return applyUserPoolHeaders(headers, 'audio', model)
 }
 
 const fetchAudioHistory = async () => {

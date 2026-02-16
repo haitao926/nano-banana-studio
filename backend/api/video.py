@@ -75,7 +75,8 @@ async def generate_video(
 
         prompt = req.prompt.strip()
         is_sora = video_gen._is_sora_model(model)
-        if req.mode == "image" and not (req.image_url or (req.images and len(req.images) > 0)):
+        is_bailian_i2v = video_gen._is_bailian_i2v_model(model)
+        if (req.mode == "image" or is_bailian_i2v) and not (req.image_url or (req.images and len(req.images) > 0)):
             raise HTTPException(status_code=400, detail="image_url or images required for image mode")
         if is_sora and not (req.image_url or (req.images and len(req.images) > 0)):
             raise HTTPException(status_code=400, detail="Sora requires image_url or images")
@@ -85,7 +86,7 @@ async def generate_video(
         image_bytes = None
         image_mime = None
 
-        if req.mode == "image" or is_sora:
+        if req.mode == "image" or is_sora or is_bailian_i2v:
             if req.images:
                 image_urls = [u.strip() for u in req.images if u and u.strip()]
             if not image_urls:

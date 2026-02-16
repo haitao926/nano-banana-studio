@@ -40,6 +40,18 @@ def _build_seedream_image_param(image_url: str) -> Optional[str]:
     return f"data:{mime_type};base64,{encoded}"
 
 
+def _build_seedream_image_params(image_urls: list[str]) -> Optional[list[str]]:
+    if not image_urls:
+        return None
+    params = []
+    for url in image_urls:
+        param = _build_seedream_image_param(url)
+        if not param:
+            return None
+        params.append(param)
+    return params
+
+
 @router.post("/api/generate/single")
 async def generate_single(
     req: SingleGenRequest,
@@ -91,14 +103,28 @@ async def generate_single(
             final_path = None
             seedream_files = []
             seedream_urls = []
+            seedream_group = bool(req.seedream_group and img_gen._supports_seedream_group(request_model))
             seedream_max_images = req.seedream_max_images if req.seedream_max_images and req.seedream_max_images > 0 else 4
+            if seedream_max_images < 1:
+                seedream_max_images = 1
 
             all_ref_urls = _dedupe_preserve_order(
                 [u for u in [req.reference_image_url] + (req.reference_image_urls or []) if u]
             )
+            if is_seedream and len(all_ref_urls) > 14:
+                raise HTTPException(status_code=400, detail="Seedream supports at most 14 reference images.")
+            if seedream_group:
+                remaining = 15 - len(all_ref_urls)
+                if remaining < 1:
+                    raise HTTPException(status_code=400, detail="Seedream group mode supports up to 15 total images (reference + generated).")
+                seedream_max_images = min(seedream_max_images, remaining)
             if all_ref_urls:
                 if is_seedream:
-                    seedream_image = _build_seedream_image_param(all_ref_urls[0])
+                    seedream_image = (
+                        _build_seedream_image_param(all_ref_urls[0])
+                        if len(all_ref_urls) == 1
+                        else _build_seedream_image_params(all_ref_urls)
+                    )
                     if not seedream_image:
                         raise HTTPException(status_code=400, detail="Failed to read reference image")
                     candidates = _build_model_candidates(
@@ -114,7 +140,7 @@ async def generate_single(
                             size=req.size,
                             image_url=seedream_image,
                             max_images=seedream_max_images,
-                            group_mode=req.seedream_group,
+                            group_mode=seedream_group,
                             base_url=candidate.get("base_url"),
                             api_key=candidate.get("key"),
                             model=request_model,
@@ -202,7 +228,7 @@ async def generate_single(
                             size=req.size,
                             image_url=None,
                             max_images=seedream_max_images,
-                            group_mode=req.seedream_group,
+                            group_mode=seedream_group,
                             base_url=candidate.get("base_url"),
                             api_key=candidate.get("key"),
                             model=request_model,
@@ -538,6 +564,11 @@ async def optimize_prompt_endpoint(
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
     try:
+        prompt_default = _get_default_model("prompt")
+        prompt_model = (prompt_default or req.model or "").strip()
+        if not prompt_model:
+            raise HTTPException(status_code=400, detail="请先在模型配置中添加绘图模型")
+        prompt_service = "prompt" if prompt_default else "image"
         _, runtime_key, runtime_base_url = determine_execution_mode(
             current_user,
             x_model_key,
@@ -550,11 +581,6 @@ async def optimize_prompt_endpoint(
         _enforce_rate_limit(request, current_user)
 
         optimized = None
-        prompt_default = _get_default_model("prompt")
-        prompt_model = (prompt_default or req.model or "").strip()
-        if not prompt_model:
-            raise HTTPException(status_code=400, detail="请先在模型配置中添加绘图模型")
-        prompt_service = "prompt" if prompt_default else "image"
         candidates = _build_model_candidates(
             prompt_service,
             model=prompt_model,

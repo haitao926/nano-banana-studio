@@ -26,7 +26,7 @@ def synthesize_tts(
     if response_format != "wav":
         raise RuntimeError("REST TTS only supports wav output.")
 
-    # REST (MultiModalConversation) mode for qwen3-tts-flash / qwen-tts
+    # REST (MultiModalConversation) mode for qwen3-tts-flash / qwen-tts-latest
     try:
         import dashscope
     except Exception as exc:

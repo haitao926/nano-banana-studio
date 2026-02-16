@@ -150,7 +150,7 @@ async def test_model(req: ModelTestRequest, current_user: Dict = Depends(get_cur
         prompt = (req.prompt or "测试图片生成").strip()
         size = req.size
         if not size:
-            size = "1K" if "seedream" in model_name.lower() else "1024x1024"
+            size = "2K" if "seedream" in model_name.lower() else "1024x1024"
         for candidate in candidates:
             result = img_gen.generate_image(
                 prompt,
@@ -197,10 +197,14 @@ async def test_model(req: ModelTestRequest, current_user: Dict = Depends(get_cur
     if service == "video":
         prompt = (req.prompt or "测试视频生成").strip()
         video_base_url = _get_video_base_url()
+        image_url = (req.image_url or "").strip() or None
+        if (video_gen._is_sora_model(model_name) or video_gen._is_bailian_i2v_model(model_name)) and not image_url:
+            raise HTTPException(status_code=400, detail="Video test requires image_url for this model.")
         for candidate in candidates:
             response = video_gen.submit_task(
                 prompt=prompt,
                 model=model_name,
+                image_url=image_url,
                 api_key=candidate.get("key"),
                 base_url=candidate.get("base_url") or video_base_url,
                 platform=candidate.get("platform") or req.platform,
