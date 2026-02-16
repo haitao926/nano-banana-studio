@@ -96,7 +96,7 @@ const selectFromPools = (pools, service, model) => {
   const reqService = String(service || '').trim().toLowerCase()
   const reqProvider = inferProvider(model)
   const modelLower = model ? String(model).trim().toLowerCase() : ''
-  const candidates = pools.filter((pool) => {
+  let candidates = pools.filter((pool) => {
     if (!pool.enabled) return false
     if (reqService && !pool.services.includes(reqService)) return false
     if (pool.provider && pool.provider !== 'vector' && reqProvider && pool.provider !== reqProvider) return false
@@ -105,6 +105,14 @@ const selectFromPools = (pools, service, model) => {
     }
     return true
   })
+  if (!candidates.length && modelLower) {
+    candidates = pools.filter((pool) => {
+      if (!pool.enabled) return false
+      if (!pool.models.length) return false
+      if (pool.provider && pool.provider !== 'vector' && reqProvider && pool.provider !== reqProvider) return false
+      return pool.models.some((m) => String(m).trim().toLowerCase() === modelLower)
+    })
+  }
   if (!candidates.length) return null
   candidates.sort((a, b) => (a.priority || 100) - (b.priority || 100))
   const first = candidates[0]
