@@ -780,10 +780,14 @@
                             </button>
                         </div>
                     </div>
-                    <div v-if="filteredSystemModels.length === 0" class="text-xs text-slate-400">
+                    <div v-if="!renderModelGroups.some((group) => group.items.length)" class="text-xs text-slate-400">
                         {{ tSettings('settings.model_empty', '暂无模型配置') }}
                     </div>
-                    <div v-for="entry in filteredSystemModels" :key="entry.index" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
+                    <div v-for="group in renderModelGroups" :key="group.id" class="space-y-3">
+                        <div v-if="modelViewMode === 'platform' && group.items.length" class="px-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                            {{ group.label }}
+                        </div>
+                        <div v-for="entry in group.items" :key="entry.index" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
                         <div class="flex items-center justify-between">
                             <div class="text-xs text-slate-400">#{{ entry.index + 1 }}</div>
                             <div class="flex items-center gap-3">
@@ -856,6 +860,7 @@
                                 {{ tSettings('settings.model_test_view', '查看结果') }}
                             </a>
                         </div>
+                    </div>
                     </div>
                 </div>
 
@@ -991,6 +996,7 @@ import { fetchModelCatalog, clearModelCatalogCache } from '../services/modelCata
 import { useAuthStore } from '../stores/auth'
 import { useLocaleStore } from '../stores/locale'
 import { readUserKeyPools, saveUserKeyPools, buildLegacyPools, selectUserPoolWithFallback } from '../utils/userKeyPools'
+import { loadLocalHistory, prependLocalHistory, mergeLocalHistory } from '../utils/localHistory'
 import DigitalHumanPanel from '../components/DigitalHumanPanel.vue'
 import { voiceCatalog } from '../data/voiceCatalog'
 
@@ -1000,6 +1006,7 @@ const emit = defineEmits(['update-tab'])
 const authStore = useAuthStore()
 const localeStore = useLocaleStore()
 const message = useMessage()
+const IMAGE_HISTORY_KEY = 'nbs_history_image'
 
 // --- State ---
 const loginForm = reactive({ username: '', password: '' })
@@ -1561,12 +1568,26 @@ const activeModelGroups = computed(() => (
 
 const systemModelsWithIndex = computed(() => (systemModels.value || []).map((item, index) => ({ item, index })))
 
-const filteredSystemModels = computed(() => {
+const renderModelGroups = computed(() => {
     const list = systemModelsWithIndex.value
     if (modelViewMode.value === 'platform') {
-        return list.filter(({ item }) => normalizeModelPlatform(item) === activeModelGroup.value)
+        const platform = normalizePlatform(activeModelGroup.value)
+        const filtered = list.filter(({ item }) => normalizeModelPlatform(item) === platform)
+        return modelServiceGroups.value.map((group) => ({
+            id: group.id,
+            label: group.label,
+            items: filtered.filter(({ item }) => String(item?.service || 'image').trim().toLowerCase() === group.id)
+        }))
     }
-    return list.filter(({ item }) => String(item?.service || 'image').trim().toLowerCase() === activeModelGroup.value)
+    const service = String(activeModelGroup.value || '').trim().toLowerCase()
+    const label = modelServiceGroups.value.find((group) => group.id === service)?.label || service
+    return [
+        {
+            id: service,
+            label,
+            items: list.filter(({ item }) => String(item?.service || 'image').trim().toLowerCase() === service)
+        }
+    ]
 })
 
 const modelTestStates = reactive({})
@@ -1915,6 +1936,21 @@ const handleGenerateSingle = async () => {
             { headers: buildModelHeaders(settings.value.model) }
         )
         currentDisplayImage.value = { ...res.data, is_mine: true, prompt: inputText.value }
+        if (!authStore.isLoggedIn) {
+            persistLocalImage({
+                id: res.data?.id || `local_${Date.now()}`,
+                url: res.data?.url || res.data?.urls?.[0],
+                urls: Array.isArray(res.data?.urls) ? res.data.urls : undefined,
+                prompt: inputText.value,
+                enhanced_prompt: res.data?.enhanced_prompt,
+                subject: settings.value.subject,
+                grade: settings.value.grade,
+                aspectRatio: settings.value.aspectRatio,
+                model: settings.value.model,
+                time: Date.now(),
+                is_mine: true
+            })
+        }
         message.success('Generated')
         fetchHistory()
         authStore.checkAuth()
@@ -1940,12 +1976,32 @@ const handleGenerateSingle = async () => {
     finally { processing.value = false }
 }
 
+const getLocalImageKey = (item) => item?.id || item?.url
+
+const persistLocalImage = (entry) => {
+    const normalized = {
+        ...entry,
+        id: entry?.id || `local_${Date.now()}`,
+        url: entry?.url,
+        thumbnail_url: entry?.thumbnail_url || entry?.url,
+        is_mine: true
+    }
+    const updated = prependLocalHistory(IMAGE_HISTORY_KEY, normalized, { idResolver: getLocalImageKey })
+    galleryImages.value = mergeLocalHistory(updated, galleryImages.value, { idResolver: getLocalImageKey })
+}
+
 const fetchHistory = async () => {
     if (!authStore.isLoggedIn && !authStore.isGuest) return
     try {
         const headers = authStore.isLoggedIn && authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
         const res = await api.get('/api/gallery', { headers })
-        galleryImages.value = res.data
+        const remoteImages = Array.isArray(res.data) ? res.data : []
+        if (!authStore.isLoggedIn) {
+            const localImages = loadLocalHistory(IMAGE_HISTORY_KEY)
+            galleryImages.value = mergeLocalHistory(localImages, remoteImages, { idResolver: getLocalImageKey })
+            return
+        }
+        galleryImages.value = remoteImages
     } catch(e) {}
 }
 
@@ -2022,6 +2078,21 @@ const handleQuickRefine = async () => {
             { headers: buildModelHeaders(settings.value.model) }
         )
         currentDisplayImage.value = { ...res.data, is_mine: true, prompt: quickRefineText.value }
+        if (!authStore.isLoggedIn) {
+            persistLocalImage({
+                id: res.data?.id || `local_${Date.now()}`,
+                url: res.data?.url || res.data?.urls?.[0],
+                urls: Array.isArray(res.data?.urls) ? res.data.urls : undefined,
+                prompt: quickRefineText.value,
+                enhanced_prompt: res.data?.enhanced_prompt,
+                subject: settings.value.subject,
+                grade: settings.value.grade,
+                aspectRatio: settings.value.aspectRatio,
+                model: settings.value.model,
+                time: Date.now(),
+                is_mine: true
+            })
+        }
         
         // Sync to main editor
         inputText.value = quickRefineText.value

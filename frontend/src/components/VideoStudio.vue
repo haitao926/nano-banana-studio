@@ -212,10 +212,12 @@ import DigitalHumanPanel from './DigitalHumanPanel.vue'
 import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
 import { selectUserPoolWithFallback } from '../utils/userKeyPools'
+import { loadLocalHistory, prependLocalHistory } from '../utils/localHistory'
 
 const localeStore = useLocaleStore()
 const authStore = useAuthStore()
 const message = useMessage()
+const VIDEO_HISTORY_KEY = 'nbs_history_video'
 
 const modeOptions = [
   { label: localeStore.t('video.text_mode'), value: 'text' },
@@ -240,6 +242,7 @@ const resultVideoUrl = ref('')
 const pollTimer = ref(null)
 const videoHistory = ref([])
 const modelCatalog = ref([])
+const pendingVideoMeta = ref(null)
 
 const loadModelCatalog = async () => {
   try {
@@ -267,6 +270,10 @@ const buildCatalogOptions = (service, withCost = false) => {
 }
 
 const videoModelOptionsAll = computed(() => buildCatalogOptions('video', true))
+const isI2vModelName = (value) => {
+  const text = String(value || '').trim().toLowerCase()
+  return text.includes('i2v') || text.includes('wanx') || text.includes('wan2.')
+}
 const defaultVideoModel = computed(() => {
   const options = videoModelOptionsAll.value || []
   const nonSora = options.find((option) => !String(option.value).toLowerCase().includes('sora'))
@@ -300,8 +307,7 @@ const formatVideoCostHint = (cost) => {
 const videoCostHint = computed(() => (settings.value.model ? formatVideoCostHint(getVideoCreditCost(settings.value.model)) : ''))
 const isSoraModel = computed(() => String(settings.value.model || '').trim().toLowerCase().includes('sora'))
 const isBailianI2vModel = computed(() => {
-  const text = String(settings.value.model || '').trim().toLowerCase()
-  return text.includes('i2v') || text.includes('wanx') || text.includes('wan2.')
+  return isI2vModelName(settings.value.model)
 })
 const requiresImage = computed(() => activeMode.value === 'image' || isSoraModel.value || isBailianI2vModel.value)
 
@@ -311,7 +317,7 @@ watch(
     if (mode !== 'image' && String(model || '').toLowerCase().includes('sora')) {
       settings.value.model = defaultVideoModel.value
     }
-    if (mode !== 'image' && isBailianI2vModel.value) {
+    if (mode === 'text' && isI2vModelName(model)) {
       activeMode.value = 'image'
     }
   }
@@ -351,6 +357,18 @@ const filteredHistory = computed(() => {
 })
 
 const setMode = (mode) => {
+  if (mode === 'text' && isI2vModelName(settings.value.model)) {
+    const fallback = (videoModelOptionsAll.value || []).find((option) => !isI2vModelName(option.value))
+    if (fallback?.value) {
+      settings.value.model = fallback.value
+    } else {
+      message.warning('当前仅配置图生视频模型，请先添加文生视频模型')
+      activeMode.value = 'image'
+      resetState()
+      fetchVideoHistory()
+      return
+    }
+  }
   activeMode.value = mode
   resetState()
   if (mode !== 'digital_human') fetchVideoHistory()
@@ -441,6 +459,13 @@ const submitTask = async () => {
   loading.value = true
   status.value = 'processing'
   resultVideoUrl.value = ''
+  pendingVideoMeta.value = {
+    id: `${Date.now()}`,
+    prompt: prompt.value.trim(),
+    mode: activeMode.value,
+    durationSeconds: settings.value.durationSeconds,
+    model: settings.value.model
+  }
   try {
     const payload = {
       mode: activeMode.value,
@@ -476,6 +501,9 @@ const startPolling = () => {
       const data = res.data?.data || {}
       if (data.status) status.value = data.status
       if (data.video_url) resultVideoUrl.value = data.video_url
+      if (status.value === 'done' && data.video_url && !authStore.token) {
+        persistLocalVideo(data.video_url)
+      }
       if (status.value === 'done' || status.value === 'failed' || status.value === 'expired') {
         stopPolling()
         fetchVideoHistory()
@@ -495,6 +523,10 @@ const stopPolling = () => {
 }
 
 const fetchVideoHistory = async () => {
+  if (!authStore.token) {
+    videoHistory.value = loadLocalHistory(VIDEO_HISTORY_KEY)
+    return
+  }
   try {
     const res = await api.get('/api/video/history', { headers: buildVideoHeaders(settings.value.model) })
     videoHistory.value = Array.isArray(res.data) ? res.data : []
@@ -503,6 +535,24 @@ const fetchVideoHistory = async () => {
     if (status === 401) message.warning('请先登录后查看历史记录')
     videoHistory.value = []
   }
+}
+
+const persistLocalVideo = (videoUrl) => {
+  if (!videoUrl) return
+  const meta = pendingVideoMeta.value || {}
+  const entry = {
+    id: meta.id || taskId.value || `${Date.now()}`,
+    task_id: taskId.value || '',
+    video_url: videoUrl,
+    prompt: meta.prompt || prompt.value.trim(),
+    duration: Number(meta.durationSeconds || settings.value.durationSeconds || 0),
+    model: meta.model || settings.value.model,
+    mode: meta.mode || activeMode.value,
+    created_at: Math.floor(Date.now() / 1000)
+  }
+  videoHistory.value = prependLocalHistory(VIDEO_HISTORY_KEY, entry, {
+    idResolver: (item) => item?.id || item?.task_id || item?.video_url
+  })
 }
 
 const formatTime = (ts) => {

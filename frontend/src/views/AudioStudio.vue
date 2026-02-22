@@ -197,11 +197,13 @@ import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
 import { selectUserPoolWithFallback } from '../utils/userKeyPools'
 import { voiceCatalog } from '../data/voiceCatalog'
+import { loadLocalHistory, prependLocalHistory } from '../utils/localHistory'
 
 const localeStore = useLocaleStore()
 const message = useMessage()
 const authStore = useAuthStore()
 const modelCatalog = ref([])
+const AUDIO_HISTORY_KEY = 'nbs_history_audio'
 
 const loadModelCatalog = async () => {
     try {
@@ -283,7 +285,9 @@ const processingTitle = computed(() => {
 const processingSubtitle = computed(() => (settings.mode === 'speech' ? 'AI Voice Engine' : 'Audio Model'))
 const formatTime = (timestamp) => {
     try {
-        return new Date(Number(timestamp)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const value = Number(timestamp || Date.now())
+        const ms = value < 1e12 ? value * 1000 : value
+        return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     } catch (e) {
         return '—'
     }
@@ -329,7 +333,13 @@ const buildTtsHeaders = (model) => {
 }
 
 const fetchAudioHistory = async () => {
-    if (!authStore.token) return
+    if (!authStore.token) {
+        history.value = loadLocalHistory(AUDIO_HISTORY_KEY)
+        if (!currentAudio.value && history.value.length) {
+            currentAudio.value = history.value[0]
+        }
+        return
+    }
     try {
         const res = await api.get('/api/audio/history', { headers: buildTtsHeaders(settings.model) })
         if (Array.isArray(res.data)) {
@@ -402,7 +412,13 @@ const handleGenerate = async () => {
                 type: historyItem.type || res.data.type || 'audio/wav'
             }
             currentAudio.value = newAudio
-            history.value.unshift(newAudio)
+            if (!authStore.token) {
+                history.value = prependLocalHistory(AUDIO_HISTORY_KEY, newAudio, {
+                    idResolver: (item) => item?.id || item?.url
+                })
+            } else {
+                history.value.unshift(newAudio)
+            }
             authStore.checkAuth()
             message.success('Success')
         } else {
@@ -415,7 +431,13 @@ const handleGenerate = async () => {
                 duration: settings.duration
             }
             currentAudio.value = newAudio
-            history.value.unshift(newAudio)
+            if (!authStore.token) {
+                history.value = prependLocalHistory(AUDIO_HISTORY_KEY, newAudio, {
+                    idResolver: (item) => item?.id || item?.url
+                })
+            } else {
+                history.value.unshift(newAudio)
+            }
             message.success('Success')
         }
     } catch (err) {

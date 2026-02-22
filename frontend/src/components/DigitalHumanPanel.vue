@@ -209,11 +209,13 @@ import { fetchModelCatalog } from '../services/modelCatalog'
 import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
 import { selectUserPoolWithFallback } from '../utils/userKeyPools'
+import { loadLocalHistory, prependLocalHistory } from '../utils/localHistory'
 
 const localeStore = useLocaleStore()
 const message = useMessage()
 const authStore = useAuthStore()
 const uploadAction = import.meta.env.VITE_PUBLIC_UPLOAD_URL || '/api/upload'
+const DIGITAL_HUMAN_HISTORY_KEY = 'nbs_history_digital_human'
 
 const MIN_IMAGE_DIM = 400
 const MAX_IMAGE_DIM = 7000
@@ -269,6 +271,7 @@ const status = ref('') // processing, done, failed
 const resultVideoUrl = ref('')
 const pollTimer = ref(null)
 const videoHistory = ref([])
+const pendingMeta = ref(null)
 
 const imageMeta = ref({ size: 0, width: 0, height: 0, type: '' })
 const audioMeta = ref({ size: 0, duration: 0, type: '' })
@@ -496,6 +499,12 @@ const submitTask = async () => {
     status.value = 'processing'
     resultVideoUrl.value = ''
     taskId.value = ''
+    pendingMeta.value = {
+        id: `${Date.now()}`,
+        prompt: prompt.value.trim(),
+        model: model.value,
+        duration: Math.round(audioMeta.value?.duration || 0)
+    }
 
     if (pollTimer.value) clearInterval(pollTimer.value)
 
@@ -555,6 +564,7 @@ const startPolling = () => {
 
             if (statusValue === 'done' && videoUrlValue) {
                 resultVideoUrl.value = videoUrlValue
+                if (!authStore.token) persistLocalHistory(videoUrlValue)
                 message.success('Render Complete!')
                 clearInterval(pollTimer.value)
                 fetchVideoHistory()
@@ -576,13 +586,34 @@ const resetTaskState = () => {
 }
 
 const fetchVideoHistory = async () => {
-    if (!authStore.token) return
+    if (!authStore.token) {
+        videoHistory.value = loadLocalHistory(DIGITAL_HUMAN_HISTORY_KEY)
+        return
+    }
     try {
         const res = await api.get('/api/video/history', { headers: buildVideoHeaders(model.value) })
         if (Array.isArray(res.data)) {
             videoHistory.value = res.data.filter((item) => item.video_url && (item.mode || 'digital_human') === 'digital_human')
         }
     } catch (e) {}
+}
+
+const persistLocalHistory = (videoUrl) => {
+    if (!videoUrl) return
+    const meta = pendingMeta.value || {}
+    const entry = {
+        id: meta.id || taskId.value || `${Date.now()}`,
+        task_id: taskId.value || '',
+        video_url: videoUrl,
+        prompt: meta.prompt || prompt.value.trim(),
+        duration: meta.duration || Math.round(audioMeta.value?.duration || 0),
+        model: meta.model || model.value,
+        mode: 'digital_human',
+        created_at: Math.floor(Date.now() / 1000)
+    }
+    videoHistory.value = prependLocalHistory(DIGITAL_HUMAN_HISTORY_KEY, entry, {
+        idResolver: (item) => item?.id || item?.task_id || item?.video_url
+    })
 }
 
 const updateImageMeta = (rawFile) => {
@@ -631,7 +662,9 @@ const formatDuration = (seconds) => {
 
 const formatTime = (timestamp) => {
     try {
-        return new Date(Number(timestamp || Date.now())).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        const value = Number(timestamp || Date.now())
+        const ms = value < 1e12 ? value * 1000 : value
+        return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     } catch (e) {
         return '—'
     }
