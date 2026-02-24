@@ -21,6 +21,11 @@
                 <h1 class="text-[18px] font-bold tracking-tight text-slate-900 leading-none">
                   <span class="text-blue-500">R</span>e<span class="text-indigo-500">O</span>pen<span class="text-purple-500">I</span>nno<span class="text-orange-400">L</span>ab
                 </h1>
+                <img
+                  :src="schoolLogoUrl"
+                  class="h-7 w-auto object-contain invert"
+                  alt="School Logo"
+                />
             </div>
           </div>
         
@@ -146,7 +151,9 @@ import AudioStudio from './views/AudioStudio.vue'
 import VideoStudio from './components/VideoStudio.vue'
 import { useAuthStore } from './stores/auth'
 import { useLocaleStore } from './stores/locale'
-import logoMarkUrl from './assets/logo-mark.svg'
+import logoMarkUrl from './assets/logo-mark.png'
+
+const schoolLogoUrl = '/logo.png'
 
 const authStore = useAuthStore()
 const localeStore = useLocaleStore()

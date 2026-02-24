@@ -31,6 +31,12 @@
 
 ---
 
+## 📘 使用手册
+- [非管理员使用手册](docs/user-manual-non-admin.md)
+- [批量图片生成工具说明](docs/README_批量图片生成.md)
+
+---
+
 ## 🚀 生产环境部署（Docker 推荐）
 
 ### 1) 环境要求
@@ -106,6 +112,9 @@ docker compose up -d --build
 ```text
 nano-banana-studio/
 ├── docker-compose.yml      # Docker 部署入口
+├── docs/                   # 使用文档
+│   ├── user-manual-non-admin.md
+│   └── README_批量图片生成.md
 ├── frontend/               # Vue3 前端
 │   ├── Dockerfile
 │   └── nginx.conf
