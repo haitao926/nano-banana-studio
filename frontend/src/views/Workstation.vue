@@ -677,58 +677,68 @@
                                         <button @click="moveUserKeyPool(idx, -1)" class="text-slate-500 hover:text-slate-700">{{ tSettings('settings.key_pool_up', '上移') }}</button>
                                         <button @click="moveUserKeyPool(idx, 1)" class="text-slate-500 hover:text-slate-700">{{ tSettings('settings.key_pool_down', '下移') }}</button>
                                         <button @click="toggleUserPoolExpand(idx)" class="text-indigo-500 hover:text-indigo-700">
-                                            {{ expandedUserPools.has(idx) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '更多设置') }}
+                                            {{ expandedUserPools.has(idx) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '展开') }}
                                         </button>
                                         <button @click="removeUserKeyPool(idx)" class="text-red-400 hover:text-red-600">{{ tSettings('settings.key_pool_remove', '删除') }}</button>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-1 lg:grid-cols-7 gap-3">
-                                    <div class="space-y-1">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_service_label', '用途（单选）') }}</label>
-                                        <select v-model="pool.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleUserServiceChange(pool)">
-                                            <option value="image">{{ tSettings('settings.key_pool_service_image', '绘图') }}</option>
-                                            <option value="audio">{{ tSettings('settings.key_pool_service_audio', '音频') }}</option>
-                                            <option value="video">{{ tSettings('settings.key_pool_service_video', '视频/数字人') }}</option>
-                                        </select>
+                                <div v-if="expandedUserPools.has(idx)" class="space-y-3">
+                                    <div class="grid grid-cols-1 lg:grid-cols-7 gap-3">
+                                        <div class="space-y-1">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_service_label', '用途（单选）') }}</label>
+                                            <select v-model="pool.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleUserServiceChange(pool)">
+                                                <option value="image">{{ tSettings('settings.key_pool_service_image', '绘图') }}</option>
+                                                <option value="audio">{{ tSettings('settings.key_pool_service_audio', '音频') }}</option>
+                                                <option value="video">{{ tSettings('settings.key_pool_service_video', '视频/数字人') }}</option>
+                                            </select>
+                                        </div>
+                                        <div class="space-y-1 lg:col-span-2">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
+                                            <input
+                                                v-model="pool.models"
+                                                :list="`user-model-options-${idx}`"
+                                                class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                                :placeholder="tSettings('settings.key_pool_models_hint', '支持输入自定义模型 ID，多个用逗号分隔')"
+                                            />
+                                            <datalist :id="`user-model-options-${idx}`">
+                                                <option v-for="opt in getUserModelOptionsForService(pool.service)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                                            </datalist>
+                                        </div>
+                                        <div class="space-y-1 lg:col-span-3">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
+                                            <input v-model="pool.key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
+                                        </div>
+                                        <div class="space-y-1 lg:col-span-1">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_enabled', '启用') }}</label>
+                                            <label class="flex items-center gap-2 text-xs text-slate-600 mt-2">
+                                                <input type="checkbox" v-model="pool.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                                {{ tSettings('settings.key_pool_enabled', '启用') }}
+                                            </label>
+                                        </div>
                                     </div>
-                                    <div class="space-y-1 lg:col-span-2">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
-                                        <input
-                                            v-model="pool.models"
-                                            :list="`user-model-options-${idx}`"
-                                            class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                            :placeholder="tSettings('settings.key_pool_models_hint', '支持输入自定义模型 ID，多个用逗号分隔')"
-                                        />
-                                        <datalist :id="`user-model-options-${idx}`">
-                                            <option v-for="opt in getUserModelOptionsForService(pool.service)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                                        </datalist>
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-3">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
-                                        <input v-model="pool.key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-1">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_enabled', '启用') }}</label>
-                                        <label class="flex items-center gap-2 text-xs text-slate-600 mt-2">
-                                            <input type="checkbox" v-model="pool.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
-                                            {{ tSettings('settings.key_pool_enabled', '启用') }}
-                                        </label>
+                                    <div class="grid grid-cols-1 lg:grid-cols-6 gap-3 pt-2">
+                                        <div class="space-y-1">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_provider_label', '通道/厂商（可选）') }}</label>
+                                            <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleUserProviderChange(pool)">
+                                                <option value="">{{ tSettings('settings.key_pool_provider_any', '不限') }}</option>
+                                                <option value="vector">{{ tSettings('settings.key_pool_provider_vector', 'ReOpenInnoLab') }}</option>
+                                                <option value="bailian">{{ tSettings('settings.key_pool_provider_bailian', '百炼') }}</option>
+                                                <option value="ark">{{ tSettings('settings.key_pool_provider_ark', '火山方舟') }}</option>
+                                            </select>
+                                        </div>
+                                        <div class="space-y-1 lg:col-span-3">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_base_url', '接口地址（可选）') }}</label>
+                                            <input v-model="pool.base_url" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.base_url_placeholder', '可选，例如 https://api.xxx.com')" />
+                                        </div>
                                     </div>
                                 </div>
-                                <div v-if="expandedUserPools.has(idx)" class="grid grid-cols-1 lg:grid-cols-6 gap-3 pt-2">
-                                    <div class="space-y-1">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_provider_label', '通道/厂商（可选）') }}</label>
-                                        <select v-model="pool.provider" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleUserProviderChange(pool)">
-                                            <option value="">{{ tSettings('settings.key_pool_provider_any', '不限') }}</option>
-                                            <option value="vector">{{ tSettings('settings.key_pool_provider_vector', 'ReOpenInnoLab') }}</option>
-                                            <option value="bailian">{{ tSettings('settings.key_pool_provider_bailian', '百炼') }}</option>
-                                            <option value="ark">{{ tSettings('settings.key_pool_provider_ark', '火山方舟') }}</option>
-                                        </select>
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-3">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_base_url', '接口地址（可选）') }}</label>
-                                        <input v-model="pool.base_url" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.base_url_placeholder', '可选，例如 https://api.xxx.com')" />
-                                    </div>
+                                <div v-else class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                    <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                        {{ isPoolCompleted(pool) ? tSettings('settings.key_pool_configured', 'Key 已配置') : tSettings('settings.key_pool_not_configured', 'Key 未配置') }}
+                                    </span>
+                                    <span v-if="pool.base_url" class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 max-w-full truncate">
+                                        {{ pool.base_url }}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -803,7 +813,7 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 lg:grid-cols-6 gap-3">
+                        <div class="grid grid-cols-1 lg:grid-cols-7 gap-3">
                             <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
                                 <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemPlatformChange(entry.item)">
@@ -843,6 +853,16 @@
                                     <input type="checkbox" v-model="entry.item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
                                     {{ tSettings('settings.model_enabled', '启用') }}
                                 </label>
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_cost', '消耗积分') }}</label>
+                                <input
+                                    v-model.number="entry.item.cost"
+                                    type="number"
+                                    min="0"
+                                    class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                    :placeholder="tSettings('settings.model_cost_placeholder', '例如 1')"
+                                />
                             </div>
                         </div>
                         <div v-if="modelTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
@@ -988,7 +1008,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { ref, computed, onMounted, reactive, watch, nextTick } from 'vue'
 import { NPopselect, useMessage, NUpload } from 'naive-ui'
 import { Wand2, Image as ImageIcon, Bot, Zap, Download, RefreshCw, Maximize2 } from 'lucide-vue-next'
 import api from '../services/api'
@@ -1032,6 +1052,7 @@ const selectedImage = ref(null)
 const userKeyPools = ref([])
 const expandedUserPools = reactive(new Set())
 const userPoolsDirty = ref(false)
+const userPoolsDirtyLocked = ref(false)
 
 // Admin
 const usersList = ref([])
@@ -1051,9 +1072,21 @@ const systemModels = ref([])
 const modelCatalog = ref([])
 const modelCatalogLoaded = ref(false)
 
+const withUserPoolsDirtyLock = (fn) => {
+    userPoolsDirtyLocked.value = true
+    try {
+        fn()
+    } finally {
+        nextTick(() => {
+            userPoolsDirtyLocked.value = false
+        })
+    }
+}
+
 watch(
     userKeyPools,
     () => {
+        if (userPoolsDirtyLocked.value) return
         userPoolsDirty.value = true
     },
     { deep: true }
@@ -1478,7 +1511,7 @@ watch(
 watch(
     modelCatalog,
     () => {
-        ensureUserPoolModelDefaults()
+        ensureUserPoolModelDefaults(true)
     },
     { immediate: true }
 )
@@ -1592,6 +1625,8 @@ const renderModelGroups = computed(() => {
 
 const modelTestStates = reactive({})
 const modelTestLoading = reactive({})
+const DEFAULT_MODEL_TEST_IMAGE_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Portrait_of_a_woman_%28cropped%29.jpg/1024px-Portrait_of_a_woman_%28cropped%29.jpg'
+const DEFAULT_MODEL_TEST_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
 
 const normalizeTestUrl = (url) => {
     if (!url) return ''
@@ -1631,46 +1666,27 @@ const runModelTest = async (entry) => {
     }
 
     try {
+        if (!authStore.token) {
+            throw new Error(tSettings('auth.login_required', '登录已过期，请重新登录'))
+        }
         const payload = buildModelTestPayload(entry)
         const service = payload.service
         const modelLower = String(model || '').toLowerCase()
         const videoNeedsImage = service === 'video' && (modelLower.includes('sora') || modelLower.includes('i2v') || modelLower.includes('wanx') || modelLower.includes('wan2.'))
         if (service === 'digital_human') {
-            const imageUrl = window.prompt(tSettings('settings.model_test_image', '请输入可公网访问的人像图片 URL'), '')
-            if (!imageUrl) {
-                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
-                return
-            }
-            const audioUrl = window.prompt(tSettings('settings.model_test_audio', '请输入可公网访问的音频 URL'), '')
-            if (!audioUrl) {
-                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
-                return
-            }
-            payload.image_url = imageUrl
-            payload.audio_url = audioUrl
+            payload.image_url = DEFAULT_MODEL_TEST_IMAGE_URL
+            payload.audio_url = DEFAULT_MODEL_TEST_AUDIO_URL
         } else if (videoNeedsImage) {
-            const imageUrl = window.prompt(tSettings('settings.model_test_image', '请输入可公网访问的人像图片 URL'), '')
-            if (!imageUrl) {
-                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
-                return
-            }
-            payload.image_url = imageUrl
+            payload.image_url = DEFAULT_MODEL_TEST_IMAGE_URL
+            payload.prompt = tSettings('settings.model_test_prompt_default', '测试生成内容')
         } else {
-            const promptHint = service === 'audio'
-                ? tSettings('settings.model_test_prompt_audio', '输入测试文本')
-                : tSettings('settings.model_test_prompt', '输入测试提示词')
-            const defaultPrompt = service === 'audio'
+            payload.prompt = service === 'audio'
                 ? tSettings('settings.model_test_prompt_audio_default', '这是一次模型连通性测试')
                 : tSettings('settings.model_test_prompt_default', '测试生成内容')
-            const prompt = window.prompt(promptHint, defaultPrompt)
-            if (prompt === null) {
-                modelTestStates[entry.index] = { status: 'error', message: tSettings('settings.model_test_cancel', '已取消') }
-                return
-            }
-            payload.prompt = prompt || defaultPrompt
         }
 
-        const res = await api.post('/api/admin/model_test', payload)
+        const authHeaders = authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
+        const res = await api.post('/api/admin/model_test', payload, { headers: authHeaders })
         const data = res?.data || {}
         let messageText = tSettings('settings.model_test_success', '测试成功')
         let url = ''
@@ -1831,6 +1847,15 @@ const buildModelHeaders = (model) => {
     return applyUserPoolHeaders(headers, 'image', model)
 }
 
+const buildPromptHeaders = (model) => {
+    const headers = {}
+    if (authStore.isLoggedIn && authStore.token) {
+        headers.Authorization = `Bearer ${authStore.token}`
+        return headers
+    }
+    return applyUserPoolHeaders(headers, 'image', model)
+}
+
 const buildTtsHeaders = (model) => {
     const headers = {}
     if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
@@ -1871,7 +1896,7 @@ const requestOptimizedPrompt = async (prompt, subject, model) => {
     const res = await api.post(
         '/api/optimize_prompt',
         { prompt, subject, model },
-        { headers: buildModelHeaders(model) }
+        { headers: buildPromptHeaders(model) }
     )
     if (!res?.data?.optimized_prompt) {
         throw new Error(res?.data?.detail || 'Optimization failed')
@@ -2696,11 +2721,13 @@ const loadUserKeyPools = () => {
         }
     }
     const ordered = [...pools].sort((a, b) => (a.priority || 100) - (b.priority || 100))
-    userKeyPools.value = ordered.map(normalizeUserPoolItem)
-    expandedUserPools.clear()
-    if (userKeyPools.value.length) reorderUserKeyPools(false)
-    userPoolsDirty.value = false
-    ensureUserPoolModelDefaults()
+    withUserPoolsDirtyLock(() => {
+        userKeyPools.value = ordered.map(normalizeUserPoolItem)
+        expandedUserPools.clear()
+        if (userKeyPools.value.length) reorderUserKeyPools(false)
+        userPoolsDirty.value = false
+        ensureUserPoolModelDefaults(true)
+    })
 }
 
 const addUserKeyPool = () => {
@@ -2739,16 +2766,23 @@ const handleUserServiceChange = (pool) => {
     }
 }
 
-function ensureUserPoolModelDefaults() {
+function ensureUserPoolModelDefaults(silent = false) {
     if (!userKeyPools.value.length) return
-    userKeyPools.value.forEach((pool) => {
-        const options = getUserModelOptionsForService(pool.service)
-        if (!options.length) return
-        const current = String(pool.models || '').trim()
-        if (!current) {
-            pool.models = options[0].value
-        }
-    })
+    const applyDefaults = () => {
+        userKeyPools.value.forEach((pool) => {
+            const options = getUserModelOptionsForService(pool.service)
+            if (!options.length) return
+            const current = String(pool.models || '').trim()
+            if (!current) {
+                pool.models = options[0].value
+            }
+        })
+    }
+    if (silent) {
+        withUserPoolsDirtyLock(applyDefaults)
+    } else {
+        applyDefaults()
+    }
 }
 
 const handleUserProviderChange = (pool) => {

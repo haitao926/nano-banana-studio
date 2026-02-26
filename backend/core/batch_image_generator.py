@@ -8,7 +8,8 @@
 import json
 import os
 import time
-from typing import Dict, List, Any, Optional
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from .image_generator import get_image_generator
 
@@ -147,6 +148,8 @@ class BatchImageGenerator:
         api_key: str = None,
         optimize: bool = False,
         output_dir: str = None,
+        max_workers: int = 1,
+        delay_seconds: float = 0.0,
     ) -> Dict[str, Any]:
         """
         批量生成图片
@@ -182,27 +185,27 @@ class BatchImageGenerator:
         }
 
         start_time = time.time()
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+            for task in tasks:
+                task.folder = output_dir
 
-        for i, task in enumerate(tasks):
-            print(f"\n任务 {i+1}/{len(tasks)}: {task.id}")
+        def _run_task(task: GenerationTask, idx: int) -> Tuple[int, Dict[str, Any], Optional[Dict[str, Any]]]:
+            print(f"\n任务 {idx+1}/{len(tasks)}: {task.id}")
             print(f"   系统提示: {task.system_prompt[:50]}...")
             print(f"   需求提示: {task.requirement_prompt[:50]}...")
 
+            prompt = task.get_full_prompt()
             try:
-                if output_dir:
-                    os.makedirs(output_dir, exist_ok=True)
-                    task.folder = output_dir
-
-                prompt = task.get_full_prompt()
+                generator = get_image_generator()
                 if optimize:
                     try:
-                        optimized = self.generator.optimize_prompt(prompt, model=model)
+                        optimized = generator.optimize_prompt(prompt, model=model)
                         prompt = optimized or task.get_full_prompt()
                     except Exception:
                         prompt = task.get_full_prompt()
 
-                # 生成图片
-                file_path = self.generator.generate_and_download(
+                file_path = generator.generate_and_download(
                     prompt,
                     task.filename,
                     task.folder,
@@ -211,52 +214,81 @@ class BatchImageGenerator:
                     model=model
                 )
 
+                if delay_seconds > 0:
+                    time.sleep(delay_seconds)
+
                 if file_path:
-                    results["files"][task.id] = file_path
-                    results["successful"] += 1
-                    print(f"   成功: {file_path}")
-                    results["items"].append({
+                    item = {
                         "id": task.id,
                         "system_prompt": task.system_prompt,
                         "requirement_prompt": task.requirement_prompt,
                         "prompt": prompt,
                         "file_path": file_path
-                    })
-
-                    # 记录到历史
-                    self.generation_history.append({
+                    }
+                    history = {
                         "id": task.id,
                         "system_prompt": task.system_prompt,
                         "requirement_prompt": task.requirement_prompt,
                         "file_path": file_path,
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                    })
-                else:
-                    results["failed"] += 1
-                    error_msg = f"图片生成失败: {task.id}"
-                    results["errors"].append(error_msg)
-                    print(f"   失败: {error_msg}")
-                    results["items"].append({
-                        "id": task.id,
-                        "system_prompt": task.system_prompt,
-                        "requirement_prompt": task.requirement_prompt,
-                        "prompt": prompt,
-                        "file_path": None,
-                        "error": error_msg
-                    })
+                    }
+                    print(f"   成功: {file_path}")
+                    return idx, item, history
 
-                # 添加延迟避免API限制
-                if i < len(tasks) - 1:
-                    time.sleep(2)
+                error_msg = f"图片生成失败: {task.id}"
+                print(f"   失败: {error_msg}")
+                return idx, {
+                    "id": task.id,
+                    "system_prompt": task.system_prompt,
+                    "requirement_prompt": task.requirement_prompt,
+                    "prompt": prompt,
+                    "file_path": None,
+                    "error": error_msg
+                }, None
 
             except Exception as e:
-                results["failed"] += 1
                 error_msg = f"任务执行异常: {task.id} - {str(e)}"
-                results["errors"].append(error_msg)
                 print(f"   异常: {error_msg}")
+                return idx, {
+                    "id": task.id,
+                    "system_prompt": task.system_prompt,
+                    "requirement_prompt": task.requirement_prompt,
+                    "prompt": prompt,
+                    "file_path": None,
+                    "error": error_msg
+                }, None
 
-        # 保存历史记录
-        self.save_config()
+        items: List[Tuple[int, Dict[str, Any], Optional[Dict[str, Any]]]] = []
+        history_items: List[Dict[str, Any]] = []
+
+        workers = max(1, int(max_workers or 1))
+        if workers == 1:
+            for idx, task in enumerate(tasks):
+                result = _run_task(task, idx)
+                items.append(result)
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(_run_task, task, idx): idx for idx, task in enumerate(tasks)}
+                for future in as_completed(futures):
+                    items.append(future.result())
+
+        items.sort(key=lambda x: x[0])
+        for _, item, history in items:
+            if item.get("file_path"):
+                results["files"][item["id"]] = item["file_path"]
+                results["successful"] += 1
+            else:
+                results["failed"] += 1
+                if item.get("error"):
+                    results["errors"].append(item["error"])
+            results["items"].append(item)
+            if history:
+                history_items.append(history)
+
+        # 记录到历史
+        if history_items:
+            self.generation_history.extend(history_items)
+            self.save_config()
 
         end_time = time.time()
         duration = end_time - start_time

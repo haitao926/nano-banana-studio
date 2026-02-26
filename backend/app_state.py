@@ -68,4 +68,5 @@ UPLOAD_AUDIO_EXTS = {".wav", ".mp3", ".aac", ".m4a", ".flac", ".ogg"}
 UPLOAD_RATE_WINDOW_SEC = int(os.getenv("UPLOAD_RATE_WINDOW_SEC", "60"))
 UPLOAD_RATE_MAX = int(os.getenv("UPLOAD_RATE_MAX", "30"))
 MAX_BATCH_TASKS = int(os.getenv("BATCH_MAX_TASKS", "20"))
-
+BATCH_WORKERS = int(os.getenv("BATCH_WORKERS", "2"))
+BATCH_DELAY_SECONDS = float(os.getenv("BATCH_DELAY_SECONDS", "0"))

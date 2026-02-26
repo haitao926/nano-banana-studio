@@ -11,6 +11,7 @@ services:
       - .env.nbs
     environment:
       EXTERNAL_BASE_URL: "https://kj4rk2oakpguf7.xuanyuan.run"
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
     volumes:
       - ./backend/data:/app/backend/data
       - ./backend/static:/app/backend/static

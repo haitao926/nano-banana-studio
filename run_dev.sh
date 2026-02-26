@@ -35,8 +35,13 @@ fi
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Start uvicorn
-uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
+# Start uvicorn (workers for concurrency; disable reload when workers > 1)
+DEV_WORKERS="${NBS_DEV_WORKERS:-2}"
+if [ "$DEV_WORKERS" -gt 1 ]; then
+    uvicorn main:app --host 0.0.0.0 --port 8000 --workers "$DEV_WORKERS" &
+else
+    uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
+fi
 BACKEND_PID=$!
 cd ..
 

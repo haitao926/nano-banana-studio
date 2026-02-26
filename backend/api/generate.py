@@ -7,7 +7,7 @@ from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
-from app_state import GENERATED_DIR, MAX_BATCH_TASKS, batch_gen, db, img_gen
+from app_state import GENERATED_DIR, MAX_BATCH_TASKS, BATCH_WORKERS, BATCH_DELAY_SECONDS, batch_gen, db, img_gen
 from deps import get_current_user_optional
 from helpers import (
     _build_model_candidates,
@@ -499,6 +499,8 @@ async def generate_batch(
                 api_key=candidate.get("key"),
                 optimize=req.optimize,
                 output_dir=GENERATED_DIR,
+                max_workers=BATCH_WORKERS,
+                delay_seconds=BATCH_DELAY_SECONDS,
             )
             if results and results.get("successful", 0) > 0:
                 break

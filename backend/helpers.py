@@ -545,15 +545,16 @@ def _build_model_candidates(
     runtime_base_url: Optional[str] = None,
     fallback_base_url: Optional[str] = None,
 ) -> List[Dict]:
-    if runtime_key:
-        return _build_service_candidates(
-            service,
-            model=model,
-            runtime_key=runtime_key,
-            runtime_base_url=runtime_base_url,
-            fallback_base_url=fallback_base_url,
-        )
     model_cfgs = _select_model_configs(service, model)
+    if runtime_key:
+        # BYOK mode: if caller didn't provide base_url, reuse configured model base_url.
+        preferred_base_url = runtime_base_url or fallback_base_url
+        preferred_platform = None
+        if model_cfgs:
+            preferred_base_url = preferred_base_url or model_cfgs[0].get("base_url")
+            preferred_platform = model_cfgs[0].get("platform")
+        return [{"key": runtime_key, "base_url": preferred_base_url, "platform": preferred_platform}]
+
     preferred: List[Dict] = []
     preferred_base_url = runtime_base_url or fallback_base_url
     if not preferred_base_url:
