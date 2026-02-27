@@ -1,4 +1,6 @@
 import json
+import os
+import time
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -9,15 +11,42 @@ from deps import get_current_user, get_current_user_optional
 from helpers import (
     _build_model_candidates,
     _download_public_image_bytes,
+    _ensure_public_url,
     _get_default_model,
     _get_video_base_url,
     _get_video_credit_cost,
     _normalize_video_status,
+    _resolve_public_media_url,
+    _safe_log_payload,
     determine_key_execution_mode,
 )
 from schemas import VideoGenerateRequest
 
 router = APIRouter()
+
+
+def _is_retryable_upstream_error(error_msg: Optional[str], payload: Optional[Dict]) -> bool:
+    text = str(error_msg or "").strip().lower()
+    if not text:
+        return False
+    retry_markers = (
+        "负载已饱和",
+        "稍后再试",
+        "rate limit",
+        "too many requests",
+        "timed out",
+        "timeout",
+        "temporarily unavailable",
+        "try again later",
+        "gateway timeout",
+        "upstream",
+    )
+    if any(marker in text for marker in retry_markers):
+        return True
+    status_code = None
+    if isinstance(payload, dict):
+        status_code = payload.get("status_code")
+    return isinstance(status_code, int) and status_code in (429, 500, 502, 503, 504)
 
 
 @router.get("/api/video/history")
@@ -94,11 +123,54 @@ async def generate_video(
             else:
                 image_url = image_urls[0]
 
-            image_payload = _download_public_image_bytes(image_url)
-            if not image_payload:
-                raise HTTPException(status_code=400, detail="Failed to fetch image_url content")
-            image_bytes = image_payload.get("bytes")
-            image_mime = image_payload.get("mime_type")
+            ext_base = os.getenv("EXTERNAL_BASE_URL", "").strip().rstrip("/")
+
+            def _to_public(url: str) -> str:
+                if not url:
+                    return url
+                resolved = _resolve_public_media_url(url)
+                if resolved.startswith("/static/") or resolved.startswith("static/"):
+                    if ext_base:
+                        normalized = resolved if resolved.startswith("/") else f"/{resolved}"
+                        return f"{ext_base}{normalized}"
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "image_url points to local static file and is not publicly accessible. "
+                            "Please configure OSS (OSS_BUCKET/OSS_ENDPOINT/OSS_ACCESS_KEY_ID/OSS_ACCESS_KEY_SECRET) "
+                            "or set EXTERNAL_BASE_URL to a public domain."
+                        ),
+                    )
+                if ext_base and resolved.startswith("/"):
+                    return f"{ext_base}{resolved}"
+                if resolved.startswith("oss://"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "oss:// URL is not supported for video. "
+                            "Please configure OSS credentials or use a public http(s) URL."
+                        ),
+                    )
+                return resolved
+
+            if image_urls:
+                image_urls = [_to_public(u) for u in image_urls if u]
+            if image_url:
+                image_url = _to_public(image_url)
+
+            if image_urls:
+                for url in image_urls:
+                    _ensure_public_url(url, "images")
+            if image_url:
+                _ensure_public_url(image_url, "image_url")
+
+            needs_inline = not (is_sora or video_gen._is_veo_model(model) or is_bailian_i2v or video_gen._is_ark_model(model))
+            if needs_inline:
+                image_payload = _download_public_image_bytes(image_url)
+                if not image_payload:
+                    raise HTTPException(status_code=400, detail="Failed to fetch image_url content")
+                image_bytes = image_payload.get("bytes")
+                image_mime = image_payload.get("mime_type")
 
         video_base_url = _get_video_base_url()
         runtime_base_url = x_video_base_url if runtime_key else None
@@ -112,26 +184,40 @@ async def generate_video(
 
         result = None
         last_error = None
+        retry_max = max(1, int(os.getenv("VIDEO_SUBMIT_RETRY_MAX", "3")))
+        retry_delay = max(0.2, float(os.getenv("VIDEO_SUBMIT_RETRY_DELAY_SECONDS", "1.2")))
         for candidate in candidates:
-            result = video_gen.submit_task(
-                prompt=prompt,
-                model=model,
-                image_url=image_url,
-                image_urls=image_urls,
-                image_bytes=image_bytes,
-                image_mime=image_mime,
-                aspect_ratio=req.aspect_ratio,
-                resolution=req.resolution,
-                duration_seconds=req.duration_seconds,
-                api_key=candidate.get("key") or runtime_key,
-                base_url=candidate.get("base_url") or video_base_url,
-                platform=candidate.get("platform"),
-            )
-            error_msg = video_gen.extract_error(result)
-            if not error_msg:
+            for attempt in range(1, retry_max + 1):
+                result = video_gen.submit_task(
+                    prompt=prompt,
+                    model=model,
+                    image_url=image_url,
+                    image_urls=image_urls,
+                    image_bytes=image_bytes,
+                    image_mime=image_mime,
+                    aspect_ratio=req.aspect_ratio,
+                    resolution=req.resolution,
+                    duration_seconds=req.duration_seconds,
+                    api_key=candidate.get("key") or runtime_key,
+                    base_url=candidate.get("base_url") or video_base_url,
+                    platform=candidate.get("platform"),
+                )
+                error_msg = video_gen.extract_error(result)
+                if not error_msg:
+                    break
+                last_error = error_msg
+                if attempt >= retry_max or not _is_retryable_upstream_error(error_msg, result):
+                    break
+                sleep_seconds = retry_delay * (2 ** (attempt - 1))
+                print(
+                    f"[video] retry submit model={model} attempt={attempt + 1}/{retry_max} "
+                    f"after_error={error_msg} wait={min(sleep_seconds, 6.0):.1f}s"
+                )
+                time.sleep(min(sleep_seconds, 6.0))
+            if not last_error or not video_gen.extract_error(result):
                 break
-            last_error = error_msg
         if last_error:
+            print(f"[video] submit failed model={model} error={last_error} raw={_safe_log_payload(result)}")
             raise HTTPException(status_code=502, detail=last_error or "Video generation failed")
 
         task_id = VideoGenerator._extract_value(

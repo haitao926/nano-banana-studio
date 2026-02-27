@@ -218,6 +218,7 @@ const localeStore = useLocaleStore()
 const authStore = useAuthStore()
 const message = useMessage()
 const VIDEO_HISTORY_KEY = 'nbs_history_video'
+const VIDEO_SEED_KEY = 'nbs_seed_video_from_image'
 
 const modeOptions = [
   { label: localeStore.t('video.text_mode'), value: 'text' },
@@ -383,6 +384,25 @@ const resetState = () => {
   taskId.value = ''
   resultVideoUrl.value = ''
   stopPolling()
+}
+
+const applySeededImage = () => {
+  const raw = localStorage.getItem(VIDEO_SEED_KEY)
+  if (!raw) return
+  try {
+    const payload = JSON.parse(raw)
+    localStorage.removeItem(VIDEO_SEED_KEY)
+    if (!payload?.image_url) return
+    setMode('image')
+    imageUrl.value = payload.image_url
+    imagePreviewUrl.value = payload.image_url
+    if (payload.prompt && !prompt.value) prompt.value = payload.prompt
+    if (payload.aspect_ratio === '16:9' || payload.aspect_ratio === '9:16') {
+      settings.value.aspectRatio = payload.aspect_ratio
+    }
+  } catch (e) {
+    localStorage.removeItem(VIDEO_SEED_KEY)
+  }
 }
 
 const applyUserPoolHeaders = (headers, service, model) => {
@@ -563,6 +583,7 @@ const formatTime = (ts) => {
 
 onMounted(() => {
   loadModelCatalog()
+  applySeededImage()
   if (activeMode.value !== 'digital_human') fetchVideoHistory()
 })
 

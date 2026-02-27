@@ -230,6 +230,9 @@
                                           <button @click.stop="handleRedraw" class="bg-white text-slate-900 p-2 rounded-lg typo-button-compact hover:bg-indigo-500 hover:text-white transition-colors shadow-lg" :title="localeStore.t('image.redraw') || 'Redraw'">
                                               <RefreshCw class="w-4 h-4" />
                                           </button>
+                                          <button @click.stop="jumpToVideo(currentDisplayImage)" class="bg-white text-slate-900 p-2 rounded-lg typo-button-compact hover:bg-indigo-500 hover:text-white transition-colors shadow-lg" :title="localeStore.t('image.to_video') || 'Generate Video'">
+                                              <Video class="w-4 h-4" />
+                                          </button>
                                           <button @click="openImage(currentDisplayImage)" class="bg-white text-slate-900 p-2 rounded-lg typo-button-compact hover:bg-indigo-500 hover:text-white transition-colors shadow-lg" :title="localeStore.t('image.view_details')">
                                               <Maximize2 class="w-4 h-4" />
                                           </button>
@@ -612,6 +615,9 @@
                                  <span class="inline-block px-2 py-0.5 bg-white/20 backdrop-blur-md rounded typo-caption-compact font-bold text-white border border-white/20">{{ getSubjectLabel(img.subject) }}</span>
                              </div>
                          </div>
+                         <button @click.stop="jumpToVideo(img)" class="absolute bottom-3 right-3 bg-white/90 text-slate-800 p-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-indigo-500 hover:text-white" :title="localeStore.t('image.to_video') || '生成视频'">
+                             <Video class="w-4 h-4" />
+                         </button>
                          <span v-if="img.is_mine" class="absolute top-3 left-3 px-2 py-1 bg-indigo-600/90 backdrop-blur text-white typo-badge rounded-lg shadow-lg">ME</span>
                      </div>
                  </TransitionGroup>
@@ -798,22 +804,41 @@
                             {{ group.label }}
                         </div>
                         <div v-for="entry in group.items" :key="entry.index" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
-                        <div class="flex items-center justify-between">
-                            <div class="text-xs text-slate-400">#{{ entry.index + 1 }}</div>
-                            <div class="flex items-center gap-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 text-xs text-slate-400">
+                                <span>#{{ entry.index + 1 }}</span>
+                                <span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100 text-[10px]">
+                                    {{ tSettings('settings.pool_tag', '系统') }}
+                                </span>
+                                <span class="text-slate-500">{{ modelSummary(entry.item) }}</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-xs">
                                 <button
-                                    @click="runModelTest(entry)"
-                                    :disabled="modelTestLoading[entry.index]"
-                                    class="text-xs font-semibold text-emerald-600 hover:text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    @click="toggleSystemModelExpand(entry.index)"
+                                    class="text-indigo-500 hover:text-indigo-700"
                                 >
-                                    {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_test', '测试') }}
+                                    {{ isSystemModelExpanded(entry.index) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '展开') }}
                                 </button>
-                                <button @click="clearSystemModelKey(entry.index)" class="text-xs text-red-400 hover:text-red-600">
-                                    {{ tSettings('settings.model_remove', '清空Key') }}
+                                <button @click="removeSystemModel(entry.index)" class="text-red-400 hover:text-red-600">
+                                    {{ tSettings('settings.key_pool_remove', '删除') }}
                                 </button>
                             </div>
                         </div>
-                        <div class="grid grid-cols-1 lg:grid-cols-7 gap-3">
+                        <div v-if="!isSystemModelExpanded(entry.index)" class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                {{ getPlatformLabel(entry.item.platform) }}
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                {{ tSettings(`settings.model_service_${entry.item.service === 'digital_human' ? 'dh' : entry.item.service}`, entry.item.service) }}
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                {{ entry.item.enabled !== false ? tSettings('settings.key_pool_enabled', '启用') : tSettings('settings.key_pool_disabled', '停用') }}
+                            </span>
+                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 max-w-full truncate">
+                                {{ isModelConfigured(entry.item) ? tSettings('settings.key_pool_configured', 'Key 已配置') : tSettings('settings.key_pool_not_configured', 'Key 未配置') }}
+                            </span>
+                        </div>
+                        <div v-else class="grid grid-cols-1 lg:grid-cols-7 gap-3">
                             <div class="space-y-1">
                                 <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
                                 <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemPlatformChange(entry.item)">
@@ -865,7 +890,19 @@
                                 />
                             </div>
                         </div>
-                        <div v-if="modelTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
+                        <div v-if="isSystemModelExpanded(entry.index)" class="flex items-center gap-3 text-xs">
+                            <button
+                                @click="runModelTest(entry)"
+                                :disabled="modelTestLoading[entry.index]"
+                                class="font-semibold text-emerald-600 hover:text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                            >
+                                {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_test', '测试') }}
+                            </button>
+                            <button @click="clearSystemModelKey(entry.index)" class="text-red-400 hover:text-red-600">
+                                {{ tSettings('settings.model_remove', '清空Key') }}
+                            </button>
+                        </div>
+                        <div v-if="isSystemModelExpanded(entry.index) && modelTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
                             <span
                                 :class="modelTestStates[entry.index].status === 'success' ? 'text-emerald-600' : modelTestStates[entry.index].status === 'error' ? 'text-red-500' : 'text-slate-500'"
                             >
@@ -992,6 +1029,10 @@
                      </div>
                      
                      <div class="pt-6 flex flex-col gap-3 shrink-0">
+                         <button @click="jumpToVideo(selectedImage)" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold shadow-lg hover:shadow-xl text-center transition-all flex items-center justify-center gap-2">
+                            <Video class="w-4 h-4" />
+                            <span>{{ localeStore.t('image.to_video') || '生成视频' }}</span>
+                         </button>
                          <a :href="selectedImage.url" download class="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-bold shadow-lg hover:shadow-xl text-center transition-all flex items-center justify-center gap-2">
                             <span>⬇️</span> {{ localeStore.t('image.download') }}
                          </a>
@@ -1010,7 +1051,7 @@
 <script setup>
 import { ref, computed, onMounted, reactive, watch, nextTick } from 'vue'
 import { NPopselect, useMessage, NUpload } from 'naive-ui'
-import { Wand2, Image as ImageIcon, Bot, Zap, Download, RefreshCw, Maximize2 } from 'lucide-vue-next'
+import { Wand2, Image as ImageIcon, Bot, Zap, Download, RefreshCw, Maximize2, Video } from 'lucide-vue-next'
 import api from '../services/api'
 import { fetchModelCatalog, clearModelCatalogCache } from '../services/modelCatalog'
 import { useAuthStore } from '../stores/auth'
@@ -1027,6 +1068,7 @@ const authStore = useAuthStore()
 const localeStore = useLocaleStore()
 const message = useMessage()
 const IMAGE_HISTORY_KEY = 'nbs_history_image'
+const VIDEO_SEED_KEY = 'nbs_seed_video_from_image'
 
 // --- State ---
 const loginForm = reactive({ username: '', password: '' })
@@ -1067,6 +1109,7 @@ const systemVideoBackupKeysInput = ref('')
 const systemVideoBaseUrl = ref('')
 const systemKeyPools = ref([])
 const expandedPools = reactive(new Set())
+const expandedSystemModels = reactive(new Set())
 const systemConfigDirty = ref(false)
 const systemModels = ref([])
 const modelCatalog = ref([])
@@ -1264,6 +1307,66 @@ const clearSystemModelKey = (idx) => {
     if (!item) return
     item.api_key = ''
     item.backup_keys = ''
+    systemConfigDirty.value = true
+}
+
+const isSystemModelExpanded = (idx) => expandedSystemModels.has(idx)
+
+const toggleSystemModelExpand = (idx) => {
+    if (expandedSystemModels.has(idx)) expandedSystemModels.delete(idx)
+    else expandedSystemModels.add(idx)
+}
+
+const modelSummary = (item) => {
+    const model = String(item?.model || '').trim() || '—'
+    const cost = Number.isFinite(Number(item?.cost)) ? `${Number(item.cost)}${tSettings('settings.model_cost_unit', '积分')}` : '—'
+    const keyStatus = isModelConfigured(item)
+        ? tSettings('settings.key_pool_configured', 'Key 已配置')
+        : tSettings('settings.key_pool_not_configured', 'Key 未配置')
+    return `${model} · ${tSettings('settings.model_cost', '消耗积分')}:${cost} · ${keyStatus}`
+}
+
+const isModelConfigured = (item) => {
+    if (String(item?.api_key || '').trim()) return true
+    const backupKeys = Array.isArray(item?.backup_keys)
+        ? item.backup_keys
+        : String(item?.backup_keys || '').split('\n')
+    return backupKeys.some((value) => String(value || '').trim())
+}
+
+const removeSystemModel = (idx) => {
+    const item = systemModels.value[idx]
+    if (!item) return
+    const promptText = localeStore.t('settings.model_delete_confirm')
+    const fallback = promptText === 'settings.model_delete_confirm'
+        ? `确认删除模型：${item.model || '#'+(idx + 1)}`
+        : promptText
+    if (!window.confirm(fallback)) return
+    systemModels.value.splice(idx, 1)
+    const nextExpanded = new Set()
+    expandedSystemModels.forEach((value) => {
+        if (value < idx) nextExpanded.add(value)
+        if (value > idx) nextExpanded.add(value - 1)
+    })
+    expandedSystemModels.clear()
+    nextExpanded.forEach((value) => expandedSystemModels.add(value))
+    const reindexState = (stateObj) => {
+        const next = {}
+        Object.keys(stateObj).forEach((key) => {
+            const index = Number(key)
+            if (!Number.isInteger(index) || index === idx) return
+            const target = index > idx ? index - 1 : index
+            next[target] = stateObj[key]
+        })
+        Object.keys(stateObj).forEach((key) => {
+            delete stateObj[key]
+        })
+        Object.keys(next).forEach((key) => {
+            stateObj[key] = next[key]
+        })
+    }
+    reindexState(modelTestStates)
+    reindexState(modelTestLoading)
     systemConfigDirty.value = true
 }
 
@@ -2135,6 +2238,23 @@ const handleQuickRefine = async () => {
     } finally {
         processing.value = false
     }
+}
+
+const jumpToVideo = (img) => {
+    if (!img?.url) return
+    const basePrompt = img.prompt || img.enhanced_prompt || ''
+    const defaultVideoPrompt = localeStore.t('image.to_video_prompt') || '在该图基础上做轻微镜头运动'
+    const mergedPrompt = basePrompt ? `${basePrompt}。${defaultVideoPrompt}` : defaultVideoPrompt
+    const payload = {
+        image_url: img.url,
+        prompt: mergedPrompt,
+        aspect_ratio: img.aspectRatio || '',
+        model: img.model || ''
+    }
+    try {
+        localStorage.setItem(VIDEO_SEED_KEY, JSON.stringify(payload))
+    } catch (e) {}
+    emit('update-tab', 'video')
 }
 
 // Batch
@@ -3036,6 +3156,7 @@ const fetchSystemConfig = async () => {
         systemKeyPools.value = (res.data.key_pools || []).map(normalizePoolItem)
         systemModels.value = (res.data.models || []).map(normalizeModelItem)
         expandedPools.clear()
+        expandedSystemModels.clear()
         if (systemKeyPools.value.length) reorderKeyPools()
         systemConfigDirty.value = false
     } catch (e) {

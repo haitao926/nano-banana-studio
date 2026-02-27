@@ -347,6 +347,7 @@ class VideoGenerator:
                 prompt=prompt,
                 model=model,
                 image_url=image_url,
+                image_urls=image_urls,
                 aspect_ratio=aspect_ratio,
                 api_key=api_key,
                 base_url=base_url,
@@ -379,6 +380,7 @@ class VideoGenerator:
                 prompt=prompt,
                 model=model,
                 image_url=image_url,
+                image_urls=image_urls,
                 aspect_ratio=aspect_ratio,
                 api_key=api_key,
                 base_url=base_url,
@@ -514,6 +516,7 @@ class VideoGenerator:
         prompt: str,
         model: str,
         image_url: Optional[str] = None,
+        image_urls: Optional[Iterable[str]] = None,
         aspect_ratio: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
@@ -529,8 +532,11 @@ class VideoGenerator:
             "enable_upsample": False,
             "aspect_ratio": aspect_ratio or "16:9",
         }
-        if image_url:
-            payload["images"] = [image_url]
+        urls = [u for u in (image_urls or []) if u]
+        if not urls and image_url:
+            urls = [image_url]
+        if urls:
+            payload["images"] = urls
         return self._request_veo("POST", url, api_key, payload=payload, timeout=120)
 
     def submit_task_ark(
@@ -646,6 +652,8 @@ class VideoGenerator:
         # Try common status endpoints with multiple id field variants
         payload = {"id": task_id, "task_id": task_id, "taskId": task_id}
         for method, path, body in (
+            ("GET", f"{resolved_base}/v1/video/query?id={task_id}", None),
+            ("GET", f"{resolved_base}/v1/video/query?task_id={task_id}", None),
             ("GET", f"{resolved_base}/v1/video/status?id={task_id}", None),
             ("GET", f"{resolved_base}/v1/video/status?task_id={task_id}", None),
             ("GET", f"{resolved_base}/v1/video/get?id={task_id}", None),
@@ -702,6 +710,39 @@ class VideoGenerator:
         explicit = cls._extract_value(payload, ["video_url", "videoUrl", "video_uri", "videoUri"])
         if explicit:
             return explicit
+
+        def _looks_like_video_url(value: Any) -> Optional[str]:
+            if not isinstance(value, str) or not value:
+                return None
+            lower = value.lower()
+            if "preview.gif" in lower or lower.endswith(".gif"):
+                return None
+            if lower.endswith((".mp4", ".mov", ".webm", ".m4v")):
+                return value
+            if "/videos/" in lower and ".mp4" in lower:
+                return value
+            return None
+
+        detail = payload.get("detail")
+        if isinstance(detail, dict):
+            for key in ("video_url", "url", "downloadable_url"):
+                candidate = _looks_like_video_url(detail.get(key))
+                if candidate:
+                    return candidate
+            draft = detail.get("draft_info") or detail.get("draftInfo")
+            if isinstance(draft, dict):
+                for key in ("video_url", "url", "downloadable_url"):
+                    candidate = _looks_like_video_url(draft.get(key))
+                    if candidate:
+                        return candidate
+                encodings = draft.get("encodings")
+                if isinstance(encodings, dict):
+                    for enc_key in ("source", "source_wm", "md"):
+                        enc = encodings.get(enc_key)
+                        if isinstance(enc, dict):
+                            candidate = _looks_like_video_url(enc.get("path"))
+                            if candidate:
+                                return candidate
 
         # 2) Known Gemini response structure
         response = payload.get("response")

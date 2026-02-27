@@ -302,13 +302,31 @@ def _resolve_public_media_url(url: str) -> str:
     if url.startswith("oss://"):
         return _resolve_oss_url(url)
     if url.startswith(("http://", "https://")):
-        return url
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").strip().lower()
+        # Local absolute URLs (e.g. http://localhost:8000/static/...) are not
+        # reachable by upstream providers. Treat them like /static paths so we
+        # can upload to OSS and return a public URL.
+        if _is_private_host(host):
+            path = parsed.path or ""
+            if path.startswith("/static/") or path.startswith("static/"):
+                url = path
+            else:
+                return url
+        else:
+            return url
     if url.startswith("/static/") or url.startswith("static/"):
         if url.startswith("/static/"):
             relative_path = url[len("/static/"):]
         else:
             relative_path = url[len("static/"):]
-        local_path = os.path.join(STATIC_DIR, relative_path)
+        safe_relative = os.path.normpath(unquote(relative_path).lstrip("/"))
+        if safe_relative.startswith(".."):
+            return url
+        local_path = os.path.abspath(os.path.join(STATIC_DIR, safe_relative))
+        static_root = os.path.abspath(STATIC_DIR)
+        if local_path != static_root and not local_path.startswith(f"{static_root}{os.sep}"):
+            return url
         if os.path.exists(local_path):
             content_type, _ = mimetypes.guess_type(local_path)
             try:
@@ -547,12 +565,14 @@ def _build_model_candidates(
 ) -> List[Dict]:
     model_cfgs = _select_model_configs(service, model)
     if runtime_key:
-        # BYOK mode: if caller didn't provide base_url, reuse configured model base_url.
-        preferred_base_url = runtime_base_url or fallback_base_url
+        # BYOK mode: prefer model-level base_url first; global fallback can point
+        # to another provider and cause wrong endpoint routing.
+        preferred_base_url = runtime_base_url
         preferred_platform = None
         if model_cfgs:
             preferred_base_url = preferred_base_url or model_cfgs[0].get("base_url")
             preferred_platform = model_cfgs[0].get("platform")
+        preferred_base_url = preferred_base_url or fallback_base_url
         return [{"key": runtime_key, "base_url": preferred_base_url, "platform": preferred_platform}]
 
     preferred: List[Dict] = []
