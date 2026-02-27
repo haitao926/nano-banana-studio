@@ -24,7 +24,11 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir --retries 5 --default-timeout 120 \
+      -i ${PIP_INDEX_URL} --extra-index-url https://pypi.org/simple \
+      -r requirements.txt
 
 COPY backend /app/backend
 
