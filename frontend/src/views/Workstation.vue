@@ -1523,7 +1523,8 @@ const subjectOptions = computed(() => [
   { label: localeStore.t('image.subjects.english'), value: 'english' },
   { label: localeStore.t('image.subjects.humanities_psych'), value: 'humanities_psych' },
   { label: localeStore.t('image.subjects.arts_pe'), value: 'arts_pe' },
-  { label: localeStore.t('image.subjects.textbook'), value: 'textbook' }
+  { label: localeStore.t('image.subjects.textbook'), value: 'textbook' },
+  { label: '手绘信息图 (Sketchnote)', value: 'sketchnote' }
 ])
 const ratioOptions = computed(() => [
   { label: localeStore.t('image.options.ratio_1_1'), value: '1:1' },
