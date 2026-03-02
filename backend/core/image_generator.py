@@ -669,29 +669,31 @@ class ImageGenerator:
 
         # 4. 高级 System Prompt
         templates = p_conf.get("templates", {})
-        
-                # 针对“教材绘图”的特殊处理
-                if subject == "textbook":
-                    style_keywords = p_conf.get("textbook_style_keywords", "modern 2.5D vector illustration, white background")
-                    template = templates.get("textbook", "")
-        
-                    system_instruction = template.format(
-                        neg_constraint=neg_constraint,
-                        style_instruction=style_instruction,
-                        lang_instruction=lang_instruction
-                    )
-                    user_content = f"Create a textbook illustration prompt for: {raw_prompt}. Style requirements: {style_keywords}. Subject context: {subject}"
-                elif subject == "sketchnote":
-                    system_instruction = templates.get("sketchnote", "")
-                    user_content = f"用户提供的内容：\n{raw_prompt}\n\n请严格按照System Prompt的规则，生成对应的绘画指令。不要解释，直接输出最终的 Prompt。"
-                else:
-                    template = templates.get("general", "")            
-            system_instruction = template.format(
-                neg_constraint=neg_constraint,
-                style_instruction=style_instruction,
-                lang_instruction=lang_instruction
-            )
-            user_content = f"Create an educational infographic prompt for: {raw_prompt}. Subject context: {subject}"
+        system_instruction = ""
+        user_content = f"Create an educational infographic prompt for: {raw_prompt}. Subject context: {subject}"
+
+        # 针对“教材绘图”的特殊处理
+        if subject == "textbook":
+            style_keywords = p_conf.get("textbook_style_keywords", "modern 2.5D vector illustration, white background")
+            template = templates.get("textbook", "")
+            if template:
+                system_instruction = template.format(
+                    neg_constraint=neg_constraint,
+                    style_instruction=style_instruction,
+                    lang_instruction=lang_instruction
+                )
+            user_content = f"Create a textbook illustration prompt for: {raw_prompt}. Style requirements: {style_keywords}. Subject context: {subject}"
+        elif subject == "sketchnote":
+            system_instruction = templates.get("sketchnote", "")
+            user_content = f"用户提供的内容：\n{raw_prompt}\n\n请严格按照System Prompt的规则，生成对应的绘画指令。不要解释，直接输出最终的 Prompt。"
+        else:
+            template = templates.get("general", "")
+            if template:
+                system_instruction = template.format(
+                    neg_constraint=neg_constraint,
+                    style_instruction=style_instruction,
+                    lang_instruction=lang_instruction
+                )
         
         # Fallback if template is missing
         if not system_instruction:
