@@ -965,12 +965,14 @@ class ImageGenerator:
             )
             return seedream_images[0] if seedream_images else None
 
-        # 针对 Gemini-3-pro-image-preview 模型的特殊处理
-        if "gemini-3-pro-image-preview" in target_model:
-            print(f"🤖 检测到 Gemini 绘图模型，切换到 Chat 接口...")
+        target_model_lower = (target_model or "").lower()
+
+        # Gemini 3 image-preview 系列走 Chat 接口（含 3.1 flash image preview）
+        if "gemini-3" in target_model_lower and "image-preview" in target_model_lower:
+            print(f"🤖 检测到 Gemini 3 Image Preview，切换到 Chat 接口...")
             return self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
         # Gemini 2.5 Flash Image: 使用 generateContent
-        if "gemini-2.5-flash-image" in target_model:
+        if "gemini-2.5-flash-image" in target_model_lower:
             print(f"🤖 检测到 Gemini 2.5 Flash Image，切换到 generateContent 接口...")
             return self._generate_image_via_gemini(prompt, size=size, base_url=base_url, api_key=api_key, model=target_model)
 
