@@ -137,12 +137,18 @@ class ModelCatalogItem(BaseModel):
     enabled: bool = True
 
 
+class PromptChannelConfig(BaseModel):
+    enabled: bool = True
+    models: List[str] = Field(default_factory=list)
+
+
 class SystemConfigUpdateRequest(BaseModel):
     image: SystemImageConfig
     tts: SystemTTSConfig
     video: Optional[SystemVideoConfig] = None
     key_pools: Optional[List[Dict]] = None
     models: Optional[List[ModelCatalogItem]] = None
+    prompt_channels: Optional[Dict[str, PromptChannelConfig]] = None
 
 
 class CropRequest(BaseModel):

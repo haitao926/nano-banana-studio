@@ -11,13 +11,14 @@ from app_state import GENERATED_DIR, MAX_BATCH_TASKS, BATCH_WORKERS, BATCH_DELAY
 from deps import get_current_user_optional
 from helpers import (
     _build_model_candidates,
+    _build_prompt_model_chain,
     _dedupe_preserve_order,
     _download_reference_image,
     _download_public_image_bytes,
     _enforce_rate_limit,
     _get_default_model,
-    _get_model_catalog,
     _get_model_cost,
+    _normalize_prompt_channel_name,
     _resolve_reference_image_path,
     create_thumbnail,
     determine_execution_mode,
@@ -53,43 +54,8 @@ def _build_seedream_image_params(image_urls: list[str]) -> Optional[list[str]]:
     return params
 
 
-PROMPT_BACKUP_MODELS = ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"]
-PROMPT_CHANNEL_MODEL_CHAIN = {
-    "google": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "gpt-5.2-chat"],
-    "bytedance": ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"],
-    "aliyun": ["gpt-5.2-chat", "claude-sonnet-4-6", "gemini-3.1-pro-preview"],
-}
-
-
 def _normalize_prompt_channel(channel: Optional[str]) -> Optional[str]:
-    text = str(channel or "").strip().lower()
-    if text == "byte":
-        return "bytedance"
-    if text in ("google", "bytedance", "aliyun"):
-        return text
-    return None
-
-
-def _build_prompt_model_chain(preferred_model: Optional[str], channel: Optional[str] = None) -> List[str]:
-    normalized_channel = _normalize_prompt_channel(channel)
-    prompt_models = [
-        str(item.get("model") or "").strip()
-        for item in _get_model_catalog()
-        if item.get("enabled", True) and str(item.get("service") or "").strip().lower() == "prompt"
-    ]
-    if normalized_channel:
-        channel_models = PROMPT_CHANNEL_MODEL_CHAIN.get(normalized_channel, [])
-        chain = channel_models + [str(preferred_model or "").strip()] + prompt_models + PROMPT_BACKUP_MODELS
-    else:
-        chain = [str(preferred_model or "").strip()] + prompt_models + PROMPT_BACKUP_MODELS
-    seen = set()
-    ordered: List[str] = []
-    for model in chain:
-        if not model or model in seen:
-            continue
-        seen.add(model)
-        ordered.append(model)
-    return ordered
+    return _normalize_prompt_channel_name(channel)
 
 
 @router.post("/api/generate/single")

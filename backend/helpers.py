@@ -25,6 +25,12 @@ MODEL_PLATFORM_BASE_URLS = {
     "bailian": "https://dashscope.aliyuncs.com/api/v1",
     "ark": "https://ark.cn-beijing.volces.com/api/v3",
 }
+PROMPT_CHANNEL_KEYS = ("google", "bytedance", "aliyun")
+DEFAULT_PROMPT_CHANNEL_MODELS = {
+    "google": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "gpt-5.2-chat"],
+    "bytedance": ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"],
+    "aliyun": ["gpt-5.2-chat", "claude-sonnet-4-6", "gemini-3.1-pro-preview"],
+}
 from core.video_generator import VideoGenerator
 from app_state import (
     AUDIO_DIR,
@@ -362,6 +368,10 @@ def _get_system_config_with_env() -> Dict:
     cfg.setdefault("api", {})
     cfg.setdefault("tts", {})
     cfg.setdefault("video", {})
+    cfg["prompt_channels"] = normalize_prompt_channels(
+        cfg.get("prompt_channels"),
+        normalize_model_catalog(cfg.get("models") or cfg.get("model_catalog") or []),
+    )
 
     return cfg
 
@@ -450,6 +460,72 @@ def _infer_platform_from_base_url(base_url: str, hint: str = "") -> str:
     return platform or ""
 
 
+def _normalize_prompt_channel_name(value: Any) -> Optional[str]:
+    text = str(value or "").strip().lower()
+    if text == "byte":
+        return "bytedance"
+    if text in PROMPT_CHANNEL_KEYS:
+        return text
+    return None
+
+
+def _normalize_prompt_channel_models(value: Any, fallback: List[str]) -> List[str]:
+    if isinstance(value, str):
+        raw_items = [v.strip() for v in re.split(r"[\\n,;]+", value) if v.strip()]
+    elif isinstance(value, list):
+        raw_items = [str(v).strip() for v in value if str(v).strip()]
+    else:
+        raw_items = []
+    ordered = raw_items or list(fallback)
+    seen = set()
+    models: List[str] = []
+    for model in ordered:
+        if not model or model in seen:
+            continue
+        seen.add(model)
+        models.append(model)
+    return models
+
+
+def normalize_prompt_channels(raw: Any, prompt_model_catalog: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Dict[str, Any]]:
+    prompt_models = []
+    if prompt_model_catalog:
+        prompt_models = [
+            str(item.get("model") or "").strip()
+            for item in prompt_model_catalog
+            if str(item.get("service") or "").strip().lower() == "prompt"
+        ]
+    normalized_input: Dict[str, Dict[str, Any]] = {}
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            channel = _normalize_prompt_channel_name(key)
+            if not channel:
+                continue
+            if hasattr(value, "model_dump"):
+                payload = value.model_dump()
+            elif hasattr(value, "dict"):
+                payload = value.dict()
+            elif isinstance(value, dict):
+                payload = value
+            else:
+                payload = {}
+            fallback_models = DEFAULT_PROMPT_CHANNEL_MODELS.get(channel) or prompt_models or []
+            normalized_input[channel] = {
+                "enabled": _coerce_bool(payload.get("enabled"), True),
+                "models": _normalize_prompt_channel_models(payload.get("models"), fallback_models),
+            }
+
+    result: Dict[str, Dict[str, Any]] = {}
+    for channel in PROMPT_CHANNEL_KEYS:
+        fallback_models = DEFAULT_PROMPT_CHANNEL_MODELS.get(channel) or prompt_models or []
+        payload = normalized_input.get(channel) or {}
+        result[channel] = {
+            "enabled": _coerce_bool(payload.get("enabled"), True),
+            "models": _normalize_prompt_channel_models(payload.get("models"), fallback_models),
+        }
+    return result
+
+
 def normalize_model_catalog(raw: Any) -> List[Dict[str, Any]]:
     if not raw:
         return []
@@ -507,6 +583,126 @@ def normalize_model_catalog(raw: Any) -> List[Dict[str, Any]]:
 def _get_model_catalog() -> List[Dict[str, Any]]:
     cfg = _get_system_config_with_env()
     return normalize_model_catalog(cfg.get("models") or cfg.get("model_catalog") or [])
+
+
+def _get_prompt_channels_config(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
+    data = cfg if isinstance(cfg, dict) else _get_system_config_with_env()
+    prompt_catalog = normalize_model_catalog(data.get("models") or data.get("model_catalog") or [])
+    return normalize_prompt_channels(data.get("prompt_channels"), prompt_catalog)
+
+
+def _build_prompt_model_chain(preferred_model: Optional[str], channel: Optional[str] = None) -> List[str]:
+    normalized_channel = _normalize_prompt_channel_name(channel)
+    prompt_models = [
+        str(item.get("model") or "").strip()
+        for item in _get_model_catalog()
+        if item.get("enabled", True) and str(item.get("service") or "").strip().lower() == "prompt"
+    ]
+    channel_models: List[str] = []
+    if normalized_channel:
+        prompt_channels = _get_prompt_channels_config()
+        channel_cfg = prompt_channels.get(normalized_channel) or {}
+        if channel_cfg.get("enabled", True):
+            channel_models = [str(v).strip() for v in (channel_cfg.get("models") or []) if str(v).strip()]
+    chain = channel_models + [str(preferred_model or "").strip()] + prompt_models
+    seen = set()
+    ordered: List[str] = []
+    for model in chain:
+        if not model or model in seen:
+            continue
+        seen.add(model)
+        ordered.append(model)
+    return ordered
+
+
+def _count_static_prompt_candidates(model_item: Dict[str, Any], pools: List[Dict[str, Any]]) -> int:
+    seen = set()
+    base_url = model_item.get("base_url")
+    model_keys = [model_item.get("api_key")] + (model_item.get("backup_keys") or [])
+    for key in model_keys:
+        if not key:
+            continue
+        seen.add(f"{key}::{base_url or ''}")
+    for pool in pools:
+        pool_base = pool.get("base_url")
+        keys = [pool.get("key")] + (pool.get("backup_keys") or [])
+        for key in keys:
+            if not key:
+                continue
+            seen.add(f"{key}::{pool_base or ''}")
+    return len(seen)
+
+
+def validate_prompt_channels_config(
+    models: List[Dict[str, Any]],
+    key_pools: List[Dict[str, Any]],
+    prompt_channels: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    normalized_models = normalize_model_catalog(models or [])
+    normalized_pools = normalize_key_pools(key_pools or [])
+    normalized_channels = normalize_prompt_channels(prompt_channels, normalized_models)
+    prompt_model_map: Dict[str, Dict[str, Any]] = {}
+    for item in normalized_models:
+        if str(item.get("service") or "").strip().lower() != "prompt":
+            continue
+        model_name = str(item.get("model") or "").strip()
+        if not model_name:
+            continue
+        prompt_model_map[model_name.lower()] = item
+
+    errors: List[str] = []
+    warnings: List[str] = []
+    channels: Dict[str, Dict[str, Any]] = {}
+
+    for channel in PROMPT_CHANNEL_KEYS:
+        channel_cfg = normalized_channels.get(channel) or {"enabled": True, "models": []}
+        models_chain = [str(v).strip() for v in (channel_cfg.get("models") or []) if str(v).strip()]
+        model_valid_chain: List[str] = []
+        model_candidate_chain: List[str] = []
+        candidate_count_total = 0
+
+        if channel_cfg.get("enabled") is not True:
+            errors.append(f"通道 {channel} 未启用，请启用后再保存。")
+
+        if len(models_chain) < 2:
+            errors.append(f"通道 {channel} 至少需要配置 2 个可回退模型。")
+
+        for model_name in models_chain:
+            model_item = prompt_model_map.get(model_name.lower())
+            if not model_item:
+                errors.append(f"通道 {channel} 包含未配置的提示词模型：{model_name}")
+                continue
+            if not model_item.get("enabled", True):
+                errors.append(f"通道 {channel} 的模型未启用：{model_name}")
+                continue
+            model_valid_chain.append(model_name)
+            pools = select_key_pools(normalized_pools, "prompt", model_name)
+            candidate_count = _count_static_prompt_candidates(model_item, pools)
+            candidate_count_total += candidate_count
+            if candidate_count > 0:
+                model_candidate_chain.append(model_name)
+            else:
+                warnings.append(f"通道 {channel} 的模型 {model_name} 未找到可用 Key 候选。")
+
+        if len(model_valid_chain) < 2:
+            errors.append(f"通道 {channel} 的有效提示词模型不足 2 个。")
+        if not model_candidate_chain:
+            errors.append(f"通道 {channel} 没有可用的 Key 候选链。")
+
+        channels[channel] = {
+            "enabled": channel_cfg.get("enabled") is True,
+            "models": models_chain,
+            "valid_models": model_valid_chain,
+            "candidate_models": model_candidate_chain,
+            "candidate_count": candidate_count_total,
+        }
+
+    return {
+        "errors": errors,
+        "warnings": warnings,
+        "channels": channels,
+        "prompt_channels": normalized_channels,
+    }
 
 
 def _select_model_config(service: str, model: Optional[str]) -> Optional[Dict[str, Any]]:

@@ -1,7 +1,7 @@
 import os
 import secrets
 import time
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -14,13 +14,16 @@ from deps import get_current_user
 from helpers import (
     _build_model_candidates,
     _get_model_catalog,
+    _get_prompt_channels_config,
     _get_system_config_with_env,
     _get_tts_base_url,
     _get_video_base_url,
     _load_system_config,
     _merge_candidates,
     _save_system_config,
+    normalize_prompt_channels,
     normalize_model_catalog,
+    validate_prompt_channels_config,
 )
 from schemas import (
     AdminCreateUserRequest,
@@ -31,6 +34,100 @@ from schemas import (
 )
 
 router = APIRouter()
+PROMPT_HEALTH_CACHE: Dict[str, Any] = {}
+
+
+def _set_prompt_health_cache(payload: Dict[str, Any]):
+    global PROMPT_HEALTH_CACHE
+    if not isinstance(payload, dict):
+        payload = {}
+    payload.setdefault("checked_at", int(time.time()))
+    PROMPT_HEALTH_CACHE = payload
+
+
+def _build_prompt_health(prompt_channels: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Any]:
+    channels_cfg = normalize_prompt_channels(prompt_channels or _get_prompt_channels_config())
+    health: Dict[str, Any] = {
+        "checked_at": int(time.time()),
+        "channels": {},
+        "warnings": [],
+    }
+    test_prompt = "Health check prompt. Return an optimized concise drawing prompt."
+    for channel in ("google", "bytedance", "aliyun"):
+        channel_cfg = channels_cfg.get(channel) or {"enabled": True, "models": []}
+        model_chain = [str(v).strip() for v in (channel_cfg.get("models") or []) if str(v).strip()]
+        channel_result: Dict[str, Any] = {
+            "enabled": channel_cfg.get("enabled") is True,
+            "models": model_chain,
+            "status": "red",
+            "fallback_depth": None,
+            "selected_model": None,
+            "candidate_count": 0,
+            "attempts": [],
+            "message": "",
+        }
+        if channel_result["enabled"] is not True:
+            channel_result["message"] = "channel disabled"
+            health["warnings"].append(f"{channel}: 通道已停用")
+            health["channels"][channel] = channel_result
+            continue
+        if not model_chain:
+            channel_result["message"] = "no models configured"
+            health["warnings"].append(f"{channel}: 未配置模型链")
+            health["channels"][channel] = channel_result
+            continue
+
+        for index, model_name in enumerate(model_chain):
+            candidates = _build_model_candidates("prompt", model=model_name)
+            candidate_count = len(candidates)
+            channel_result["candidate_count"] += candidate_count
+            if not candidates:
+                channel_result["attempts"].append(
+                    {"model": model_name, "status": "no_key", "error": "no available key candidates"}
+                )
+                continue
+            model_success = False
+            model_error = ""
+            for candidate in candidates[:2]:
+                try:
+                    optimized = img_gen.optimize_prompt(
+                        raw_prompt=test_prompt,
+                        subject="general",
+                        model=model_name,
+                        api_key=candidate.get("key"),
+                        base_url=candidate.get("base_url"),
+                    )
+                    if optimized:
+                        model_success = True
+                        break
+                    last_error = getattr(img_gen, "last_error", None) or {}
+                    model_error = str(last_error.get("message") or "optimization returned empty")
+                except Exception as exc:
+                    model_error = str(exc)
+            if model_success:
+                channel_result["selected_model"] = model_name
+                channel_result["fallback_depth"] = index
+                channel_result["status"] = "green" if index == 0 else "yellow"
+                channel_result["message"] = (
+                    f"primary model healthy: {model_name}"
+                    if index == 0
+                    else f"fallback model healthy: {model_name}"
+                )
+                channel_result["attempts"].append({"model": model_name, "status": "success"})
+                break
+            channel_result["attempts"].append(
+                {"model": model_name, "status": "failed", "error": model_error or "model request failed"}
+            )
+
+        if channel_result["status"] == "red":
+            channel_result["message"] = channel_result["message"] or "all models failed"
+            health["warnings"].append(f"{channel}: 全部模型检测失败")
+        elif channel_result["status"] == "yellow":
+            health["warnings"].append(f"{channel}: 主模型失败，已回退 {channel_result['selected_model']}")
+
+        health["channels"][channel] = channel_result
+
+    return health
 
 
 @router.post("/api/admin/toggle_feature")
@@ -52,6 +149,7 @@ async def get_system_config(current_user: Dict = Depends(get_current_user)):
     video_cfg = cfg.get("video", {}) or {}
     key_pools = normalize_key_pools(cfg.get("key_pools") or [])
     model_catalog = _get_model_catalog()
+    prompt_channels = normalize_prompt_channels(cfg.get("prompt_channels"), model_catalog)
     return {
         "image": {
             "api_key": auth_cfg.get("api_key", ""),
@@ -70,6 +168,8 @@ async def get_system_config(current_user: Dict = Depends(get_current_user)):
         },
         "key_pools": key_pools,
         "models": model_catalog,
+        "prompt_channels": prompt_channels,
+        "prompt_health": PROMPT_HEALTH_CACHE or None,
     }
 
 
@@ -108,9 +208,60 @@ async def update_system_config(req: SystemConfigUpdateRequest, current_user: Dic
             else:
                 raw_models.append(item)
         cfg["models"] = normalize_model_catalog(raw_models)
+    prompt_models = normalize_model_catalog(cfg.get("models") or [])
+    prompt_key_pools = normalize_key_pools(cfg.get("key_pools") or [])
+    requested_channels = req.prompt_channels if req.prompt_channels is not None else cfg.get("prompt_channels")
+    cfg["prompt_channels"] = normalize_prompt_channels(requested_channels, prompt_models)
+
+    validation = validate_prompt_channels_config(
+        models=prompt_models,
+        key_pools=prompt_key_pools,
+        prompt_channels=cfg.get("prompt_channels") or {},
+    )
+    if validation.get("errors"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "PROMPT_CONFIG_INVALID",
+                "errors": validation.get("errors") or [],
+                "warnings": validation.get("warnings") or [],
+                "channels": validation.get("channels") or {},
+            },
+        )
+
     _save_system_config(cfg)
     img_gen._apply_config(cfg)
-    return {"success": True}
+    health_error = None
+    health_payload: Optional[Dict[str, Any]] = None
+    try:
+        health_payload = _build_prompt_health(cfg.get("prompt_channels"))
+        _set_prompt_health_cache(health_payload)
+    except Exception as exc:
+        health_error = str(exc)
+
+    warnings = list(validation.get("warnings") or [])
+    if health_payload and health_payload.get("warnings"):
+        warnings.extend([str(item) for item in health_payload.get("warnings") if item])
+    if health_error:
+        warnings.append(f"自动健康检查执行失败: {health_error}")
+
+    return {
+        "success": True,
+        "prompt_channels": cfg.get("prompt_channels") or {},
+        "prompt_health": health_payload,
+        "warnings": warnings,
+    }
+
+
+@router.get("/api/admin/prompt_health")
+async def get_prompt_health(current_user: Dict = Depends(get_current_user)):
+    if current_user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    cfg = _get_system_config_with_env()
+    prompt_channels = normalize_prompt_channels(cfg.get("prompt_channels"), _get_model_catalog())
+    health_payload = _build_prompt_health(prompt_channels)
+    _set_prompt_health_cache(health_payload)
+    return health_payload
 
 
 def _build_test_candidates(req: ModelTestRequest) -> List[Dict]:

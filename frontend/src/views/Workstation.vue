@@ -781,7 +781,10 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button @click="addSystemModelForActiveGroup" class="typo-button-compact text-indigo-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-indigo-700 transition-all">
+                        <button @click="showAdvancedModelConfig = !showAdvancedModelConfig" class="typo-button-compact text-slate-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-slate-700 transition-all">
+                            {{ showAdvancedModelConfig ? tSettings('settings.prompt_advanced_hide', '收起高级配置') : tSettings('settings.prompt_advanced_show', '显示高级配置') }}
+                        </button>
+                        <button v-if="showAdvancedModelConfig" @click="addSystemModelForActiveGroup" class="typo-button-compact text-indigo-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-indigo-700 transition-all">
                             {{ tSettings('settings.model_add', '添加模型') }}
                         </button>
                         <button @click="fetchSystemConfig" class="typo-button-compact text-slate-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-slate-700 transition-all">
@@ -790,153 +793,223 @@
                     </div>
                 </div>
 
-                <div class="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-                    <div class="flex flex-wrap items-center gap-3">
-                        <div class="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-xl p-1">
-                            <button
-                                v-for="mode in modelViewModes"
-                                :key="mode.id"
-                                @click="modelViewMode = mode.id"
-                                class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                                :class="modelViewMode === mode.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
-                            >
-                                {{ mode.label }}
+                <div class="space-y-4">
+                    <div class="bg-white/70 border border-slate-100 rounded-2xl p-5 space-y-4">
+                        <div class="flex items-center justify-between gap-2">
+                            <div>
+                                <div class="typo-body font-semibold text-slate-800">{{ tSettings('settings.prompt_channel_config_title', '提示词优化通道配置') }}</div>
+                                <div class="text-xs text-slate-500">{{ tSettings('settings.prompt_channel_config_desc', '仅配置 Google / Bytedance / 阿里 三通道，系统按主备自动回退。') }}</div>
+                            </div>
+                            <button @click="refreshPromptHealth" :disabled="promptHealthLoading" class="typo-button-compact text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg hover:text-slate-800 disabled:opacity-60 disabled:cursor-not-allowed">
+                                {{ promptHealthLoading ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.prompt_health_refresh', '刷新健康状态') }}
                             </button>
                         </div>
-                        <div class="flex flex-wrap gap-2">
-                            <button
-                                v-for="group in activeModelGroups"
-                                :key="group.id"
-                                @click="activeModelGroup = group.id"
-                                class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
-                                :class="activeModelGroup === group.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'"
-                            >
-                                {{ group.label }} <span class="ml-1 text-[10px] opacity-80">({{ group.count }})</span>
-                            </button>
+                        <div v-if="promptConfigErrors.length" class="text-xs text-red-500 bg-red-50 border border-red-100 rounded-xl px-3 py-2 space-y-1">
+                            <div v-for="(err, idx) in promptConfigErrors" :key="`prompt-config-err-${idx}`">{{ err }}</div>
                         </div>
-                    </div>
-                    <div v-if="!renderModelGroups.some((group) => group.items.length)" class="text-xs text-slate-400">
-                        {{ tSettings('settings.model_empty', '暂无模型配置') }}
-                    </div>
-                    <div v-for="group in renderModelGroups" :key="group.id" class="space-y-3">
-                        <div v-if="modelViewMode === 'platform' && group.items.length" class="px-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
-                            {{ group.label }}
+                        <div v-if="promptConfigWarnings.length" class="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 space-y-1">
+                            <div v-for="(warn, idx) in promptConfigWarnings" :key="`prompt-config-warn-${idx}`">{{ warn }}</div>
                         </div>
-                        <div v-for="entry in group.items" :key="entry.index" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
-                        <div class="flex items-center justify-between gap-3">
-                            <div class="flex items-center gap-3 text-xs text-slate-400">
-                                <span>#{{ entry.index + 1 }}</span>
-                                <span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100 text-[10px]">
-                                    {{ tSettings('settings.pool_tag', '系统') }}
-                                </span>
-                                <span class="text-slate-500">{{ modelSummary(entry.item) }}</span>
-                            </div>
-                            <div class="flex items-center gap-2 text-xs">
-                                <button
-                                    @click="toggleSystemModelExpand(entry.index)"
-                                    class="text-indigo-500 hover:text-indigo-700"
-                                >
-                                    {{ isSystemModelExpanded(entry.index) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '展开') }}
-                                </button>
-                                <button @click="removeSystemModel(entry.index)" class="text-red-400 hover:text-red-600">
-                                    {{ tSettings('settings.key_pool_remove', '删除') }}
-                                </button>
-                            </div>
-                        </div>
-                        <div v-if="!isSystemModelExpanded(entry.index)" class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
-                                {{ getPlatformLabel(entry.item.platform) }}
-                            </span>
-                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
-                                {{ tSettings(`settings.model_service_${entry.item.service === 'digital_human' ? 'dh' : entry.item.service}`, entry.item.service) }}
-                            </span>
-                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
-                                {{ entry.item.enabled !== false ? tSettings('settings.key_pool_enabled', '启用') : tSettings('settings.key_pool_disabled', '停用') }}
-                            </span>
-                            <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 max-w-full truncate">
-                                {{ isModelConfigured(entry.item) ? tSettings('settings.key_pool_configured', 'Key 已配置') : tSettings('settings.key_pool_not_configured', 'Key 未配置') }}
-                            </span>
-                        </div>
-                        <div v-else class="grid grid-cols-1 lg:grid-cols-7 gap-3">
-                            <div class="space-y-1">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
-                                <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemPlatformChange(entry.item)">
-                                    <option value="vector">{{ tSettings('settings.model_platform_vector', 'ReOpenInnoLab') }}</option>
-                                    <option value="bailian">{{ tSettings('settings.model_platform_bailian', '阿里百炼') }}</option>
-                                    <option value="ark">{{ tSettings('settings.model_platform_ark', '火山方舟') }}</option>
-                                </select>
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_service', '用途') }}</label>
-                                <select v-model="entry.item.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemServiceChange(entry.item)">
-                                    <option value="image">{{ tSettings('settings.model_service_image', '绘图') }}</option>
-                                    <option value="video">{{ tSettings('settings.model_service_video', '视频') }}</option>
-                                    <option value="audio">{{ tSettings('settings.model_service_audio', '音频') }}</option>
-                                    <option value="digital_human">{{ tSettings('settings.model_service_dh', '数字人') }}</option>
-                                    <option value="prompt">{{ tSettings('settings.model_service_prompt', '提示词优化') }}</option>
-                                </select>
-                            </div>
-                            <div class="space-y-1 lg:col-span-2">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
-                                <select
-                                    v-model="entry.item.model"
-                                    class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                    @change="applyModelTemplate(entry.item, entry.item.model)"
-                                >
-                                    <option v-if="!getSystemModelOptionsForSelection(entry.item.service, entry.item.platform).length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
-                                    <option v-for="opt in getSystemModelOptionsForSelection(entry.item.service, entry.item.platform)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-                                </select>
-                                <div class="text-[10px] text-slate-400 mt-1">
-                                    {{ tSettings('settings.model_platform', '平台') }}: {{ getPlatformLabel(entry.item.platform) }}
+                        <div class="space-y-3">
+                            <div v-for="channel in promptChannelAdminRows" :key="channel.key" class="border border-slate-100 rounded-xl p-3 bg-white/80 space-y-2">
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-semibold text-slate-700">{{ channel.label }}</span>
+                                        <span class="text-[10px] px-2 py-0.5 rounded-full border" :class="promptHealthBadgeClass(getPromptHealthChannel(channel.key)?.status)">
+                                            {{ promptHealthStatusText(getPromptHealthChannel(channel.key)?.status) }}
+                                        </span>
+                                    </div>
+                                    <label class="text-[11px] text-slate-500 flex items-center gap-1">
+                                        <input type="checkbox" v-model="promptChannelsDraft[channel.key].enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                        {{ tSettings('settings.model_enabled', '启用') }}
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                    <div class="space-y-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.prompt_primary', '主模型') }}</label>
+                                        <select v-model="promptChannelsDraft[channel.key].models[0]" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500">
+                                            <option value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                            <option v-for="opt in promptChannelModelOptions" :key="`${channel.key}-primary-${opt.value}`" :value="opt.value">{{ opt.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.prompt_fallback_1', '备用1') }}</label>
+                                        <select v-model="promptChannelsDraft[channel.key].models[1]" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500">
+                                            <option value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                            <option v-for="opt in promptChannelModelOptions" :key="`${channel.key}-fallback1-${opt.value}`" :value="opt.value">{{ opt.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.prompt_fallback_2', '备用2') }}</label>
+                                        <select v-model="promptChannelsDraft[channel.key].models[2]" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500">
+                                            <option value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                            <option v-for="opt in promptChannelModelOptions" :key="`${channel.key}-fallback2-${opt.value}`" :value="opt.value">{{ opt.label }}</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                    <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                        {{ tSettings('settings.prompt_candidate_count', '候选 Key 数') }}: {{ promptDraftChannelPreview[channel.key]?.candidate_count || 0 }}
+                                    </span>
+                                    <span v-if="getPromptHealthChannel(channel.key)?.selected_model" class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700">
+                                        {{ tSettings('settings.prompt_hit_model', '命中模型') }}: {{ getPromptHealthChannel(channel.key)?.selected_model }}
+                                    </span>
+                                    <span v-if="getPromptHealthChannel(channel.key)?.message" class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                        {{ getPromptHealthChannel(channel.key)?.message }}
+                                    </span>
                                 </div>
                             </div>
-                            <div class="space-y-1 lg:col-span-2">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_api_key', 'API Key') }}</label>
-                                <input v-model="entry.item.api_key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
-                                <label class="flex items-center gap-2 text-[11px] text-slate-500 mt-2">
-                                    <input type="checkbox" v-model="entry.item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
-                                    {{ tSettings('settings.model_enabled', '启用') }}
-                                </label>
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_cost', '消耗积分') }}</label>
-                                <input
-                                    v-model.number="entry.item.cost"
-                                    type="number"
-                                    min="0"
-                                    class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                    :placeholder="tSettings('settings.model_cost_placeholder', '例如 1')"
-                                />
-                            </div>
-                        </div>
-                        <div v-if="isSystemModelExpanded(entry.index)" class="flex items-center gap-3 text-xs">
-                            <button
-                                @click="runModelTest(entry)"
-                                :disabled="modelTestLoading[entry.index]"
-                                class="font-semibold text-emerald-600 hover:text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                                {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_test', '测试') }}
-                            </button>
-                            <button @click="clearSystemModelKey(entry.index)" class="text-red-400 hover:text-red-600">
-                                {{ tSettings('settings.model_remove', '清空Key') }}
-                            </button>
-                        </div>
-                        <div v-if="isSystemModelExpanded(entry.index) && modelTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
-                            <span
-                                :class="modelTestStates[entry.index].status === 'success' ? 'text-emerald-600' : modelTestStates[entry.index].status === 'error' ? 'text-red-500' : 'text-slate-500'"
-                            >
-                                {{ modelTestStates[entry.index].message }}
-                            </span>
-                            <a
-                                v-if="modelTestStates[entry.index].url"
-                                :href="modelTestStates[entry.index].url"
-                                target="_blank"
-                                class="text-indigo-500 hover:text-indigo-700 underline"
-                            >
-                                {{ tSettings('settings.model_test_view', '查看结果') }}
-                            </a>
                         </div>
                     </div>
+
+                    <div v-if="showAdvancedModelConfig" class="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <div class="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-xl p-1">
+                                <button
+                                    v-for="mode in modelViewModes"
+                                    :key="mode.id"
+                                    @click="modelViewMode = mode.id"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+                                    :class="modelViewMode === mode.id ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+                                >
+                                    {{ mode.label }}
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    v-for="group in activeModelGroups"
+                                    :key="group.id"
+                                    @click="activeModelGroup = group.id"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
+                                    :class="activeModelGroup === group.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'"
+                                >
+                                    {{ group.label }} <span class="ml-1 text-[10px] opacity-80">({{ group.count }})</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div v-if="!renderModelGroups.some((group) => group.items.length)" class="text-xs text-slate-400">
+                            {{ tSettings('settings.model_empty', '暂无模型配置') }}
+                        </div>
+                        <div v-for="group in renderModelGroups" :key="group.id" class="space-y-3">
+                            <div v-if="modelViewMode === 'platform' && group.items.length" class="px-2 text-xs font-semibold text-slate-500 uppercase tracking-widest">
+                                {{ group.label }}
+                            </div>
+                            <div v-for="entry in group.items" :key="entry.index" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="flex items-center gap-3 text-xs text-slate-400">
+                                    <span>#{{ entry.index + 1 }}</span>
+                                    <span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100 text-[10px]">
+                                        {{ tSettings('settings.pool_tag', '系统') }}
+                                    </span>
+                                    <span class="text-slate-500">{{ modelSummary(entry.item) }}</span>
+                                </div>
+                                <div class="flex items-center gap-2 text-xs">
+                                    <button
+                                        @click="toggleSystemModelExpand(entry.index)"
+                                        class="text-indigo-500 hover:text-indigo-700"
+                                    >
+                                        {{ isSystemModelExpanded(entry.index) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '展开') }}
+                                    </button>
+                                    <button @click="removeSystemModel(entry.index)" class="text-red-400 hover:text-red-600">
+                                        {{ tSettings('settings.key_pool_remove', '删除') }}
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="!isSystemModelExpanded(entry.index)" class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                    {{ getPlatformLabel(entry.item.platform) }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                    {{ tSettings(`settings.model_service_${entry.item.service === 'digital_human' ? 'dh' : entry.item.service}`, entry.item.service) }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                    {{ entry.item.enabled !== false ? tSettings('settings.key_pool_enabled', '启用') : tSettings('settings.key_pool_disabled', '停用') }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 max-w-full truncate">
+                                    {{ isModelConfigured(entry.item) ? tSettings('settings.key_pool_configured', 'Key 已配置') : tSettings('settings.key_pool_not_configured', 'Key 未配置') }}
+                                </span>
+                            </div>
+                            <div v-else class="grid grid-cols-1 lg:grid-cols-7 gap-3">
+                                <div class="space-y-1">
+                                    <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
+                                    <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemPlatformChange(entry.item)">
+                                        <option value="vector">{{ tSettings('settings.model_platform_vector', 'ReOpenInnoLab') }}</option>
+                                        <option value="bailian">{{ tSettings('settings.model_platform_bailian', '阿里百炼') }}</option>
+                                        <option value="ark">{{ tSettings('settings.model_platform_ark', '火山方舟') }}</option>
+                                    </select>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_service', '用途') }}</label>
+                                    <select v-model="entry.item.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemServiceChange(entry.item)">
+                                        <option value="image">{{ tSettings('settings.model_service_image', '绘图') }}</option>
+                                        <option value="video">{{ tSettings('settings.model_service_video', '视频') }}</option>
+                                        <option value="audio">{{ tSettings('settings.model_service_audio', '音频') }}</option>
+                                        <option value="digital_human">{{ tSettings('settings.model_service_dh', '数字人') }}</option>
+                                        <option value="prompt">{{ tSettings('settings.model_service_prompt', '提示词优化') }}</option>
+                                    </select>
+                                </div>
+                                <div class="space-y-1 lg:col-span-2">
+                                    <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
+                                    <select
+                                        v-model="entry.item.model"
+                                        class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                        @change="applyModelTemplate(entry.item, entry.item.model)"
+                                    >
+                                        <option v-if="!getSystemModelOptionsForSelection(entry.item.service, entry.item.platform).length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                        <option v-for="opt in getSystemModelOptionsForSelection(entry.item.service, entry.item.platform)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                                    </select>
+                                    <div class="text-[10px] text-slate-400 mt-1">
+                                        {{ tSettings('settings.model_platform', '平台') }}: {{ getPlatformLabel(entry.item.platform) }}
+                                    </div>
+                                </div>
+                                <div class="space-y-1 lg:col-span-2">
+                                    <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_api_key', 'API Key') }}</label>
+                                    <input v-model="entry.item.api_key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
+                                    <label class="flex items-center gap-2 text-[11px] text-slate-500 mt-2">
+                                        <input type="checkbox" v-model="entry.item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                        {{ tSettings('settings.model_enabled', '启用') }}
+                                    </label>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_cost', '消耗积分') }}</label>
+                                    <input
+                                        v-model.number="entry.item.cost"
+                                        type="number"
+                                        min="0"
+                                        class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                        :placeholder="tSettings('settings.model_cost_placeholder', '例如 1')"
+                                    />
+                                </div>
+                            </div>
+                            <div v-if="isSystemModelExpanded(entry.index)" class="flex items-center gap-3 text-xs">
+                                <button
+                                    @click="runModelTest(entry)"
+                                    :disabled="modelTestLoading[entry.index]"
+                                    class="font-semibold text-emerald-600 hover:text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                >
+                                    {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_test', '测试') }}
+                                </button>
+                                <button @click="clearSystemModelKey(entry.index)" class="text-red-400 hover:text-red-600">
+                                    {{ tSettings('settings.model_remove', '清空Key') }}
+                                </button>
+                            </div>
+                            <div v-if="isSystemModelExpanded(entry.index) && modelTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
+                                <span
+                                    :class="modelTestStates[entry.index].status === 'success' ? 'text-emerald-600' : modelTestStates[entry.index].status === 'error' ? 'text-red-500' : 'text-slate-500'"
+                                >
+                                    {{ modelTestStates[entry.index].message }}
+                                </span>
+                                <a
+                                    v-if="modelTestStates[entry.index].url"
+                                    :href="modelTestStates[entry.index].url"
+                                    target="_blank"
+                                    class="text-indigo-500 hover:text-indigo-700 underline"
+                                >
+                                    {{ tSettings('settings.model_test_view', '查看结果') }}
+                                </a>
+                            </div>
+                        </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1133,6 +1206,11 @@ const systemConfigDirty = ref(false)
 const systemModels = ref([])
 const modelCatalog = ref([])
 const modelCatalogLoaded = ref(false)
+const showAdvancedModelConfig = ref(false)
+const promptHealthLoading = ref(false)
+const promptHealth = ref(null)
+const promptConfigErrors = ref([])
+const promptConfigWarnings = ref([])
 
 const withUserPoolsDirtyLock = (fn) => {
     userPoolsDirtyLocked.value = true
@@ -1177,6 +1255,67 @@ const MODEL_PLATFORM_BASE_URLS = {
 }
 
 const USER_PROVIDER_BASE_URLS = MODEL_PLATFORM_BASE_URLS
+const PROMPT_CHANNEL_KEYS = ['google', 'bytedance', 'aliyun']
+const PROMPT_CHANNEL_DEFAULTS = {
+    google: ['gemini-3.1-pro-preview', 'claude-sonnet-4-6', 'gpt-5.2-chat'],
+    bytedance: ['claude-sonnet-4-6', 'gpt-5.2-chat', 'gemini-3.1-pro-preview'],
+    aliyun: ['gpt-5.2-chat', 'claude-sonnet-4-6', 'gemini-3.1-pro-preview']
+}
+
+const clonePromptDefaults = () => ({
+    google: { enabled: true, models: [...PROMPT_CHANNEL_DEFAULTS.google] },
+    bytedance: { enabled: true, models: [...PROMPT_CHANNEL_DEFAULTS.bytedance] },
+    aliyun: { enabled: true, models: [...PROMPT_CHANNEL_DEFAULTS.aliyun] }
+})
+
+const promptChannelsDraft = reactive(clonePromptDefaults())
+
+watch(
+    promptChannelsDraft,
+    () => {
+        systemConfigDirty.value = true
+    },
+    { deep: true }
+)
+
+const normalizePromptChannelValue = (value) => {
+    const text = String(value || '').trim().toLowerCase()
+    if (text === 'byte') return 'bytedance'
+    if (PROMPT_CHANNEL_KEYS.includes(text)) return text
+    return ''
+}
+
+const normalizePromptChannelDraft = (raw = {}) => {
+    const next = clonePromptDefaults()
+    const src = raw && typeof raw === 'object' ? raw : {}
+    PROMPT_CHANNEL_KEYS.forEach((channel) => {
+        const item = src[channel] || src[channel === 'bytedance' ? 'byte' : channel] || {}
+        next[channel].enabled = item?.enabled !== false
+        const values = Array.isArray(item?.models)
+            ? item.models.map((v) => String(v || '').trim()).filter(Boolean)
+            : String(item?.models || '')
+                .split(/[,\n;]/)
+                .map((v) => v.trim())
+                .filter(Boolean)
+        const dedup = []
+        values.forEach((value) => {
+            if (!value || dedup.includes(value)) return
+            dedup.push(value)
+        })
+        next[channel].models = [...(dedup.length ? dedup : PROMPT_CHANNEL_DEFAULTS[channel])]
+        while (next[channel].models.length < 3) next[channel].models.push('')
+        next[channel].models = next[channel].models.slice(0, 3)
+    })
+    return next
+}
+
+const assignPromptChannelDraft = (raw = {}) => {
+    const normalized = normalizePromptChannelDraft(raw)
+    PROMPT_CHANNEL_KEYS.forEach((channel) => {
+        promptChannelsDraft[channel].enabled = normalized[channel].enabled
+        promptChannelsDraft[channel].models = [...normalized[channel].models]
+    })
+}
 
 const normalizePlatform = (value) => {
     if (!value) return ''
@@ -1535,17 +1674,35 @@ const systemModelOptions = computed(() => {
 
 const modelOptions = computed(() => buildCatalogOptions('image', true))
 const promptModelOptions = computed(() => buildCatalogOptions('prompt'))
-const normalizePromptChannel = (value) => {
-    const text = String(value || '').trim().toLowerCase()
-    if (text === 'byte') return 'bytedance'
-    if (text === 'google' || text === 'bytedance' || text === 'aliyun') return text
-    return 'google'
-}
+const normalizePromptChannel = (value) => normalizePromptChannelValue(value) || 'google'
 const promptChannelOptions = computed(() => [
     { label: 'Google', value: 'google' },
     { label: '字节', value: 'bytedance' },
     { label: '阿里', value: 'aliyun' }
 ])
+const promptChannelAdminRows = computed(() => [
+    { key: 'google', label: 'Google' },
+    { key: 'bytedance', label: 'Bytedance' },
+    { key: 'aliyun', label: '阿里' }
+])
+const promptChannelModelOptions = computed(() => {
+    const merged = []
+    const seen = new Set()
+    const pushItem = (item) => {
+        if (String(item?.service || '').trim().toLowerCase() !== 'prompt') return
+        const model = String(item?.model || '').trim()
+        if (!model || seen.has(model)) return
+        seen.add(model)
+        merged.push({
+            label: item?.label || model,
+            value: model,
+            enabled: item?.enabled !== false
+        })
+    }
+    ;(systemModels.value || []).forEach(pushItem)
+    ;(modelCatalog.value || []).forEach(pushItem)
+    return merged
+})
 const promptChannelPrimaryModel = {
     google: 'gemini-3.1-pro-preview',
     bytedance: 'claude-sonnet-4-6',
@@ -1572,6 +1729,161 @@ const resolvePromptModel = (channel, fallbackModel = '') => {
 const getPromptChannelLabel = (value) => {
     const matched = promptChannelOptions.value.find((item) => item.value === normalizePromptChannel(value))
     return matched?.label || 'Google'
+}
+const ensurePromptChannelDraftModels = () => {
+    const optionValues = promptChannelModelOptions.value.map((opt) => opt.value)
+    if (!optionValues.length) return
+    PROMPT_CHANNEL_KEYS.forEach((channel) => {
+        const draft = promptChannelsDraft[channel] || {}
+        const current = Array.isArray(draft.models) ? draft.models : []
+        const next = []
+        current.forEach((model) => {
+            const text = String(model || '').trim()
+            if (!text || next.includes(text)) return
+            if (!optionValues.includes(text)) return
+            next.push(text)
+        })
+        const defaults = PROMPT_CHANNEL_DEFAULTS[channel] || []
+        defaults.forEach((model) => {
+            if (next.length >= 3) return
+            if (!optionValues.includes(model) || next.includes(model)) return
+            next.push(model)
+        })
+        optionValues.forEach((model) => {
+            if (next.length >= 3) return
+            if (next.includes(model)) return
+            next.push(model)
+        })
+        while (next.length < 3) next.push('')
+        promptChannelsDraft[channel].models = next.slice(0, 3)
+    })
+}
+const promptHealthStatusText = (status) => {
+    if (status === 'green') return tSettings('settings.prompt_health_green', '主模型可用')
+    if (status === 'yellow') return tSettings('settings.prompt_health_yellow', '回退可用')
+    if (status === 'red') return tSettings('settings.prompt_health_red', '不可用')
+    return tSettings('settings.prompt_health_unknown', '未检测')
+}
+const promptHealthBadgeClass = (status) => {
+    if (status === 'green') return 'text-emerald-700 border-emerald-200 bg-emerald-50'
+    if (status === 'yellow') return 'text-amber-700 border-amber-200 bg-amber-50'
+    if (status === 'red') return 'text-red-700 border-red-200 bg-red-50'
+    return 'text-slate-500 border-slate-200 bg-slate-50'
+}
+const getPromptHealthChannel = (channel) => {
+    return promptHealth.value?.channels?.[normalizePromptChannel(channel)] || null
+}
+const parseInlineList = (value) => {
+    if (!value) return []
+    if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean)
+    return String(value)
+        .split(/[,\n;]/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+}
+const serializePromptChannels = () => {
+    const output = {}
+    PROMPT_CHANNEL_KEYS.forEach((channel) => {
+        const raw = promptChannelsDraft[channel] || {}
+        const dedup = []
+        ;(raw.models || []).forEach((model) => {
+            const text = String(model || '').trim()
+            if (!text || dedup.includes(text)) return
+            dedup.push(text)
+        })
+        output[channel] = {
+            enabled: raw.enabled !== false,
+            models: dedup.slice(0, 3)
+        }
+    })
+    return output
+}
+const promptDraftChannelPreview = computed(() => {
+    const preview = {}
+    const promptModelMap = new Map()
+    ;(systemModels.value || []).forEach((item) => {
+        if (String(item?.service || '').trim().toLowerCase() !== 'prompt') return
+        const model = String(item?.model || '').trim()
+        if (!model) return
+        promptModelMap.set(model.toLowerCase(), item)
+    })
+    const normalizedPools = (systemKeyPools.value || [])
+        .filter((pool) => pool?.enabled !== false && String(pool?.service || '').trim().toLowerCase() === 'prompt')
+        .map((pool) => ({
+            models: parseInlineList(pool.models).map((item) => item.toLowerCase()),
+            keys: [String(pool.key || '').trim(), ...parseInlineList(pool.backup_keys)].filter(Boolean)
+        }))
+    const channels = serializePromptChannels()
+    Object.entries(channels).forEach(([channel, payload]) => {
+        let count = 0
+        ;(payload.models || []).forEach((model) => {
+            const text = String(model || '').trim()
+            if (!text) return
+            const item = promptModelMap.get(text.toLowerCase())
+            if (item) {
+                const modelKeys = [String(item.api_key || '').trim(), ...parseInlineList(item.backup_keys)].filter(Boolean)
+                count += modelKeys.length
+            }
+            normalizedPools.forEach((pool) => {
+                if (!pool.keys.length) return
+                if (pool.models.length && !pool.models.includes(text.toLowerCase())) return
+                count += pool.keys.length
+            })
+        })
+        preview[channel] = { candidate_count: count }
+    })
+    return preview
+})
+const validatePromptChannelsDraft = () => {
+    const errors = []
+    const warnings = []
+    const channels = serializePromptChannels()
+    const promptModelMap = new Map()
+    ;(systemModels.value || []).forEach((item) => {
+        if (String(item?.service || '').trim().toLowerCase() !== 'prompt') return
+        const model = String(item?.model || '').trim()
+        if (!model) return
+        promptModelMap.set(model.toLowerCase(), item)
+    })
+    Object.entries(channels).forEach(([channel, payload]) => {
+        const models = payload.models || []
+        if (payload.enabled !== true) errors.push(`${channel} 通道未启用`)
+        if (models.length < 2) errors.push(`${channel} 通道至少需要 2 个模型`)
+        let hasCandidate = false
+        models.forEach((model) => {
+            const item = promptModelMap.get(String(model || '').toLowerCase())
+            if (!item) {
+                errors.push(`${channel} 通道模型未配置: ${model}`)
+                return
+            }
+            if (item.enabled === false) {
+                errors.push(`${channel} 通道模型未启用: ${model}`)
+            }
+            const candidateCount = promptDraftChannelPreview.value[channel]?.candidate_count || 0
+            if (candidateCount > 0) hasCandidate = true
+            else warnings.push(`${channel} 通道模型 ${model} 未发现可用 Key`)
+        })
+        if (!hasCandidate) errors.push(`${channel} 通道没有可用 Key 候选链`)
+    })
+    return { errors, warnings }
+}
+const refreshPromptHealth = async () => {
+    if (authStore.user.username !== 'admin') return
+    if (promptHealthLoading.value) return
+    promptHealthLoading.value = true
+    try {
+        const res = await api.get('/api/admin/prompt_health', {
+            headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
+        })
+        promptHealth.value = res?.data || null
+        const warn = res?.data?.warnings || []
+        if (Array.isArray(warn) && warn.length) promptConfigWarnings.value = warn
+    } catch (e) {
+        const detail = e?.response?.data?.detail || e?.message || ''
+        message.error(`${tSettings('settings.model_test_failed', '测试失败')}: ${detail}`)
+    } finally {
+        promptHealthLoading.value = false
+    }
 }
 const subjectOptions = computed(() => [
   { label: localeStore.t('image.subjects.general'), value: 'general' },
@@ -1631,6 +1943,14 @@ watch(
         if (!list.some((o) => o.value === batchDefaults.image.model)) batchDefaults.image.model = list[0].value
     },
     { immediate: true }
+)
+
+watch(
+    promptChannelModelOptions,
+    () => {
+        ensurePromptChannelDraftModels()
+    },
+    { immediate: true, deep: true }
 )
 
 watch(
@@ -3246,9 +3566,14 @@ const fetchSystemConfig = async () => {
         systemVideoBaseUrl.value = res.data.video?.base_url || ''
         systemKeyPools.value = (res.data.key_pools || []).map(normalizePoolItem)
         systemModels.value = (res.data.models || []).map(normalizeModelItem)
+        assignPromptChannelDraft(res.data.prompt_channels || {})
+        promptHealth.value = res.data.prompt_health || null
+        promptConfigErrors.value = []
+        promptConfigWarnings.value = []
         expandedPools.clear()
         expandedSystemModels.clear()
         if (systemKeyPools.value.length) reorderKeyPools()
+        ensurePromptChannelDraftModels()
         systemConfigDirty.value = false
     } catch (e) {
         message.error('加载系统配置失败')
@@ -3262,8 +3587,15 @@ const handleSaveSystemConfig = async () => {
         message.error(tSettings('settings.model_id_required', '请填写 Model ID'))
         return
     }
+    const draftValidation = validatePromptChannelsDraft()
+    promptConfigErrors.value = draftValidation.errors || []
+    promptConfigWarnings.value = draftValidation.warnings || []
+    if (promptConfigErrors.value.length) {
+        message.error(tSettings('settings.prompt_config_invalid', '提示词通道配置未通过校验'))
+        return
+    }
     try {
-        await api.post(
+        const res = await api.post(
             '/api/admin/system_config',
             {
                 image: {
@@ -3282,16 +3614,29 @@ const handleSaveSystemConfig = async () => {
                     base_url: systemVideoBaseUrl.value
                 },
                 key_pools: serializeKeyPools(),
-                models: serializeSystemModels()
+                models: serializeSystemModels(),
+                prompt_channels: serializePromptChannels()
             },
             { headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {} }
         )
+        promptHealth.value = res?.data?.prompt_health || null
+        if (Array.isArray(res?.data?.warnings)) {
+            promptConfigWarnings.value = res.data.warnings
+        }
+        promptConfigErrors.value = []
         message.success('系统配置已保存')
         systemConfigDirty.value = false
         clearModelCatalogCache()
         loadModelCatalog()
     } catch (e) {
-        message.error('保存系统配置失败')
+        const detail = e?.response?.data?.detail
+        if (detail?.code === 'PROMPT_CONFIG_INVALID') {
+            promptConfigErrors.value = Array.isArray(detail.errors) ? detail.errors : []
+            promptConfigWarnings.value = Array.isArray(detail.warnings) ? detail.warnings : []
+            message.error(tSettings('settings.prompt_config_invalid', '提示词通道配置未通过校验'))
+            return
+        }
+        message.error(`保存系统配置失败${detail ? `: ${typeof detail === 'string' ? detail : ''}` : ''}`)
     }
 }
 
