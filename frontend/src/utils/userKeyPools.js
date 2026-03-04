@@ -25,14 +25,18 @@ const PROVIDER_ALIASES = {
 }
 
 const DEFAULT_SERVICES = ['image', 'audio', 'video']
+const ALLOWED_SERVICES = ['image', 'audio', 'video', 'digital_human', 'prompt']
 
 const normalizeServices = (value) => {
   if (!value) return DEFAULT_SERVICES
-  if (Array.isArray(value)) return value.map((v) => String(v).trim().toLowerCase()).filter(Boolean)
-  return String(value)
+  const parts = Array.isArray(value)
+    ? value.map((v) => String(v).trim().toLowerCase()).filter(Boolean)
+    : String(value)
     .split(/[,;]+/)
     .map((v) => v.trim().toLowerCase())
     .filter(Boolean)
+  const normalized = parts.filter((v) => ALLOWED_SERVICES.includes(v))
+  return normalized.length ? normalized : DEFAULT_SERVICES
 }
 
 const normalizeModels = (value) => {
@@ -58,7 +62,7 @@ const inferProvider = (model) => {
   if (text.includes('vector') || text.includes('reopeninnolab')) return 'vector'
   if (text.includes('ark') || text.includes('volc') || text.includes('wan2-') || text.includes('doubao') || text.includes('seedance') || text.includes('seedream')) return 'ark'
   if (text.includes('gemini') || text.includes('imagen') || text.includes('veo') || text.includes('sora')) return 'gemini'
-  if (text.includes('gpt') || text.includes('openai') || text.startsWith('o1') || text.startsWith('o3') || text.startsWith('o4')) return 'openai'
+  if (text.includes('gpt') || text.includes('openai') || text.includes('claude') || text.startsWith('o1') || text.startsWith('o3') || text.startsWith('o4')) return 'openai'
   if (['bailian', 'dashscope', 'aliyun', 'tongyi', 'qwen', 'wanx', 'wan'].some((t) => text.includes(t))) return 'bailian'
   return ''
 }

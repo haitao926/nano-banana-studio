@@ -3,6 +3,7 @@ import re
 from typing import Any, Dict, Iterable, List, Optional
 
 DEFAULT_SERVICES = {"image", "audio", "video"}
+ALLOWED_SERVICES = {"image", "audio", "video", "digital_human", "prompt"}
 PROVIDER_ALIASES = {
     "openai": "openai",
     "gpt": "openai",
@@ -57,7 +58,7 @@ def _normalize_services(value: Any) -> List[str]:
         parts = [str(v).strip().lower() for v in value if str(v).strip()]
     else:
         parts = []
-    services = [s for s in parts if s in DEFAULT_SERVICES]
+    services = [s for s in parts if s in ALLOWED_SERVICES]
     return services or sorted(DEFAULT_SERVICES)
 
 def _normalize_provider(value: Any) -> Optional[str]:
@@ -83,7 +84,7 @@ def _infer_provider(model: Optional[str]) -> Optional[str]:
         return "ark"
     if "gemini" in text or "imagen" in text or "veo" in text or "sora" in text:
         return "gemini"
-    if "gpt" in text or "openai" in text or text.startswith(("o1", "o3", "o4")):
+    if "gpt" in text or "openai" in text or "claude" in text or text.startswith(("o1", "o3", "o4")):
         return "openai"
     if any(token in text for token in ("bailian", "百炼", "aliyun", "dashscope", "tongyi", "qwen", "wanx", "wan")):
         return "bailian"

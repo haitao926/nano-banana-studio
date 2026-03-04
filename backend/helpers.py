@@ -556,6 +556,25 @@ def _merge_candidates(primary: List[Dict], secondary: List[Dict]) -> List[Dict]:
     return merged
 
 
+def _build_pool_candidates(service: str, model: Optional[str] = None) -> List[Dict]:
+    pools = _select_service_key_pools(service, model)
+    if not pools:
+        return []
+    candidates: List[Dict] = []
+    for pool in pools:
+        base_url = pool.get("base_url")
+        provider_hint = str(pool.get("provider") or "").strip().lower()
+        platform_hint = _infer_platform_from_base_url(base_url or "", provider_hint)
+        keys = [pool.get("key")] + (pool.get("backup_keys") or [])
+        seen = set()
+        for key in keys:
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            candidates.append({"key": key, "base_url": base_url, "platform": platform_hint or None})
+    return candidates
+
+
 def _build_model_candidates(
     service: str,
     model: Optional[str] = None,
@@ -591,7 +610,9 @@ def _build_model_candidates(
                 continue
             seen_keys.add(key)
             preferred.append({"key": key, "base_url": base_url, "platform": cfg.get("platform")})
+    pool_candidates = _build_pool_candidates(service, model)
     if preferred:
+        merged = _merge_candidates(preferred, pool_candidates)
         # For image service, append system-level backup keys as last resort
         if (service or "").strip().lower() == "image":
             image_keys = _get_image_keys()
@@ -599,8 +620,10 @@ def _build_model_candidates(
                 image_base_url = _get_image_base_url() or preferred_base_url
                 platform_hint = _infer_platform_from_base_url(image_base_url, model_cfgs[0].get("platform") if model_cfgs else "")
                 extra = [{"key": key, "base_url": image_base_url, "platform": platform_hint} for key in image_keys]
-                return _merge_candidates(preferred, extra)
-        return preferred
+                return _merge_candidates(merged, extra)
+        return merged
+    if pool_candidates:
+        return pool_candidates
     if preferred_base_url:
         return [{"key": None, "base_url": preferred_base_url, "platform": model_cfgs[0].get("platform") if model_cfgs else None}]
     return []
@@ -748,6 +771,9 @@ def _has_system_model_key(service: Optional[str], model: Optional[str]) -> bool:
         return False
     for item in _select_model_configs(service, model):
         if item.get("api_key") or item.get("backup_keys"):
+            return True
+    for pool in _select_service_key_pools(service, model):
+        if pool.get("key") or pool.get("backup_keys"):
             return True
     return False
 

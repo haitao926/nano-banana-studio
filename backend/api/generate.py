@@ -2,7 +2,7 @@ import base64
 import copy
 import os
 import time
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -16,6 +16,7 @@ from helpers import (
     _download_public_image_bytes,
     _enforce_rate_limit,
     _get_default_model,
+    _get_model_catalog,
     _get_model_cost,
     _resolve_reference_image_path,
     create_thumbnail,
@@ -50,6 +51,43 @@ def _build_seedream_image_params(image_urls: list[str]) -> Optional[list[str]]:
             return None
         params.append(param)
     return params
+
+
+PROMPT_BACKUP_MODELS = ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"]
+PROMPT_CHANNEL_MODEL_CHAIN = {
+    "google": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "gpt-5.2-chat"],
+    "byte": ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"],
+    "aliyun": ["gpt-5.2-chat", "claude-sonnet-4-6", "gemini-3.1-pro-preview"],
+}
+
+
+def _normalize_prompt_channel(channel: Optional[str]) -> Optional[str]:
+    text = str(channel or "").strip().lower()
+    if text in ("google", "byte", "aliyun"):
+        return text
+    return None
+
+
+def _build_prompt_model_chain(preferred_model: Optional[str], channel: Optional[str] = None) -> List[str]:
+    normalized_channel = _normalize_prompt_channel(channel)
+    prompt_models = [
+        str(item.get("model") or "").strip()
+        for item in _get_model_catalog()
+        if item.get("enabled", True) and str(item.get("service") or "").strip().lower() == "prompt"
+    ]
+    if normalized_channel:
+        channel_models = PROMPT_CHANNEL_MODEL_CHAIN.get(normalized_channel, [])
+        chain = channel_models + [str(preferred_model or "").strip()] + prompt_models + PROMPT_BACKUP_MODELS
+    else:
+        chain = [str(preferred_model or "").strip()] + prompt_models + PROMPT_BACKUP_MODELS
+    seen = set()
+    ordered: List[str] = []
+    for model in chain:
+        if not model or model in seen:
+            continue
+        seen.add(model)
+        ordered.append(model)
+    return ordered
 
 
 @router.post("/api/generate/single")
@@ -567,42 +605,85 @@ async def optimize_prompt_endpoint(
 ):
     try:
         prompt_default = _get_default_model("prompt")
-        prompt_model = (prompt_default or req.model or "").strip()
-        if not prompt_model:
-            raise HTTPException(status_code=400, detail="请先在模型配置中添加绘图模型")
-        prompt_service = "prompt" if prompt_default else "image"
-        _, runtime_key, runtime_base_url = determine_execution_mode(
-            current_user,
-            x_model_key,
-            cost=1,
-            service=prompt_service,
-            model=prompt_model,
-        )
-        if runtime_base_url is None and x_model_base_url:
-            runtime_base_url = x_model_base_url
+        preferred_model = (req.model or prompt_default or "").strip()
+        prompt_channel = _normalize_prompt_channel(req.channel)
+        prompt_model_chain = _build_prompt_model_chain(preferred_model, prompt_channel)
+        if not prompt_model_chain:
+            image_default = (req.model or _get_default_model("image") or "").strip()
+            if not image_default:
+                raise HTTPException(status_code=400, detail="请先在模型配置中添加提示词优化模型")
+            prompt_model_chain = [image_default]
         _enforce_rate_limit(request, current_user)
 
-        optimized = None
-        candidates = _build_model_candidates(
-            prompt_service,
-            model=prompt_model,
-            runtime_key=runtime_key,
-            runtime_base_url=runtime_base_url,
-            fallback_base_url=runtime_base_url,
-        )
-        for candidate in candidates:
-            optimized = img_gen.optimize_prompt(
-                req.prompt,
-                subject=req.subject,
-                model=prompt_model,
-                api_key=candidate.get("key"),
-                base_url=candidate.get("base_url"),
-            )
-            if optimized:
-                break
-        if not optimized:
-            raise HTTPException(status_code=502, detail="Prompt optimization failed. Check model/key or rate limit.")
-        return {"success": True, "optimized_prompt": optimized}
+        errors: List[str] = []
+        attempted_models: List[str] = []
+        last_auth_error: Optional[HTTPException] = None
+
+        for prompt_model in prompt_model_chain:
+            # Prefer dedicated prompt service; fallback to image service for legacy compatibility.
+            for prompt_service in ("prompt", "image"):
+                if prompt_service == "image" and prompt_channel:
+                    # Channel mode is prompt-first, no cross-service fallback.
+                    continue
+                try:
+                    _, runtime_key, runtime_base_url = determine_execution_mode(
+                        current_user,
+                        x_model_key,
+                        cost=1,
+                        service=prompt_service,
+                        model=prompt_model,
+                    )
+                except HTTPException as auth_error:
+                    if auth_error.status_code in (401, 403):
+                        last_auth_error = auth_error
+                        errors.append(f"{prompt_model}@{prompt_service}: {auth_error.detail}")
+                        continue
+                    raise
+
+                if runtime_base_url is None and x_model_base_url:
+                    runtime_base_url = x_model_base_url
+
+                candidates = _build_model_candidates(
+                    prompt_service,
+                    model=prompt_model,
+                    runtime_key=runtime_key,
+                    runtime_base_url=runtime_base_url,
+                    fallback_base_url=runtime_base_url,
+                )
+                if not candidates:
+                    errors.append(f"{prompt_model}@{prompt_service}: no available key candidates")
+                    continue
+
+                for candidate in candidates:
+                    attempted_models.append(prompt_model)
+                    optimized = img_gen.optimize_prompt(
+                        req.prompt,
+                        subject=req.subject,
+                        model=prompt_model,
+                        api_key=candidate.get("key"),
+                        base_url=candidate.get("base_url"),
+                    )
+                    if optimized:
+                        return {
+                            "success": True,
+                            "optimized_prompt": optimized,
+                            "model": prompt_model,
+                            "channel": prompt_channel,
+                        }
+                    last_error = getattr(img_gen, "last_error", None) or {}
+                    if last_error.get("message"):
+                        errors.append(f"{prompt_model}@{prompt_service}: {last_error.get('message')}")
+                    else:
+                        errors.append(f"{prompt_model}@{prompt_service}: optimization returned empty")
+
+        if last_auth_error and not attempted_models:
+            raise last_auth_error
+
+        model_chain_text = ", ".join(prompt_model_chain[:6])
+        detail = f"Prompt optimization failed. Tried models: {model_chain_text}"
+        if errors:
+            detail = f"{detail}. Last errors: {' | '.join(errors[-3:])}"
+        raise HTTPException(status_code=502, detail=detail)
     except HTTPException as he:
         raise he
     except Exception as e:

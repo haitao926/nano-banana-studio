@@ -77,6 +77,15 @@
                         </n-popselect>
                      </div>
                      <div class="space-y-1.5">
+                        <label class="typo-label pl-1">{{ tSettings('settings.prompt_channel', '提示词优化通道') }}</label>
+                        <n-popselect v-model:value="settings.promptChannel" :options="promptChannelOptions" trigger="click">
+                           <button class="w-full text-left px-4 py-3 bg-slate-50/50 border border-slate-200 hover:border-indigo-400 hover:bg-white rounded-xl typo-input font-sans transition-all shadow-sm flex items-center justify-between group-hover:shadow-indigo-500/5">
+                              <span class="truncate">{{ getPromptChannelLabel(settings.promptChannel) }}</span>
+                              <span class="typo-caption-compact text-slate-300">▼</span>
+                           </button>
+                        </n-popselect>
+                     </div>
+                     <div class="space-y-1.5">
                         <label class="typo-label pl-1">{{ localeStore.t('image.ratio') }}</label>
                         <n-popselect v-model:value="settings.aspectRatio" :options="ratioOptions" trigger="click">
                            <button class="w-full text-left px-4 py-3 bg-slate-50/50 border border-slate-200 hover:border-indigo-400 hover:bg-white rounded-xl typo-input-mono transition-all shadow-sm flex items-center justify-between group-hover:shadow-indigo-500/5">
@@ -117,7 +126,7 @@
                     <h3 class="typo-section-title flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-purple-500"></span> {{ localeStore.t('image.prompt_label') }}
                      </h3>
-                    <button @click="handleOptimizePrompt" class="typo-button-compact text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 border border-indigo-100" :disabled="optimizing || !inputText.trim() || !settings.model">
+                    <button @click="handleOptimizePrompt" class="typo-button-compact text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 border border-indigo-100" :disabled="optimizing || !inputText.trim()">
                        <Wand2 class="w-3 h-3" />
                        {{ localeStore.t('image.ai_enhance') }}
                     </button>
@@ -361,6 +370,15 @@
                         <n-popselect v-model:value="batchDefaults.image.subject" :options="subjectOptions" trigger="click">
                            <button class="w-full text-left px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input transition-all shadow-sm flex items-center justify-between">
                               <span class="truncate">{{ getSubjectLabel(batchDefaults.image.subject) }}</span>
+                              <span class="typo-caption-compact text-slate-300">▼</span>
+                           </button>
+                        </n-popselect>
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="typo-label pl-1">{{ tSettings('settings.prompt_channel', '提示词优化通道') }}</label>
+                        <n-popselect v-model:value="batchDefaults.image.promptChannel" :options="promptChannelOptions" trigger="click">
+                           <button class="w-full text-left px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input transition-all shadow-sm flex items-center justify-between">
+                              <span class="truncate">{{ getPromptChannelLabel(batchDefaults.image.promptChannel) }}</span>
                               <span class="typo-caption-compact text-slate-300">▼</span>
                            </button>
                         </n-popselect>
@@ -696,6 +714,7 @@
                                                 <option value="image">{{ tSettings('settings.key_pool_service_image', '绘图') }}</option>
                                                 <option value="audio">{{ tSettings('settings.key_pool_service_audio', '音频') }}</option>
                                                 <option value="video">{{ tSettings('settings.key_pool_service_video', '视频/数字人') }}</option>
+                                                <option value="prompt">{{ tSettings('settings.key_pool_service_prompt', '提示词优化') }}</option>
                                             </select>
                                         </div>
                                         <div class="space-y-1 lg:col-span-2">
@@ -1386,6 +1405,7 @@ const settings = ref({
     aspectRatio: '1:1', 
     quality: 'standard',
     model: '',
+    promptChannel: 'google',
     seedreamGroup: false,
     seedreamMaxImages: 4
 })
@@ -1398,6 +1418,7 @@ const batchDefaults = reactive({
         aspectRatio: settings.value.aspectRatio,
         quality: settings.value.quality,
         model: '',
+        promptChannel: settings.value.promptChannel,
         optimize: false,
         seedreamGroup: false,
         seedreamMaxImages: 4
@@ -1513,6 +1534,38 @@ const systemModelOptions = computed(() => {
 })
 
 const modelOptions = computed(() => buildCatalogOptions('image', true))
+const promptModelOptions = computed(() => buildCatalogOptions('prompt'))
+const promptChannelOptions = computed(() => [
+    { label: 'Google', value: 'google' },
+    { label: '字节', value: 'byte' },
+    { label: '阿里', value: 'aliyun' }
+])
+const promptChannelPrimaryModel = {
+    google: 'gemini-3.1-pro-preview',
+    byte: 'claude-sonnet-4-6',
+    aliyun: 'gpt-5.2-chat'
+}
+const promptModelHintsByChannel = {
+    google: ['gemini-3.1-pro-preview', 'gemini', 'claude-sonnet-4-6', 'gpt-5.2-chat'],
+    byte: ['claude-sonnet-4-6', 'claude', 'gpt-5.2-chat', 'gemini-3.1-pro-preview'],
+    aliyun: ['gpt-5.2-chat', 'claude-sonnet-4-6', 'gemini-3.1-pro-preview']
+}
+const resolvePromptModel = (channel, fallbackModel = '') => {
+    const primary = promptChannelPrimaryModel[channel]
+    const options = promptModelOptions.value || []
+    if (!options.length) return primary || fallbackModel || ''
+    const models = options.map((opt) => String(opt.value || '').trim()).filter(Boolean)
+    const hints = promptModelHintsByChannel[channel] || []
+    for (const hint of hints) {
+        const matched = models.find((model) => model.toLowerCase().includes(hint))
+        if (matched) return matched
+    }
+    return primary || models[0] || fallbackModel || ''
+}
+const getPromptChannelLabel = (value) => {
+    const matched = promptChannelOptions.value.find((item) => item.value === value)
+    return matched?.label || 'Google'
+}
 const subjectOptions = computed(() => [
   { label: localeStore.t('image.subjects.general'), value: 'general' },
   { label: localeStore.t('image.subjects.it_ai'), value: 'it_ai' },
@@ -1922,6 +1975,7 @@ const resetSettings = () => {
         aspectRatio: '1:1',
         quality: 'standard',
         model: modelOptions.value[0]?.value || '',
+        promptChannel: 'google',
         seedreamGroup: false,
         seedreamMaxImages: 4
     }
@@ -1953,11 +2007,8 @@ const buildModelHeaders = (model) => {
 
 const buildPromptHeaders = (model) => {
     const headers = {}
-    if (authStore.isLoggedIn && authStore.token) {
-        headers.Authorization = `Bearer ${authStore.token}`
-        return headers
-    }
-    return applyUserPoolHeaders(headers, 'image', model)
+    if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
+    return applyUserPoolHeaders(headers, 'prompt', model)
 }
 
 const buildTtsHeaders = (model) => {
@@ -1996,11 +2047,15 @@ const resolveImageSize = (ratio, model) => {
     return '1024x1024'
 }
 
-const requestOptimizedPrompt = async (prompt, subject, model) => {
+const requestOptimizedPrompt = async (prompt, subject, imageModel, promptChannel = settings.value.promptChannel) => {
+    const promptModel = resolvePromptModel(promptChannel, imageModel)
+    if (!promptModel) {
+        throw new Error(tSettings('settings.model_required_prompt', '请先在模型配置中添加提示词优化模型'))
+    }
     const res = await api.post(
         '/api/optimize_prompt',
-        { prompt, subject, model },
-        { headers: buildPromptHeaders(model) }
+        { prompt, subject, model: promptModel, channel: promptChannel || 'google' },
+        { headers: buildPromptHeaders(promptModel) }
     )
     if (!res?.data?.optimized_prompt) {
         throw new Error(res?.data?.detail || 'Optimization failed')
@@ -2013,15 +2068,16 @@ const handleOptimizePrompt = async () => {
         message.warning('请输入提示词')
         return
     }
-    if (!settings.value.model) {
-        message.warning(tSettings('settings.model_required_image', '请先在模型配置中添加绘图模型'))
-        return
-    }
     optimizing.value = true
     const loadingMsg = message.loading('正在润色...', { duration: 0 })
     try {
         const original = inputText.value
-        const optimized = await requestOptimizedPrompt(original, settings.value.subject, settings.value.model)
+        const optimized = await requestOptimizedPrompt(
+            original,
+            settings.value.subject,
+            settings.value.model,
+            settings.value.promptChannel
+        )
         if (optimized && optimized !== original) {
             inputText.value = optimized
             message.success('润色完成', { duration: 2000 })
@@ -2289,7 +2345,7 @@ const buildBatchTask = (raw) => {
         if (raw.audio && typeof raw.audio === 'object') Object.assign(baseSettings.audio, raw.audio)
         if (raw.digital_human && typeof raw.digital_human === 'object') Object.assign(baseSettings.digital_human, raw.digital_human)
 
-        const imageKeys = ['subject', 'grade', 'aspectRatio', 'quality', 'model', 'optimize', 'seedreamGroup', 'seedreamMaxImages']
+        const imageKeys = ['subject', 'grade', 'aspectRatio', 'quality', 'model', 'promptChannel', 'optimize', 'seedreamGroup', 'seedreamMaxImages']
         imageKeys.forEach((key) => {
             if (raw[key] !== undefined && raw[key] !== null) baseSettings.image[key] = raw[key]
         })
@@ -2587,7 +2643,12 @@ const runImageTask = async (task) => {
     let promptToUse = task.prompt
     if (cfg.optimize) {
         try {
-            promptToUse = await requestOptimizedPrompt(task.prompt, cfg.subject, cfg.model)
+            promptToUse = await requestOptimizedPrompt(
+                task.prompt,
+                cfg.subject,
+                cfg.model,
+                cfg.promptChannel || settings.value.promptChannel
+            )
             task.optimizedPrompt = promptToUse
         } catch (e) {
             task.optimizationError = e?.response?.data?.detail || e?.message || ''
@@ -2816,7 +2877,7 @@ const handleUploadFinishWithStore = ({ file, event }) => {
 
 // User Pools
 const normalizeUserPoolItem = (pool) => {
-    const ordered = ['image', 'audio', 'video']
+    const ordered = ['image', 'audio', 'video', 'prompt']
     const service = pool?.service
         || ordered.find((item) => pool?.services?.includes?.(item))
         || 'image'
@@ -2994,7 +3055,7 @@ const handleSaveUserPools = () => {
 // Admin
 const parseKeyList = (value) => value.split('\n').map(v => v.trim()).filter(Boolean)
 const normalizePoolItem = (pool) => {
-    const ordered = ['image', 'audio', 'video']
+    const ordered = ['image', 'audio', 'video', 'prompt']
     const service = pool?.service
         || ordered.find((item) => pool?.services?.includes?.(item))
         || 'image'
@@ -3112,7 +3173,9 @@ const poolSummary = (pool) => {
         ? tSettings('settings.key_pool_service_audio', '音频')
         : serviceValue === 'video'
             ? tSettings('settings.key_pool_service_video', '视频')
-            : tSettings('settings.key_pool_service_image', '绘图')
+            : serviceValue === 'prompt'
+                ? tSettings('settings.key_pool_service_prompt', '提示词优化')
+                : tSettings('settings.key_pool_service_image', '绘图')
     const providerValue = (pool.provider || '').toString().trim().toLowerCase()
     const providerLabel = providerValue === 'vector'
         ? tSettings('settings.key_pool_provider_vector', 'ReOpenInnoLab')

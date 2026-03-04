@@ -343,6 +343,9 @@ export const useLocaleStore = defineStore('locale', () => {
         model_service_video: '视频',
         model_service_audio: '音频',
         model_service_dh: '数字人',
+        model_service_prompt: '提示词优化',
+        prompt_channel: '提示词优化通道',
+        model_required_prompt: '请先在模型配置中添加提示词优化模型',
         model_backup_keys: '备用 Key',
         model_priority: '优先级',
         model_id_required: '请填写 Model ID',
@@ -396,7 +399,8 @@ export const useLocaleStore = defineStore('locale', () => {
         legacy_hide: '收起',
         key_pool_service_image: '绘图',
         key_pool_service_audio: '音频',
-        key_pool_service_video: '视频/数字人'
+        key_pool_service_video: '视频/数字人',
+        key_pool_service_prompt: '提示词优化'
       }
     },
     en: {
@@ -728,6 +732,9 @@ export const useLocaleStore = defineStore('locale', () => {
         model_service_video: 'Video',
         model_service_audio: 'Audio',
         model_service_dh: 'Digital Human',
+        model_service_prompt: 'Prompt',
+        prompt_channel: 'Prompt Channel',
+        model_required_prompt: 'Please configure a prompt model first.',
         model_backup_keys: 'Backup Keys',
         model_priority: 'Priority',
         model_id_required: 'Model ID is required',
@@ -781,7 +788,8 @@ export const useLocaleStore = defineStore('locale', () => {
         legacy_hide: 'Hide',
         key_pool_service_image: 'Image',
         key_pool_service_audio: 'Audio',
-        key_pool_service_video: 'Video / Digital Human'
+        key_pool_service_video: 'Video / Digital Human',
+        key_pool_service_prompt: 'Prompt'
       }
     }
   }
