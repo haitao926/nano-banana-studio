@@ -62,8 +62,8 @@ const inferProvider = (model) => {
   if (text.includes('vector') || text.includes('reopeninnolab')) return 'vector'
   if (text.includes('ark') || text.includes('volc') || text.includes('wan2-') || text.includes('doubao') || text.includes('seedance') || text.includes('seedream')) return 'ark'
   if (text.includes('gemini') || text.includes('imagen') || text.includes('veo') || text.includes('sora')) return 'gemini'
-  if (text.includes('gpt') || text.includes('openai') || text.includes('claude') || text.startsWith('o1') || text.startsWith('o3') || text.startsWith('o4')) return 'openai'
-  if (['bailian', 'dashscope', 'aliyun', 'tongyi', 'qwen', 'wanx', 'wan'].some((t) => text.includes(t))) return 'bailian'
+  if (text.includes('gpt') || text.includes('openai') || text.includes('claude') || text.includes('kimi') || text.includes('moonshot') || text.startsWith('o1') || text.startsWith('o3') || text.startsWith('o4')) return 'openai'
+  if (['bailian', 'dashscope', 'aliyun', 'tongyi', 'qwen', 'wanx', 'wan', 'z-image'].some((t) => text.includes(t))) return 'bailian'
   return ''
 }
 

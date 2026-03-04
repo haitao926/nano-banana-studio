@@ -84,9 +84,9 @@ def _infer_provider(model: Optional[str]) -> Optional[str]:
         return "ark"
     if "gemini" in text or "imagen" in text or "veo" in text or "sora" in text:
         return "gemini"
-    if "gpt" in text or "openai" in text or "claude" in text or text.startswith(("o1", "o3", "o4")):
+    if "gpt" in text or "openai" in text or "claude" in text or "kimi" in text or "moonshot" in text or text.startswith(("o1", "o3", "o4")):
         return "openai"
-    if any(token in text for token in ("bailian", "百炼", "aliyun", "dashscope", "tongyi", "qwen", "wanx", "wan")):
+    if any(token in text for token in ("bailian", "百炼", "aliyun", "dashscope", "tongyi", "qwen", "wanx", "wan", "z-image")):
         return "bailian"
     return "other"
 
