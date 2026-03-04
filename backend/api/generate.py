@@ -56,14 +56,16 @@ def _build_seedream_image_params(image_urls: list[str]) -> Optional[list[str]]:
 PROMPT_BACKUP_MODELS = ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"]
 PROMPT_CHANNEL_MODEL_CHAIN = {
     "google": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "gpt-5.2-chat"],
-    "byte": ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"],
+    "bytedance": ["claude-sonnet-4-6", "gpt-5.2-chat", "gemini-3.1-pro-preview"],
     "aliyun": ["gpt-5.2-chat", "claude-sonnet-4-6", "gemini-3.1-pro-preview"],
 }
 
 
 def _normalize_prompt_channel(channel: Optional[str]) -> Optional[str]:
     text = str(channel or "").strip().lower()
-    if text in ("google", "byte", "aliyun"):
+    if text == "byte":
+        return "bytedance"
+    if text in ("google", "bytedance", "aliyun"):
         return text
     return None
 

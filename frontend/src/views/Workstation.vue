@@ -1535,27 +1535,34 @@ const systemModelOptions = computed(() => {
 
 const modelOptions = computed(() => buildCatalogOptions('image', true))
 const promptModelOptions = computed(() => buildCatalogOptions('prompt'))
+const normalizePromptChannel = (value) => {
+    const text = String(value || '').trim().toLowerCase()
+    if (text === 'byte') return 'bytedance'
+    if (text === 'google' || text === 'bytedance' || text === 'aliyun') return text
+    return 'google'
+}
 const promptChannelOptions = computed(() => [
     { label: 'Google', value: 'google' },
-    { label: '字节', value: 'byte' },
+    { label: '字节', value: 'bytedance' },
     { label: '阿里', value: 'aliyun' }
 ])
 const promptChannelPrimaryModel = {
     google: 'gemini-3.1-pro-preview',
-    byte: 'claude-sonnet-4-6',
+    bytedance: 'claude-sonnet-4-6',
     aliyun: 'gpt-5.2-chat'
 }
 const promptModelHintsByChannel = {
     google: ['gemini-3.1-pro-preview', 'gemini', 'claude-sonnet-4-6', 'gpt-5.2-chat'],
-    byte: ['claude-sonnet-4-6', 'claude', 'gpt-5.2-chat', 'gemini-3.1-pro-preview'],
+    bytedance: ['claude-sonnet-4-6', 'claude', 'gpt-5.2-chat', 'gemini-3.1-pro-preview'],
     aliyun: ['gpt-5.2-chat', 'claude-sonnet-4-6', 'gemini-3.1-pro-preview']
 }
 const resolvePromptModel = (channel, fallbackModel = '') => {
-    const primary = promptChannelPrimaryModel[channel]
+    const normalizedChannel = normalizePromptChannel(channel)
+    const primary = promptChannelPrimaryModel[normalizedChannel]
     const options = promptModelOptions.value || []
     if (!options.length) return primary || fallbackModel || ''
     const models = options.map((opt) => String(opt.value || '').trim()).filter(Boolean)
-    const hints = promptModelHintsByChannel[channel] || []
+    const hints = promptModelHintsByChannel[normalizedChannel] || []
     for (const hint of hints) {
         const matched = models.find((model) => model.toLowerCase().includes(hint))
         if (matched) return matched
@@ -1563,7 +1570,7 @@ const resolvePromptModel = (channel, fallbackModel = '') => {
     return primary || models[0] || fallbackModel || ''
 }
 const getPromptChannelLabel = (value) => {
-    const matched = promptChannelOptions.value.find((item) => item.value === value)
+    const matched = promptChannelOptions.value.find((item) => item.value === normalizePromptChannel(value))
     return matched?.label || 'Google'
 }
 const subjectOptions = computed(() => [
@@ -1622,6 +1629,24 @@ watch(
         }
         if (!list.some((o) => o.value === settings.value.model)) settings.value.model = list[0].value
         if (!list.some((o) => o.value === batchDefaults.image.model)) batchDefaults.image.model = list[0].value
+    },
+    { immediate: true }
+)
+
+watch(
+    () => settings.value.promptChannel,
+    (value) => {
+        const normalized = normalizePromptChannel(value)
+        if (normalized !== value) settings.value.promptChannel = normalized
+    },
+    { immediate: true }
+)
+
+watch(
+    () => batchDefaults.image.promptChannel,
+    (value) => {
+        const normalized = normalizePromptChannel(value)
+        if (normalized !== value) batchDefaults.image.promptChannel = normalized
     },
     { immediate: true }
 )
@@ -2048,13 +2073,14 @@ const resolveImageSize = (ratio, model) => {
 }
 
 const requestOptimizedPrompt = async (prompt, subject, imageModel, promptChannel = settings.value.promptChannel) => {
-    const promptModel = resolvePromptModel(promptChannel, imageModel)
+    const normalizedChannel = normalizePromptChannel(promptChannel)
+    const promptModel = resolvePromptModel(normalizedChannel, imageModel)
     if (!promptModel) {
         throw new Error(tSettings('settings.model_required_prompt', '请先在模型配置中添加提示词优化模型'))
     }
     const res = await api.post(
         '/api/optimize_prompt',
-        { prompt, subject, model: promptModel, channel: promptChannel || 'google' },
+        { prompt, subject, model: promptModel, channel: normalizedChannel },
         { headers: buildPromptHeaders(promptModel) }
     )
     if (!res?.data?.optimized_prompt) {
@@ -2358,6 +2384,7 @@ const buildBatchTask = (raw) => {
             if (raw[fromKey] !== undefined && raw[fromKey] !== null) baseSettings.image[toKey] = raw[fromKey]
             if (raw.image && raw.image[fromKey] !== undefined && raw.image[fromKey] !== null) baseSettings.image[toKey] = raw.image[fromKey]
         })
+        baseSettings.image.promptChannel = normalizePromptChannel(baseSettings.image.promptChannel)
 
         if (type === 'audio' || type === 'digital_human') {
             const audioKeys = ['voice', 'model', 'language_type', 'instructions', 'optimize_instructions']

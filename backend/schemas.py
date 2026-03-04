@@ -36,7 +36,7 @@ class OptimizePromptRequest(BaseModel):
     prompt: str
     subject: str = "general"
     model: Optional[str] = None
-    channel: Optional[Literal["google", "byte", "aliyun"]] = None
+    channel: Optional[Literal["google", "bytedance", "aliyun", "byte"]] = None
 
 
 class ClipRenderRequest(BaseModel):
