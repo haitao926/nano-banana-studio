@@ -530,12 +530,26 @@
                             </div>
                         </div>
                     </div>
+                    <div class="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+                        <div class="text-xs text-indigo-500 font-semibold mb-2">{{ tSettings('batch.queue', '执行流程') }}</div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            <div class="px-3 py-2 rounded-xl bg-white/80 border border-indigo-100 text-xs text-slate-600">
+                                1. {{ localeStore.t('batch.avatar_upload') }}
+                            </div>
+                            <div class="px-3 py-2 rounded-xl bg-white/80 border border-indigo-100 text-xs text-slate-600">
+                                2. {{ localeStore.t('batch.audio_model') }} / {{ localeStore.t('batch.audio_voice') }}
+                            </div>
+                            <div class="px-3 py-2 rounded-xl bg-white/80 border border-indigo-100 text-xs text-slate-600">
+                                3. {{ localeStore.t('batch.start_all') }} → 视频输出
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Queue List -->
             <div v-if="batchQueue.length" class="space-y-6">
-                <div class="flex items-center justify-between px-4">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 px-4">
                     <h3 class="typo-card-title flex items-center gap-3">
                         {{ localeStore.t('batch.task_queue') }} <span class="bg-slate-200 text-slate-600 px-3 py-1 rounded-full typo-badge">{{ batchQueue.length }}</span>
                     </h3>
@@ -545,6 +559,24 @@
                         <button @click="downloadBatchResults" class="px-4 py-2 hover:bg-slate-100 text-slate-700 rounded-lg typo-button-compact transition-colors" :disabled="!hasDownloadable">{{ localeStore.t('batch.download_results') }}</button>
                         <div class="w-px bg-slate-200 my-1"></div>
                         <button @click="batchQueue = []" class="px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg typo-button-compact transition-colors">{{ localeStore.t('batch.clear') }}</button>
+                    </div>
+                </div>
+                <div class="px-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div class="text-[11px] text-slate-400">{{ localeStore.t('batch.status_pending') }}</div>
+                        <div class="text-sm font-semibold text-orange-500">{{ pendingCount }}</div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div class="text-[11px] text-slate-400">{{ localeStore.t('batch.status_generating') }}</div>
+                        <div class="text-sm font-semibold text-indigo-500">{{ processingCount }}</div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div class="text-[11px] text-slate-400">{{ localeStore.t('batch.status_done') }}</div>
+                        <div class="text-sm font-semibold text-emerald-500">{{ doneCount }}</div>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <div class="text-[11px] text-slate-400">{{ localeStore.t('batch.status_failed') }}</div>
+                        <div class="text-sm font-semibold text-red-500">{{ failedCount }}</div>
                     </div>
                 </div>
                 
@@ -570,6 +602,9 @@
                                      <span v-else-if="task.status === 'processing'" class="typo-badge text-indigo-500 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100 animate-pulse shadow-sm">{{ localeStore.t('batch.status_generating') }}</span>
                                      <span v-else-if="task.status === 'failed'" class="typo-badge text-red-500 bg-red-50 px-3 py-1 rounded-full border border-red-100 shadow-sm">{{ localeStore.t('batch.status_failed') }}</span>
                                      <span v-else class="typo-badge text-slate-400 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">{{ localeStore.t('batch.status_draft') }}</span>
+                                     <span v-if="task.status === 'processing' && getBatchPhaseLabel(task)" class="text-[11px] text-slate-500 bg-white/80 px-2 py-1 rounded-md border border-slate-200">
+                                        {{ getBatchPhaseLabel(task) }}
+                                     </span>
                                  </div>
                             </div>
                             <div class="p-5">
@@ -708,6 +743,7 @@
                                                 <option value="image">{{ tSettings('settings.key_pool_service_image', '绘图') }}</option>
                                                 <option value="audio">{{ tSettings('settings.key_pool_service_audio', '音频') }}</option>
                                                 <option value="video">{{ tSettings('settings.key_pool_service_video', '视频/数字人') }}</option>
+                                                <option value="digital_human">{{ tSettings('settings.key_pool_service_dh', '数字人') }}</option>
                                                 <option value="prompt">{{ tSettings('settings.key_pool_service_prompt', '提示词优化') }}</option>
                                             </select>
                                         </div>
@@ -2451,6 +2487,10 @@ watch(
 const showAudioSettings = computed(() => batchType.value === 'audio' || batchType.value === 'digital_human')
 
 const reversedBatchQueue = computed(() => [...batchQueue.value].reverse())
+const pendingCount = computed(() => batchQueue.value.filter((t) => t.status === 'pending' || t.status === 'draft').length)
+const processingCount = computed(() => batchQueue.value.filter((t) => t.status === 'processing').length)
+const doneCount = computed(() => batchQueue.value.filter((t) => t.status === 'done').length)
+const failedCount = computed(() => batchQueue.value.filter((t) => t.status === 'failed').length)
 const hasPending = computed(() => batchQueue.value.some(t => t.status === 'draft' || t.status === 'pending'))
 const hasDone = computed(() => batchQueue.value.some(t => t.status === 'done'))
 const hasDownloadable = computed(() => batchQueue.value.some((t) => {
@@ -2952,11 +2992,20 @@ const buildBatchTask = (raw) => {
         ensureImageModelSelection(baseSettings.image)
         baseSettings.image.promptChannel = normalizePromptChannel(baseSettings.image.promptChannel)
 
-        if (type === 'audio' || type === 'digital_human') {
+        if (type === 'audio') {
             const audioKeys = ['voice', 'model', 'language_type', 'instructions', 'optimize_instructions']
             audioKeys.forEach((key) => {
                 if (raw[key] !== undefined && raw[key] !== null) baseSettings.audio[key] = raw[key]
             })
+        }
+        if (type === 'digital_human') {
+            const audioKeys = ['voice', 'language_type', 'instructions', 'optimize_instructions']
+            audioKeys.forEach((key) => {
+                if (raw[key] !== undefined && raw[key] !== null) baseSettings.audio[key] = raw[key]
+            })
+            if (raw.audio_model !== undefined && raw.audio_model !== null) {
+                baseSettings.audio.model = raw.audio_model
+            }
         }
 
         if (type === 'video') {
@@ -2976,9 +3025,18 @@ const buildBatchTask = (raw) => {
         }
 
         if (type === 'digital_human') {
-            const dhKeys = ['avatarUrl', 'resolution', 'style']
+            const dhKeys = ['avatarUrl', 'resolution', 'style', 'model', 'provider']
             dhKeys.forEach((key) => {
                 if (raw[key] !== undefined && raw[key] !== null) baseSettings.digital_human[key] = raw[key]
+            })
+            const dhSnakeMap = {
+                avatar_url: 'avatarUrl'
+            }
+            Object.entries(dhSnakeMap).forEach(([fromKey, toKey]) => {
+                if (raw[fromKey] !== undefined && raw[fromKey] !== null) baseSettings.digital_human[toKey] = raw[fromKey]
+                if (raw.digital_human && raw.digital_human[fromKey] !== undefined && raw.digital_human[fromKey] !== null) {
+                    baseSettings.digital_human[toKey] = raw.digital_human[fromKey]
+                }
             })
         }
     }
@@ -2996,7 +3054,8 @@ const buildBatchTask = (raw) => {
         resultMime: '',
         error: '',
         optimizedPrompt: '',
-        optimizationError: ''
+        optimizationError: '',
+        phase: ''
     }
 }
 
@@ -3018,6 +3077,14 @@ const formatDigitalHumanProvider = (value) => {
     if (!value || value === 'auto') return localeStore.t('batch.dh_provider_auto')
     if (value === 'dashscope') return localeStore.t('batch.dh_provider_dashscope')
     return value
+}
+
+const getBatchPhaseLabel = (task) => {
+    if (!task || task.type !== 'digital_human' || task.status !== 'processing') return ''
+    if (task.phase === 'tts') return '阶段 1/3：生成音频'
+    if (task.phase === 'submit') return '阶段 2/3：提交数字人'
+    if (task.phase === 'render') return '阶段 3/3：渲染视频'
+    return ''
 }
 
 const getBatchTags = (task) => {
@@ -3336,9 +3403,11 @@ const runDigitalHumanTask = async (task) => {
         throw new Error(tSettings('settings.model_required_dh', '请先在模型配置中添加数字人模型'))
     }
 
+    task.phase = 'tts'
     const audio = await requestTtsAudio(task.prompt, task.settings?.audio || batchDefaults.audio)
     task.audioUrl = audio.url
 
+    task.phase = 'submit'
     const submitRes = await api.post('/api/digital_human/submit', {
         image_url: dhSettings.avatarUrl,
         audio_url: audio.url,
@@ -3352,9 +3421,11 @@ const runDigitalHumanTask = async (task) => {
 
     task.remoteTaskId = taskId
     authStore.checkAuth()
+    task.phase = 'render'
     const videoUrl = await pollDigitalHumanStatus(taskId, dhSettings.model)
     task.resultUrl = videoUrl
     task.resultType = 'video'
+    task.phase = 'done'
 }
 
 const executeBatchTask = async (task) => {
@@ -3380,6 +3451,7 @@ const startBatchProcessing = async () => {
         task.error = ''
         task.optimizedPrompt = ''
         task.optimizationError = ''
+        task.phase = ''
         try {
             await executeBatchTask(task)
             task.status = 'done'
@@ -3451,7 +3523,7 @@ const handleUploadFinishWithStore = ({ file, event }) => {
 
 // User Pools
 const normalizeUserPoolItem = (pool) => {
-    const ordered = ['image', 'audio', 'video', 'prompt']
+    const ordered = ['image', 'audio', 'video', 'digital_human', 'prompt']
     const service = pool?.service
         || ordered.find((item) => pool?.services?.includes?.(item))
         || 'image'

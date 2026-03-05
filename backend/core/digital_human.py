@@ -348,7 +348,21 @@ class DigitalHumanGenerator:
         return None
 
     def normalize_submit_response(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        task_id = self._extract_value(payload, ["task_id", "taskId", "TaskID", "TaskId"])
+        task_id = self._extract_value(
+            payload,
+            [
+                "task_id",
+                "taskId",
+                "TaskID",
+                "TaskId",
+                "id",
+                "ID",
+                "name",
+                "operation",
+                "operationName",
+                "operation_name",
+            ],
+        )
         return {"task_id": task_id} if task_id else {}
 
     def normalize_status_response(self, payload: Dict[str, Any]) -> Dict[str, Any]:
