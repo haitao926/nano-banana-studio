@@ -39,6 +39,21 @@ class DigitalHumanGenerator:
         return None
 
     @staticmethod
+    def _ensure_dict(payload: Any) -> Dict[str, Any]:
+        if isinstance(payload, dict):
+            return payload
+        if isinstance(payload, str):
+            text = payload.strip()
+            if not text:
+                return {}
+            try:
+                parsed = json.loads(text)
+            except Exception:
+                return {}
+            return parsed if isinstance(parsed, dict) else {}
+        return {}
+
+    @staticmethod
     def _normalize_status(status: Optional[str]) -> Optional[str]:
         if status is None:
             return None
@@ -48,18 +63,16 @@ class DigitalHumanGenerator:
         upper = value.upper()
         if upper in ("PROCESSING", "GENERATING"):
             return "processing"
+        if upper in ("IN_PROGRESS", "RUNNING"):
+            return "processing"
         if upper in ("IN_QUEUE", "QUEUED"):
             return "in_queue"
-        if upper in ("DONE", "COMPLETED"):
+        if upper in ("DONE", "COMPLETED", "SUCCESS", "SUCCEEDED"):
             return "done"
         if upper in ("NOT_FOUND", "EXPIRED"):
             return "expired"
         if upper == "PENDING":
             return "processing"
-        if upper == "RUNNING":
-            return "running"
-        if upper == "SUCCEEDED":
-            return "done"
         if upper in ("FAILED", "CANCELED", "CANCELLED"):
             return "failed"
         if upper == "UNKNOWN":
@@ -317,7 +330,8 @@ class DigitalHumanGenerator:
 
     @staticmethod
     def extract_error(payload: Dict[str, Any]) -> Optional[str]:
-        if not isinstance(payload, dict):
+        payload = DigitalHumanGenerator._ensure_dict(payload)
+        if not payload:
             return None
         if payload.get("error"):
             return str(payload["error"])
@@ -348,6 +362,9 @@ class DigitalHumanGenerator:
         return None
 
     def normalize_submit_response(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self._ensure_dict(payload)
+        if not payload:
+            return {}
         task_id = self._extract_value(
             payload,
             [
@@ -361,11 +378,16 @@ class DigitalHumanGenerator:
                 "operation",
                 "operationName",
                 "operation_name",
+                "request_id",
+                "requestId",
             ],
         )
         return {"task_id": task_id} if task_id else {}
 
     def normalize_status_response(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload = self._ensure_dict(payload)
+        if not payload:
+            return {}
         raw_status = None
         raw_video_url = None
         if isinstance(payload, dict):
@@ -379,7 +401,23 @@ class DigitalHumanGenerator:
                 ["task_status", "taskStatus", "status", "Status", "state", "State"],
             )
         status = self._normalize_status(raw_status)
-        video_url = raw_video_url or self._extract_value(payload, ["video_url", "videoUrl", "VideoURL", "VideoUrl"])
+        video_url = raw_video_url or self._extract_value(
+            payload,
+            [
+                "video_url",
+                "videoUrl",
+                "VideoURL",
+                "VideoUrl",
+                "result_url",
+                "resultUrl",
+                "url",
+                "urls",
+                "video_urls",
+                "videoUrls",
+            ],
+        )
+        if isinstance(video_url, list):
+            video_url = next((item for item in video_url if isinstance(item, str) and item.strip()), None)
         extracted_error = self.extract_error(payload)
         error_message = None
         if extracted_error:
