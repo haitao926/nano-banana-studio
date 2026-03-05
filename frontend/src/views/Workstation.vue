@@ -2520,13 +2520,17 @@ const resetSettings = () => {
 }
 
 const applyUserPoolHeaders = (headers, service, model) => {
-    const pool = selectUserPoolWithFallback(service, model)
+    let pool = selectUserPoolWithFallback(service, model)
+    if ((!pool || !pool.key) && service === 'digital_human') {
+        // Backward compatibility: existing DH keys may be stored under video service.
+        pool = selectUserPoolWithFallback('video', model)
+    }
     if (!pool?.key) return headers
     if (service === 'audio') {
         headers['x-tts-key'] = pool.key
         return headers
     }
-    if (service === 'video') {
+    if (service === 'video' || service === 'digital_human') {
         headers['x-video-key'] = pool.key
         if (pool.base_url) headers['x-video-base-url'] = pool.base_url
         return headers
@@ -2554,10 +2558,10 @@ const buildTtsHeaders = (model) => {
     return applyUserPoolHeaders(headers, 'audio', model)
 }
 
-const buildVideoHeaders = (model) => {
+const buildVideoHeaders = (model, service = 'video') => {
     const headers = {}
     if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
-    return applyUserPoolHeaders(headers, 'video', model)
+    return applyUserPoolHeaders(headers, service, model)
 }
 
 const resolveImageSize = (ratio, model) => {
@@ -3258,7 +3262,10 @@ const pollDigitalHumanStatus = async (taskId, model) => {
     const maxAttempts = 60
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         if (attempt > 0) await sleep(5000)
-        const res = await api.get(`/api/digital_human/status/${taskId}`, { headers: buildVideoHeaders(model) })
+        const res = await api.get(`/api/digital_human/status/${taskId}`, {
+            params: { model },
+            headers: buildVideoHeaders(model, 'digital_human')
+        })
         const data = res?.data?.data || {}
         const status = data.status
         if (status === 'done' && data.video_url) return data.video_url
@@ -3339,7 +3346,7 @@ const runDigitalHumanTask = async (task) => {
         model: dhSettings.model,
         resolution: dhSettings.resolution,
         style: dhSettings.style
-    }, { headers: buildVideoHeaders(dhSettings.model) })
+    }, { headers: buildVideoHeaders(dhSettings.model, 'digital_human') })
     const taskId = submitRes?.data?.data?.task_id
     if (!taskId) throw new Error(submitRes?.data?.message || 'Digital human task failed')
 

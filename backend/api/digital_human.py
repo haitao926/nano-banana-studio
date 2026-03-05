@@ -154,6 +154,7 @@ async def submit_digital_human_task(
 @router.get("/api/digital_human/status/{task_id}")
 async def get_digital_human_status(
     task_id: str,
+    model: Optional[str] = None,
     x_video_key: Optional[str] = Header(None, alias="x-video-key"),
     x_video_base_url: Optional[str] = Header(None, alias="x-video-base-url"),
     current_user: Optional[Dict] = Depends(get_current_user_optional),
@@ -164,7 +165,7 @@ async def get_digital_human_status(
     provider = "dashscope"
 
     video_base_url = _get_video_base_url()
-    model_name = _get_default_model("digital_human") or ""
+    model_name = (model or _get_default_model("digital_human") or "").strip()
     if not model_name:
         return {"error": "Missing digital human model configuration."}
     if current_user:
