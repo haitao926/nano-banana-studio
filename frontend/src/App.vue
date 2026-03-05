@@ -129,9 +129,10 @@
               <!-- 使用 TransitionGroup 实现页面切换动画 -->
               <Transition name="page-fade" mode="out-in">
                   <div :key="currentTab" class="h-full">
-                      <Workstation v-if="currentTab !== 'audio' && currentTab !== 'video'" :active-tab="currentTab" @update-tab="currentTab = $event" />
+                      <Workstation v-if="currentTab !== 'audio' && currentTab !== 'video' && currentTab !== 'assistant'" :active-tab="currentTab" @update-tab="currentTab = $event" />
                       <AudioStudio v-else-if="currentTab === 'audio'" />
-                      <VideoStudio v-else />
+                      <VideoStudio v-else-if="currentTab === 'video'" />
+                      <AssistantStudio v-else />
                   </div>
               </Transition>
            </main>
@@ -145,10 +146,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { NConfigProvider, NMessageProvider } from 'naive-ui'
-import { Sparkles, Music, Zap, Image as ImageIcon, Settings, Globe, Video } from 'lucide-vue-next'
+import { Sparkles, Music, Zap, Image as ImageIcon, Settings, Globe, Video, Bot } from 'lucide-vue-next'
 import Workstation from './views/Workstation.vue'
 import AudioStudio from './views/AudioStudio.vue'
 import VideoStudio from './components/VideoStudio.vue'
+import AssistantStudio from './views/AssistantStudio.vue'
 import { useAuthStore } from './stores/auth'
 import { useLocaleStore } from './stores/locale'
 import logoMarkUrl from './assets/logo-mark.png'
@@ -166,6 +168,7 @@ const menuGroups = computed(() => [
       { id: 'single', label: localeStore.t('menu.image_studio'), icon: Sparkles },
       { id: 'video', label: localeStore.t('menu.video_studio'), icon: Video, beta: true },
       { id: 'audio', label: localeStore.t('menu.audio_studio'), icon: Music, beta: true },
+      { id: 'assistant', label: localeStore.t('menu.ai_assistant'), icon: Bot },
       { id: 'batch', label: localeStore.t('menu.batch_factory'), icon: Zap }
     ]
   },

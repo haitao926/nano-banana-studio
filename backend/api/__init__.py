@@ -1,5 +1,6 @@
 __all__ = [
     "admin",
+    "assistant",
     "audio",
     "auth",
     "batch",

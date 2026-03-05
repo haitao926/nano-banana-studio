@@ -89,6 +89,39 @@ class DBManager:
                 )
             """)
 
+            # Assistant conversations/messages
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS assistant_conversations (
+                    conversation_id TEXT PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    title TEXT,
+                    model TEXT,
+                    created_at REAL,
+                    updated_at REAL,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS assistant_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    conversation_id TEXT NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    metadata TEXT,
+                    created_at REAL,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_assistant_conversations_user_updated "
+                "ON assistant_conversations(user_id, updated_at DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation_created "
+                "ON assistant_messages(conversation_id, created_at ASC)"
+            )
+
             # Rate Limit Log (Legacy support / IP tracking if needed, or purely for audit)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS usage_logs (
@@ -177,6 +210,8 @@ class DBManager:
             conn.execute("UPDATE images SET user_id = NULL WHERE user_id = ?", (user_id,))
             conn.execute("UPDATE audios SET user_id = NULL WHERE user_id = ?", (user_id,))
             conn.execute("UPDATE videos SET user_id = NULL WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM assistant_messages WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM assistant_conversations WHERE user_id = ?", (user_id,))
             cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
             conn.commit()
             return cursor.rowcount > 0
@@ -329,3 +364,129 @@ class DBManager:
             if row:
                 return dict(row)
             return None
+
+    # --- Assistant Conversation Management ---
+    def create_or_touch_assistant_conversation(
+        self,
+        user_id: int,
+        conversation_id: str,
+        model: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> None:
+        now = time.time()
+        with self._get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT conversation_id, title, model FROM assistant_conversations "
+                "WHERE conversation_id = ? AND user_id = ? LIMIT 1",
+                (conversation_id, user_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                updates = ["updated_at = ?"]
+                params: List = [now]
+                if model:
+                    updates.append("model = ?")
+                    params.append(model)
+                if title and not row["title"]:
+                    updates.append("title = ?")
+                    params.append(title)
+                params.extend([conversation_id, user_id])
+                conn.execute(
+                    f"UPDATE assistant_conversations SET {', '.join(updates)} "
+                    "WHERE conversation_id = ? AND user_id = ?",
+                    params,
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO assistant_conversations "
+                    "(conversation_id, user_id, title, model, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (conversation_id, user_id, title or "", model or "", now, now),
+                )
+            conn.commit()
+
+    def list_assistant_conversations(self, user_id: int, limit: int = 50) -> List[Dict]:
+        with self._get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT conversation_id, user_id, title, model, created_at, updated_at "
+                "FROM assistant_conversations "
+                "WHERE user_id = ? "
+                "ORDER BY updated_at DESC "
+                "LIMIT ?",
+                (user_id, limit),
+            )
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+
+    def get_assistant_conversation(self, user_id: int, conversation_id: str) -> Optional[Dict]:
+        with self._get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT conversation_id, user_id, title, model, created_at, updated_at "
+                "FROM assistant_conversations "
+                "WHERE user_id = ? AND conversation_id = ? "
+                "LIMIT 1",
+                (user_id, conversation_id),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def add_assistant_message(
+        self,
+        user_id: int,
+        conversation_id: str,
+        role: str,
+        content: str,
+        metadata: Optional[Dict] = None,
+    ) -> int:
+        created_at = time.time()
+        metadata_text = json.dumps(metadata or {}, ensure_ascii=False)
+        with self._get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO assistant_messages "
+                "(conversation_id, user_id, role, content, metadata, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (conversation_id, user_id, role, content, metadata_text, created_at),
+            )
+            conn.execute(
+                "UPDATE assistant_conversations SET updated_at = ? "
+                "WHERE conversation_id = ? AND user_id = ?",
+                (created_at, conversation_id, user_id),
+            )
+            conn.commit()
+            return int(cursor.lastrowid or 0)
+
+    def get_assistant_messages(self, user_id: int, conversation_id: str, limit: int = 50) -> List[Dict]:
+        with self._get_conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, conversation_id, user_id, role, content, metadata, created_at "
+                "FROM assistant_messages "
+                "WHERE user_id = ? AND conversation_id = ? "
+                "ORDER BY created_at DESC "
+                "LIMIT ?",
+                (user_id, conversation_id, limit),
+            )
+            rows = [dict(row) for row in cursor.fetchall()]
+            rows.reverse()
+            return rows
+
+    def delete_assistant_conversation(self, user_id: int, conversation_id: str) -> bool:
+        with self._get_conn() as conn:
+            conn.execute(
+                "DELETE FROM assistant_messages WHERE user_id = ? AND conversation_id = ?",
+                (user_id, conversation_id),
+            )
+            cursor = conn.execute(
+                "DELETE FROM assistant_conversations WHERE user_id = ? AND conversation_id = ?",
+                (user_id, conversation_id),
+            )
+            conn.commit()
+            return cursor.rowcount > 0

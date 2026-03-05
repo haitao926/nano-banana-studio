@@ -170,3 +170,13 @@ class ModelTestRequest(BaseModel):
     resolution: Optional[str] = None
     duration_seconds: Optional[int] = None
     size: Optional[str] = None
+
+
+class AssistantChatRequest(BaseModel):
+    message: constr(min_length=1, max_length=20000)
+    conversation_id: Optional[constr(min_length=4, max_length=64)] = None
+    model: Optional[str] = None
+    temperature: float = 0.6
+    max_history_messages: int = Field(default=20, ge=4, le=100)
+    file_ids: List[str] = Field(default_factory=list)
+    system_prompt: Optional[str] = None

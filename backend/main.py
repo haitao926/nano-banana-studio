@@ -11,7 +11,7 @@ from app_state import ADMIN_PASSWORD, BUNDLE_DIR, STATIC_DIR, db
 from core.auth_utils import get_password_hash
 from helpers import scan_and_sync_db
 
-from api import admin, audio, auth, batch, clip, digital_human, gallery, generate, models, tools, upload, video
+from api import assistant, admin, audio, auth, batch, clip, digital_human, gallery, generate, models, tools, upload, video
 
 app = FastAPI(title="智绘工坊 API")
 
@@ -46,6 +46,7 @@ app.include_router(audio.router)
 app.include_router(video.router)
 app.include_router(digital_human.router)
 app.include_router(tools.router)
+app.include_router(assistant.router)
 app.include_router(admin.router)
 
 
