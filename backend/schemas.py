@@ -180,3 +180,5 @@ class AssistantChatRequest(BaseModel):
     max_history_messages: int = Field(default=20, ge=4, le=100)
     file_ids: List[str] = Field(default_factory=list)
     system_prompt: Optional[str] = None
+    enable_tools: bool = False
+    max_tool_rounds: int = Field(default=4, ge=1, le=10)

@@ -84,7 +84,9 @@ export const useLocaleStore = defineStore('locale', () => {
             quality_4k: '超清 (4K)',
             ratio_1_1: '1:1 (方图)',
             ratio_16_9: '16:9 (横屏)',
-            ratio_9_16: '9:16 (竖屏)'
+            ratio_9_16: '9:16 (竖屏)',
+            ratio_4_3: '4:3 (标准横图)',
+            ratio_3_4: '3:4 (标准竖图)'
         },
         subjects: {
             general: '综合',
@@ -497,7 +499,9 @@ export const useLocaleStore = defineStore('locale', () => {
             quality_4k: 'Ultra (4K)',
             ratio_1_1: '1:1 (Square)',
             ratio_16_9: '16:9 (Landscape)',
-            ratio_9_16: '9:16 (Portrait)'
+            ratio_9_16: '9:16 (Portrait)',
+            ratio_4_3: '4:3 (Classic Landscape)',
+            ratio_3_4: '3:4 (Classic Portrait)'
         },
         subjects: {
             general: 'General',

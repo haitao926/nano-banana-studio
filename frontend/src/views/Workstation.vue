@@ -1648,7 +1648,7 @@ const batchDefaults = reactive({
         imageProvider: settings.value.imageProvider,
         model: '',
         promptChannel: settings.value.promptChannel,
-        optimize: false,
+        optimize: true,
         seedreamGroup: false,
         seedreamMaxImages: 4
     },
@@ -2062,7 +2062,9 @@ const subjectOptions = computed(() => [
 const ratioOptions = computed(() => [
   { label: localeStore.t('image.options.ratio_1_1'), value: '1:1' },
   { label: localeStore.t('image.options.ratio_16_9'), value: '16:9' },
-  { label: localeStore.t('image.options.ratio_9_16'), value: '9:16' }
+  { label: localeStore.t('image.options.ratio_9_16'), value: '9:16' },
+  { label: localeStore.t('image.options.ratio_4_3'), value: '4:3' },
+  { label: localeStore.t('image.options.ratio_3_4'), value: '3:4' }
 ])
 const qualityOptions = computed(() => [
   { label: localeStore.t('image.options.quality_standard'), value: 'standard' },
@@ -2564,21 +2566,29 @@ const resolveImageSize = (ratio, model) => {
     if (isGpt) {
         if (ratio === '16:9') return '1536x1024'
         if (ratio === '9:16') return '1024x1536'
+        if (ratio === '4:3') return '1536x1152'
+        if (ratio === '3:4') return '1152x1536'
         return '1024x1024'
     }
     if (normalized.includes('seededit')) return 'adaptive'
     if (normalized.includes('seedream-4')) {
         if (ratio === '16:9') return '2560x1440'
         if (ratio === '9:16') return '1440x2560'
+        if (ratio === '4:3') return '2304x1728'
+        if (ratio === '3:4') return '1728x2304'
         return '2048x2048'
     }
     if (normalized.includes('seedream-3')) {
         if (ratio === '16:9') return '1280x720'
         if (ratio === '9:16') return '720x1280'
+        if (ratio === '4:3') return '1152x864'
+        if (ratio === '3:4') return '864x1152'
         return '1024x1024'
     }
     if (ratio === '16:9') return '1792x1024'
     if (ratio === '9:16') return '1024x1792'
+    if (ratio === '4:3') return '1536x1152'
+    if (ratio === '3:4') return '1152x1536'
     return '1024x1024'
 }
 
@@ -2589,9 +2599,15 @@ const resolvePromptChannelByImageProvider = (provider) => {
     return 'google'
 }
 
-const requestOptimizedPrompt = async (prompt, subject, imageModel, imageProvider = settings.value.imageProvider) => {
-    const promptChannel = resolvePromptChannelByImageProvider(imageProvider)
-    const normalizedChannel = normalizePromptChannel(promptChannel)
+const requestOptimizedPrompt = async (
+    prompt,
+    subject,
+    imageModel,
+    imageProvider = settings.value.imageProvider,
+    preferredPromptChannel = ''
+) => {
+    const channelHint = preferredPromptChannel || resolvePromptChannelByImageProvider(imageProvider)
+    const normalizedChannel = normalizePromptChannel(channelHint)
     const promptModel = resolvePromptModel(normalizedChannel, imageModel)
     if (!promptModel) {
         throw new Error(tSettings('settings.model_required_prompt', '请先在模型配置中添加提示词优化模型'))
@@ -2620,7 +2636,8 @@ const handleOptimizePrompt = async () => {
             original,
             settings.value.subject,
             settings.value.model,
-            settings.value.imageProvider
+            settings.value.imageProvider,
+            settings.value.promptChannel
         )
         if (optimized && optimized !== original) {
             inputText.value = optimized
@@ -3211,7 +3228,8 @@ const runImageTask = async (task) => {
                 task.prompt,
                 cfg.subject,
                 cfg.model,
-                cfg.imageProvider || settings.value.imageProvider
+                cfg.imageProvider || settings.value.imageProvider,
+                cfg.promptChannel || settings.value.promptChannel
             )
             task.optimizedPrompt = promptToUse
         } catch (e) {

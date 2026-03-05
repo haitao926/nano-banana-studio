@@ -163,12 +163,17 @@ const currentTab = ref('single')
 
 const menuGroups = computed(() => [
   {
+    title: localeStore.t('menu.ai_assistant'),
+    items: [
+      { id: 'assistant', label: localeStore.t('menu.ai_assistant'), icon: Bot }
+    ]
+  },
+  {
     title: localeStore.t('menu.creation_suite'),
     items: [
       { id: 'single', label: localeStore.t('menu.image_studio'), icon: Sparkles },
       { id: 'video', label: localeStore.t('menu.video_studio'), icon: Video, beta: true },
       { id: 'audio', label: localeStore.t('menu.audio_studio'), icon: Music, beta: true },
-      { id: 'assistant', label: localeStore.t('menu.ai_assistant'), icon: Bot },
       { id: 'batch', label: localeStore.t('menu.batch_factory'), icon: Zap }
     ]
   },
