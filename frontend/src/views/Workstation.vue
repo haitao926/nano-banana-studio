@@ -530,19 +530,8 @@
                             </div>
                         </div>
                     </div>
-                    <div class="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
-                        <div class="text-xs text-indigo-500 font-semibold mb-2">{{ tSettings('batch.queue', '执行流程') }}</div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                            <div class="px-3 py-2 rounded-xl bg-white/80 border border-indigo-100 text-xs text-slate-600">
-                                1. {{ localeStore.t('batch.avatar_upload') }}
-                            </div>
-                            <div class="px-3 py-2 rounded-xl bg-white/80 border border-indigo-100 text-xs text-slate-600">
-                                2. {{ localeStore.t('batch.audio_model') }} / {{ localeStore.t('batch.audio_voice') }}
-                            </div>
-                            <div class="px-3 py-2 rounded-xl bg-white/80 border border-indigo-100 text-xs text-slate-600">
-                                3. {{ localeStore.t('batch.start_all') }} → 视频输出
-                            </div>
-                        </div>
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                        头像上传会自动写入当前默认配置；开始前请确认队列卡片左上角类型是「数字人」，避免误跑成「音频」。
                     </div>
                 </div>
             </div>
@@ -2948,7 +2937,20 @@ const makeBatchId = () => {
 }
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value))
 const isLocalResultUrl = (url) => typeof url === 'string' && url.startsWith('/static/')
-const normalizeBatchType = (value) => (['image', 'audio', 'video', 'digital_human'].includes(value) ? value : batchType.value)
+const normalizeBatchType = (value) => {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[-\s]/g, '_')
+    if (normalized === 'digitalhuman' || normalized === 'dh') return 'digital_human'
+    if (['image', 'audio', 'video', 'digital_human'].includes(normalized)) return normalized
+    return batchType.value
+}
+
+const inferBatchTypeFromRaw = (raw) => {
+    if (!raw || typeof raw !== 'object') return ''
+    if (raw.digital_human || raw.avatarUrl || raw.avatar_url || raw.audio_model) return 'digital_human'
+    if (raw.video || raw.image_url || raw.duration_seconds || raw.durationSeconds || raw.aspect_ratio) return 'video'
+    if (raw.audio || raw.voice || raw.language_type || raw.instructions) return 'audio'
+    return ''
+}
 
 const buildBatchTask = (raw) => {
     const baseSettings = {
@@ -2965,6 +2967,8 @@ const buildBatchTask = (raw) => {
         prompt = raw
     } else if (raw && typeof raw === 'object') {
         if (raw.type) type = normalizeBatchType(raw.type)
+        const inferredType = inferBatchTypeFromRaw(raw)
+        if (inferredType) type = inferredType
         prompt = raw.prompt || raw.text || ''
 
         if (raw.image && typeof raw.image === 'object') Object.assign(baseSettings.image, raw.image)
@@ -3502,7 +3506,16 @@ const downloadBatchResults = async () => {
 const handleBatchAvatarUpload = ({ event }) => {
     try {
         const res = JSON.parse(event.target.response)
-        if (res.success) batchDefaults.digital_human.avatarUrl = res.url
+        if (res.success) {
+            batchDefaults.digital_human.avatarUrl = res.url
+            // Keep pending/draft digital-human tasks in sync with latest default avatar.
+            batchQueue.value.forEach((task) => {
+                if (task?.type !== 'digital_human') return
+                if (!['draft', 'pending'].includes(task.status)) return
+                if (!task.settings?.digital_human) task.settings = { ...(task.settings || {}), digital_human: {} }
+                task.settings.digital_human.avatarUrl = res.url
+            })
+        }
     } catch (e) {}
 }
 
