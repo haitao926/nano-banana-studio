@@ -66,12 +66,16 @@ log "fetching latest code from $REMOTE/$BRANCH"
 git fetch "$REMOTE" --prune
 git pull --ff-only "$REMOTE" "$BRANCH"
 
-log "building and starting docker services"
+log "building docker images"
 if [ "$COMPOSE_CMD" = "docker compose" ]; then
-  docker compose up -d --build
+  docker compose build --pull
+  log "starting docker services"
+  docker compose up -d
   docker compose ps
 else
-  docker-compose up -d --build
+  docker-compose build --pull
+  log "starting docker services"
+  docker-compose up -d
   docker-compose ps
 fi
 

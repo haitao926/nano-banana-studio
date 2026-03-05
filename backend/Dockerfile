@@ -25,10 +25,26 @@ RUN set -eux; \
 
 COPY backend/requirements.txt /app/backend/requirements.txt
 ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
-    && pip install --no-cache-dir --retries 5 --default-timeout 120 \
-      -i ${PIP_INDEX_URL} --extra-index-url https://pypi.org/simple \
-      -r requirements.txt
+ARG PIP_FALLBACK_INDEX_URL=https://pypi.org/simple
+RUN set -eux; \
+    python -m pip install --no-cache-dir --upgrade pip setuptools wheel; \
+    installed=0; \
+    for attempt in 1 2 3; do \
+      if python -m pip install --no-cache-dir --retries 10 --default-timeout 180 --prefer-binary \
+        -i "${PIP_INDEX_URL}" --extra-index-url "${PIP_FALLBACK_INDEX_URL}" \
+        -r requirements.txt; then \
+        installed=1; \
+        break; \
+      fi; \
+      echo "pip install attempt ${attempt} failed, retrying..."; \
+      sleep $((attempt * 5)); \
+    done; \
+    if [ "$installed" -eq 0 ]; then \
+      echo "mirror install failed, falling back to official PyPI only..."; \
+      python -m pip install --no-cache-dir --retries 10 --default-timeout 180 --prefer-binary \
+        -i "${PIP_FALLBACK_INDEX_URL}" \
+        -r requirements.txt; \
+    fi
 
 COPY backend /app/backend
 
