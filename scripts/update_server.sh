@@ -8,6 +8,8 @@ cd "$PROJECT_ROOT"
 REMOTE="${NBS_REMOTE:-origin}"
 BRANCH="${NBS_BRANCH:-main}"
 CHECK_URL="${NBS_CHECK_URL:-http://127.0.0.1:18080}"
+ALLOW_DIRTY="${NBS_ALLOW_DIRTY:-0}"
+COMPOSE_OVERRIDE="${NBS_COMPOSE_CMD:-}"
 
 log() {
   echo "[update] $*"
@@ -23,6 +25,10 @@ require_cmd() {
 }
 
 resolve_compose_cmd() {
+  if [ -n "$COMPOSE_OVERRIDE" ]; then
+    echo "$COMPOSE_OVERRIDE"
+    return 0
+  fi
   if docker compose version >/dev/null 2>&1; then
     echo "docker compose"
     return 0
@@ -47,7 +53,11 @@ if [ "$(git rev-parse --abbrev-ref HEAD)" != "$BRANCH" ]; then
 fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  fail "local changes detected; commit/stash them before update"
+  if [ "$ALLOW_DIRTY" = "1" ]; then
+    log "warning: local changes detected, continue because NBS_ALLOW_DIRTY=1"
+  else
+    fail "local changes detected; commit/stash them before update (or set NBS_ALLOW_DIRTY=1)"
+  fi
 fi
 
 COMPOSE_CMD="$(resolve_compose_cmd)"
