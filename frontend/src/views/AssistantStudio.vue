@@ -76,18 +76,18 @@
           </button>
         </div>
 
-        <label class="block w-full mb-3 shrink-0 group" :class="(fileApiUnavailable || isGuestMode) ? 'opacity-60 cursor-not-allowed' : ''">
+        <label class="block w-full mb-3 shrink-0 group" :class="fileApiUnavailable ? 'opacity-60 cursor-not-allowed' : ''">
           <input type="file" multiple class="hidden" @change="uploadFiles" />
           <div class="w-full flex flex-col items-center justify-center py-4 text-xs font-semibold rounded-xl border-2 border-dashed transition-colors"
                :class="uploading ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-200 bg-slate-50 text-slate-500 group-hover:border-indigo-300 group-hover:bg-indigo-50/50 group-hover:text-indigo-500 cursor-pointer'">
             <UploadCloud v-if="!uploading" class="w-6 h-6 mb-2 opacity-50 group-hover:opacity-100" />
             <RefreshCw v-else class="w-6 h-6 mb-2 animate-spin" />
-            <span>{{ isGuestMode ? '访客模式不支持文件上传' : (fileApiUnavailable ? '文件功能未启用' : (uploading ? '上传中...' : '点击或拖拽上传文件')) }}</span>
+            <span>{{ fileApiUnavailable ? '文件功能未启用' : (uploading ? '上传中...' : '点击或拖拽上传文件') }}</span>
           </div>
         </label>
 
         <div v-if="isGuestMode" class="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          访客模式可直接提问，但不支持文件上下文和云端会话历史。
+          访客模式支持文件上下文，但不保存云端会话历史。
         </div>
         <div v-if="fileApiUnavailable" class="mb-3 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
           {{ fileApiUnavailableReason || '文件接口暂不可用，请在后端配置 Moonshot 可用 key 后再使用上传。' }}
@@ -128,7 +128,7 @@
           
           <div v-if="!files.length && !fileApiUnavailable" class="text-xs text-slate-400 py-8 text-center flex flex-col items-center">
             <FileText class="w-8 h-8 opacity-20 mb-2" />
-            {{ isGuestMode ? '访客模式无文件列表' : '暂无已上传文件' }}
+            暂无已上传文件
           </div>
         </div>
       </div>
@@ -170,7 +170,7 @@
           </div>
         </div>
         
-        <div class="flex items-center gap-2" v-if="selectedFileIds.length > 0 && authStore.isLoggedIn">
+        <div class="flex items-center gap-2" v-if="selectedFileIds.length > 0">
           <span class="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 text-[11px] font-semibold rounded-full border border-indigo-100">
             <Paperclip class="w-3 h-3" />
             已挂载 {{ selectedFileIds.length }} 个文件
@@ -574,7 +574,6 @@ async function removeConversation() {
 }
 
 async function refreshFiles() {
-  if (!authStore.isLoggedIn) return
   try {
     const res = await api.get('/api/assistant/files', { headers: authHeaders.value })
     files.value = Array.isArray(res.data?.data) ? res.data.data : []
@@ -625,11 +624,6 @@ async function uploadFiles(event) {
     message.warning(fileApiUnavailableReason.value || '文件功能未启用')
     return
   }
-  if (!authStore.isLoggedIn) {
-    message.warning('访客模式暂不支持文件上传')
-    return
-  }
-
   uploading.value = true
   try {
     for (const file of picked) {
@@ -714,11 +708,13 @@ async function initializeAssistant() {
   if (!canUseAssistant.value) return
   if (!authStore.isLoggedIn) {
     conversations.value = []
-    files.value = []
-    selectedFileIds.value = []
     latestToolEvents.value = []
-    fileApiUnavailable.value = false
-    fileApiUnavailableReason.value = ''
+    try {
+      await refreshFiles()
+    } catch (err) {
+      const detail = err?.response?.data?.detail || err?.message || ''
+      message.error(detail || '文件列表加载失败')
+    }
     return
   }
   const [convResult, fileResult] = await Promise.allSettled([refreshConversations(), refreshFiles()])

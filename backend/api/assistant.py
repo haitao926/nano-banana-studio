@@ -600,7 +600,7 @@ async def assistant_upload_file(
     file: UploadFile = File(...),
     purpose: Literal["file-extract", "image", "video"] = Form("file-extract"),
     model: Optional[str] = Form(None),
-    current_user: Dict = Depends(get_current_user),
+    current_user: Optional[Dict] = Depends(get_current_user_optional),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -663,7 +663,7 @@ async def assistant_upload_file(
 @router.get("/api/assistant/files")
 async def assistant_list_files(
     model: Optional[str] = Query(default=None),
-    current_user: Dict = Depends(get_current_user),
+    current_user: Optional[Dict] = Depends(get_current_user_optional),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -683,7 +683,7 @@ async def assistant_list_files(
 async def assistant_get_file(
     file_id: str,
     model: Optional[str] = Query(default=None),
-    current_user: Dict = Depends(get_current_user),
+    current_user: Optional[Dict] = Depends(get_current_user_optional),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -702,7 +702,7 @@ async def assistant_get_file(
 async def assistant_delete_file(
     file_id: str,
     model: Optional[str] = Query(default=None),
-    current_user: Dict = Depends(get_current_user),
+    current_user: Optional[Dict] = Depends(get_current_user_optional),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -721,7 +721,7 @@ async def assistant_delete_file(
 async def assistant_get_file_content(
     file_id: str,
     model: Optional[str] = Query(default=None),
-    current_user: Dict = Depends(get_current_user),
+    current_user: Optional[Dict] = Depends(get_current_user_optional),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -808,8 +808,6 @@ async def assistant_chat(
         )
     else:
         history_messages = []
-        if req.file_ids:
-            raise HTTPException(status_code=403, detail="Guest mode does not support file context")
         outgoing_messages.append({"role": "user", "content": req.message.strip()})
 
     seen_file_ids = set()
