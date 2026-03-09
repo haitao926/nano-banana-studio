@@ -8,7 +8,7 @@ from urllib.parse import unquote
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app_state import GENERATED_DIR, MAX_BATCH_TASKS, BATCH_WORKERS, BATCH_DELAY_SECONDS, batch_gen, db, img_gen
-from deps import get_current_user_optional
+from deps import get_current_user
 from helpers import (
     _build_model_candidates,
     _build_prompt_model_chain,
@@ -62,7 +62,7 @@ def _normalize_prompt_channel(channel: Optional[str]) -> Optional[str]:
 async def generate_single(
     req: SingleGenRequest,
     request: Request,
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -361,7 +361,7 @@ async def generate_single(
 async def generate_modify(
     req: ModifyGenRequest,
     request: Request,
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -454,7 +454,7 @@ async def generate_modify(
 async def generate_batch(
     req: BatchGenRequest,
     request: Request,
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -567,7 +567,7 @@ async def generate_batch(
 async def optimize_prompt_endpoint(
     req: OptimizePromptRequest,
     request: Request,
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):

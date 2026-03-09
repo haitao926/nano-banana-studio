@@ -35,7 +35,7 @@
               <Bot class="w-3 h-3" /> {{ item.model || 'kimi-k2.5' }}
             </p>
             <button
-              v-if="item.conversation_id === currentConversationId"
+              v-if="item.conversation_id === currentConversationId && authStore.isLoggedIn"
               class="absolute right-2 top-2 p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
               @click.stop="removeConversation"
               title="删除会话"
@@ -46,7 +46,7 @@
           
           <div v-if="!conversations.length" class="h-full flex flex-col items-center justify-center text-slate-400 space-y-2 pb-8">
             <MessageSquare class="w-8 h-8 opacity-50" />
-            <span class="text-xs">暂无历史会话</span>
+            <span class="text-xs">{{ authStore.isLoggedIn ? '暂无历史会话' : '访客模式不保存云端会话' }}</span>
           </div>
         </div>
       </div>
@@ -76,16 +76,19 @@
           </button>
         </div>
 
-        <label class="block w-full mb-3 shrink-0 group" :class="fileApiUnavailable ? 'opacity-60 cursor-not-allowed' : ''">
+        <label class="block w-full mb-3 shrink-0 group" :class="(fileApiUnavailable || isGuestMode) ? 'opacity-60 cursor-not-allowed' : ''">
           <input type="file" multiple class="hidden" @change="uploadFiles" />
           <div class="w-full flex flex-col items-center justify-center py-4 text-xs font-semibold rounded-xl border-2 border-dashed transition-colors"
                :class="uploading ? 'border-indigo-300 bg-indigo-50 text-indigo-600' : 'border-slate-200 bg-slate-50 text-slate-500 group-hover:border-indigo-300 group-hover:bg-indigo-50/50 group-hover:text-indigo-500 cursor-pointer'">
             <UploadCloud v-if="!uploading" class="w-6 h-6 mb-2 opacity-50 group-hover:opacity-100" />
             <RefreshCw v-else class="w-6 h-6 mb-2 animate-spin" />
-            <span>{{ fileApiUnavailable ? '文件功能未启用' : (uploading ? '上传中...' : '点击或拖拽上传文件') }}</span>
+            <span>{{ isGuestMode ? '访客模式不支持文件上传' : (fileApiUnavailable ? '文件功能未启用' : (uploading ? '上传中...' : '点击或拖拽上传文件')) }}</span>
           </div>
         </label>
 
+        <div v-if="isGuestMode" class="mb-3 shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          访客模式可直接提问，但不支持文件上下文和云端会话历史。
+        </div>
         <div v-if="fileApiUnavailable" class="mb-3 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
           {{ fileApiUnavailableReason || '文件接口暂不可用，请在后端配置 Moonshot 可用 key 后再使用上传。' }}
         </div>
@@ -125,7 +128,7 @@
           
           <div v-if="!files.length && !fileApiUnavailable" class="text-xs text-slate-400 py-8 text-center flex flex-col items-center">
             <FileText class="w-8 h-8 opacity-20 mb-2" />
-            暂无已上传文件
+            {{ isGuestMode ? '访客模式无文件列表' : '暂无已上传文件' }}
           </div>
         </div>
       </div>
@@ -167,7 +170,7 @@
           </div>
         </div>
         
-        <div class="flex items-center gap-2" v-if="selectedFileIds.length > 0">
+        <div class="flex items-center gap-2" v-if="selectedFileIds.length > 0 && authStore.isLoggedIn">
           <span class="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 text-[11px] font-semibold rounded-full border border-indigo-100">
             <Paperclip class="w-3 h-3" />
             已挂载 {{ selectedFileIds.length }} 个文件
@@ -175,11 +178,11 @@
         </div>
       </div>
 
-      <div v-if="!authStore.isLoggedIn" class="flex-1 flex flex-col items-center justify-center text-slate-400 space-y-4">
+      <div v-if="!canUseAssistant" class="flex-1 flex flex-col items-center justify-center text-slate-400 space-y-4">
         <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-2">
           <User class="w-8 h-8 text-slate-300" />
         </div>
-        <p class="text-sm font-medium">请先登录后使用 AI 助手</p>
+        <p class="text-sm font-medium">请先登录或开启访客模式后使用 AI 助手</p>
       </div>
 
       <template v-else>
@@ -336,6 +339,8 @@ const authHeaders = computed(() => {
   if (!authStore.token) return {}
   return { Authorization: `Bearer ${authStore.token}` }
 })
+const canUseAssistant = computed(() => authStore.isLoggedIn || authStore.isGuest)
+const isGuestMode = computed(() => authStore.isGuest && !authStore.isLoggedIn)
 
 const CODE_FENCE_RE = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g
 
@@ -554,6 +559,10 @@ async function pickConversation(conversationId) {
 
 async function removeConversation() {
   if (!currentConversationId.value) return
+  if (!authStore.isLoggedIn) {
+    createConversation()
+    return
+  }
   try {
     await api.delete(`/api/assistant/conversations/${currentConversationId.value}`, { headers: authHeaders.value })
     message.success('会话已删除')
@@ -617,7 +626,7 @@ async function uploadFiles(event) {
     return
   }
   if (!authStore.isLoggedIn) {
-    message.error('请先登录')
+    message.warning('访客模式暂不支持文件上传')
     return
   }
 
@@ -648,8 +657,8 @@ async function uploadFiles(event) {
 async function sendMessage() {
   const text = inputText.value.trim()
   if (!text || sending.value) return
-  if (!authStore.isLoggedIn) {
-    message.error('请先登录')
+  if (!canUseAssistant.value) {
+    message.error('请先登录或开启访客模式')
     return
   }
 
@@ -676,10 +685,21 @@ async function sendMessage() {
     )
     latestToolEvents.value = Array.isArray(res.data?.tool_events) ? res.data.tool_events : []
     const conversationId = res.data?.conversation_id
-    if (conversationId) {
+    if (conversationId && authStore.isLoggedIn) {
       currentConversationId.value = conversationId
       await loadMessages(conversationId)
       await refreshConversations()
+    } else if (!authStore.isLoggedIn) {
+      if (conversationId) currentConversationId.value = conversationId
+      const assistantText = String(res.data?.message || '').trim()
+      if (assistantText) {
+        chatMessages.value.push({
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: assistantText,
+          created_at: Date.now() / 1000,
+        })
+      }
     }
   } catch (err) {
     message.error(err?.response?.data?.detail || '发送失败')
@@ -691,7 +711,16 @@ async function sendMessage() {
 }
 
 async function initializeAssistant() {
-  if (!authStore.isLoggedIn) return
+  if (!canUseAssistant.value) return
+  if (!authStore.isLoggedIn) {
+    conversations.value = []
+    files.value = []
+    selectedFileIds.value = []
+    latestToolEvents.value = []
+    fileApiUnavailable.value = false
+    fileApiUnavailableReason.value = ''
+    return
+  }
   const [convResult, fileResult] = await Promise.allSettled([refreshConversations(), refreshFiles()])
   if (convResult.status === 'rejected') throw convResult.reason
   if (fileResult.status === 'rejected') {
@@ -701,9 +730,9 @@ async function initializeAssistant() {
 }
 
 watch(
-  () => authStore.isLoggedIn,
-  async (loggedIn) => {
-    if (!loggedIn) {
+  () => [authStore.isLoggedIn, authStore.isGuest],
+  async ([loggedIn, isGuest]) => {
+    if (!loggedIn && !isGuest) {
       conversations.value = []
       files.value = []
       latestToolEvents.value = []

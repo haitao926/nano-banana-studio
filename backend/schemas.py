@@ -61,6 +61,18 @@ class AdminCreateUserRequest(BaseModel):
     quota_limit: Optional[int] = None
 
 
+class AdminBulkCreateUserItem(BaseModel):
+    username: constr(min_length=2, max_length=32)
+    password: constr(min_length=6, max_length=64)
+    is_pro: bool = False
+    quota_limit: Optional[int] = None
+
+
+class AdminBulkCreateUsersRequest(BaseModel):
+    users: List[AdminBulkCreateUserItem] = Field(default_factory=list, min_length=1, max_length=500)
+    skip_existing: bool = True
+
+
 class BatchDownloadRequest(BaseModel):
     filenames: List[str]
 

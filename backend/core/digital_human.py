@@ -1,5 +1,5 @@
 import json
-from typing import Optional, Dict, Any, Iterable, Tuple
+from typing import Optional, Dict, Any, Iterable, Tuple, List
 from urllib.parse import urlparse
 
 import requests
@@ -78,6 +78,41 @@ class DigitalHumanGenerator:
         if upper == "UNKNOWN":
             return "expired"
         return value.lower()
+
+    @staticmethod
+    def _looks_like_video_url(value: Any) -> Optional[str]:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        if not text:
+            return None
+        lower = text.lower()
+        if lower.endswith((".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi")):
+            return text
+        if ".mp4" in lower:
+            return text
+        if "format=mp4" in lower:
+            return text
+        return None
+
+    @staticmethod
+    def _collect_candidate_urls(payload: Any, bucket: List[str]) -> None:
+        if isinstance(payload, dict):
+            for key, value in payload.items():
+                lower_key = str(key).strip().lower()
+                if lower_key in ("audio_url", "audiourl"):
+                    continue
+                if lower_key in ("video_url", "videourl", "result_url", "resulturl", "url"):
+                    if isinstance(value, str) and value.strip():
+                        bucket.append(value.strip())
+                elif lower_key in ("video_urls", "videourls", "urls") and isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, str) and item.strip():
+                            bucket.append(item.strip())
+                DigitalHumanGenerator._collect_candidate_urls(value, bucket)
+        elif isinstance(payload, list):
+            for item in payload:
+                DigitalHumanGenerator._collect_candidate_urls(item, bucket)
 
     @staticmethod
     def _resolve_api_key(api_key: Optional[str]) -> Optional[str]:
@@ -200,7 +235,7 @@ class DigitalHumanGenerator:
         api_key: str,
         payload: Optional[Dict[str, Any]] = None,
         async_call: bool = False,
-        timeout: int = 60,
+        timeout: int = 180,
     ) -> Dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -325,7 +360,7 @@ class DigitalHumanGenerator:
             return {"error": str(exc)}
 
         url = f"{resolved_base}{TASK_PATH.format(task_id=task_id)}"
-        return self._request("GET", url, resolved_key, timeout=60)
+        return self._request("GET", url, resolved_key, timeout=120)
 
 
     @staticmethod
@@ -378,10 +413,13 @@ class DigitalHumanGenerator:
                 "operation",
                 "operationName",
                 "operation_name",
-                "request_id",
-                "requestId",
             ],
         )
+        if not task_id:
+            request_id = self._extract_value(payload, ["request_id", "requestId"])
+            output = payload.get("output")
+            if request_id and not isinstance(output, dict):
+                task_id = request_id
         return {"task_id": task_id} if task_id else {}
 
     def normalize_status_response(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -394,7 +432,12 @@ class DigitalHumanGenerator:
             data = payload.get("data")
             if isinstance(data, dict):
                 raw_status = data.get("status") or data.get("Status")
-                raw_video_url = data.get("video_url") or data.get("videoUrl") or data.get("VideoURL")
+                raw_video_url = (
+                    self._looks_like_video_url(data.get("video_url"))
+                    or self._looks_like_video_url(data.get("videoUrl"))
+                    or self._looks_like_video_url(data.get("VideoURL"))
+                    or self._looks_like_video_url(data.get("url"))
+                )
         if raw_status is None:
             raw_status = self._extract_value(
                 payload,
@@ -410,14 +453,24 @@ class DigitalHumanGenerator:
                 "VideoUrl",
                 "result_url",
                 "resultUrl",
-                "url",
-                "urls",
                 "video_urls",
                 "videoUrls",
             ],
         )
         if isinstance(video_url, list):
-            video_url = next((item for item in video_url if isinstance(item, str) and item.strip()), None)
+            video_url = next((self._looks_like_video_url(item) for item in video_url), None)
+        else:
+            video_url = self._looks_like_video_url(video_url)
+
+        if video_url is None:
+            url_candidates: List[str] = []
+            self._collect_candidate_urls(payload, url_candidates)
+            for candidate in url_candidates:
+                normalized = self._looks_like_video_url(candidate)
+                if normalized:
+                    video_url = normalized
+                    break
+
         extracted_error = self.extract_error(payload)
         error_message = None
         if extracted_error:

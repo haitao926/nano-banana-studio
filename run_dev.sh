@@ -55,7 +55,7 @@ if [ ! -d "node_modules" ]; then
     echo "Installing frontend dependencies..."
     npm install
 fi
-npm run dev &
+npm run dev -- --host 0.0.0.0 --port 5173 &
 FRONTEND_PID=$!
 cd ..
 

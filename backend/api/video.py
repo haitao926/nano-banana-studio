@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app_state import db, video_gen
 from core.video_generator import VideoGenerator
-from deps import get_current_user, get_current_user_optional
+from deps import get_current_user
 from helpers import (
     _build_model_candidates,
     _download_public_image_bytes,
@@ -84,7 +84,7 @@ async def get_video_history(current_user: Dict = Depends(get_current_user)):
 @router.post("/api/video/generate")
 async def generate_video(
     req: VideoGenerateRequest,
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
     x_video_key: Optional[str] = Header(None, alias="x-video-key"),
     x_video_base_url: Optional[str] = Header(None, alias="x-video-base-url"),
 ):
@@ -268,7 +268,7 @@ async def get_video_status(
     task_id: str,
     x_video_key: Optional[str] = Header(None, alias="x-video-key"),
     x_video_base_url: Optional[str] = Header(None, alias="x-video-base-url"),
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
 ):
     if not task_id:
         raise HTTPException(status_code=400, detail="task_id required")

@@ -149,7 +149,7 @@
                         <div class="px-3 py-2 border-t border-slate-100/50 flex items-center justify-between bg-white/50">
                             <div class="flex items-center gap-2">
                                  <!-- Reference Upload Trigger (Prominent) -->
-                                 <n-upload v-if="refImageUrls.length < 4" action="/api/upload" :max="4" multiple :show-file-list="false" @finish="handleUploadFinishWithStore">
+                                 <n-upload v-if="refImageUrls.length < 4" :action="uploadAction" :max="4" multiple :show-file-list="false" @finish="handleUploadFinishWithStore">
                                     <button class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition-all shadow-sm hover:shadow flex items-center gap-2 group/btn active:scale-95" :title="localeStore.t('image.add_ref')">
                                         <ImageIcon class="w-4 h-4" />
                                         <span class="text-xs font-bold">{{ localeStore.t('image.add_ref_short') || '上传参考图' }}</span>
@@ -275,53 +275,22 @@
 
       <!-- TAB: BATCH FACTORY -->
       <Transition name="fade" mode="out-in">
-        <div v-if="activeTab === 'batch'" class="space-y-8 animate-fade-in">
+        <div v-if="activeTab === 'batch'" class="space-y-5 animate-fade-in">
             <!-- Batch Header -->
-            <div class="bg-gradient-to-r from-indigo-600 to-purple-700 rounded-[32px] p-10 shadow-xl shadow-indigo-500/20 text-white relative overflow-hidden">
-                <div class="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
-                
-                <div class="relative z-10 space-y-5">
-                    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                        <div>
-                            <div class="flex items-center gap-3 mb-2">
-                                <span class="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
-                                    <Zap class="w-8 h-8 text-white" />
-                                </span>
-                                <h3 class="typo-page-title text-white">{{ localeStore.t('batch.title') }}</h3>
-                            </div>
-                            <p class="typo-page-subtitle text-indigo-100 max-w-xl">{{ localeStore.t('batch.desc') }}</p>
-                        </div>
-                        <div class="flex flex-wrap gap-3 lg:justify-end">
-                           <button @click="downloadTemplate" class="px-4 py-2 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-xl typo-button-compact transition-all border border-white/10">{{ localeStore.t('batch.download_template') }}</button>
-                           <label class="px-4 py-2 bg-white text-indigo-600 hover:bg-indigo-50 rounded-xl typo-button-compact transition-all cursor-pointer shadow-lg hover:shadow-xl hover:-translate-y-0.5 border border-white">
-                              {{ localeStore.t('batch.import_json') }} <input type="file" accept=".json" class="hidden" @change="handleJsonUpload" />
-                           </label>
-                        </div>
+            <div class="bg-gradient-to-r from-indigo-600 to-purple-700 rounded-2xl p-4 shadow-lg shadow-indigo-500/20 text-white">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <span class="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm shrink-0">
+                            <Zap class="w-5 h-5 text-white" />
+                        </span>
+                        <h3 class="typo-card-title text-white shrink-0">{{ localeStore.t('batch.title') }}</h3>
+                        <p class="typo-caption-compact text-indigo-100 truncate">{{ localeStore.t('batch.desc') }}</p>
                     </div>
-
-                    <div class="rounded-2xl border border-white/20 bg-white/10 p-5 backdrop-blur-sm">
-                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                            <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">
-                                <div class="text-xs text-indigo-100/90 mb-1">Step 1</div>
-                                <div class="text-sm font-semibold text-white">{{ localeStore.t('batch.download_template') }}</div>
-                                <div class="text-[11px] text-indigo-100/80 mt-1">JSON Template</div>
-                            </div>
-                            <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">
-                                <div class="text-xs text-indigo-100/90 mb-1">Step 2</div>
-                                <div class="text-sm font-semibold text-white">{{ localeStore.t('batch.import_json') }}</div>
-                                <div class="text-[11px] text-indigo-100/80 mt-1">`.json` only</div>
-                            </div>
-                            <div class="rounded-xl border border-white/20 bg-white/10 px-4 py-3">
-                                <div class="text-xs text-indigo-100/90 mb-1">Step 3</div>
-                                <div class="text-sm font-semibold text-white">{{ tSettings('batch.queue', '进入队列执行') }}</div>
-                                <div class="text-[11px] text-indigo-100/80 mt-1">{{ tSettings('batch.start', '开始执行') }}</div>
-                            </div>
-                            <div class="rounded-xl border border-indigo-200/50 bg-indigo-500/20 px-4 py-3">
-                                <div class="text-xs text-indigo-100/90 mb-1">{{ tSettings('settings.recommend', '推荐') }}</div>
-                                <div class="text-sm font-semibold text-white">{{ tSettings('settings.batch_json_only_title', '标准化批量流程') }}</div>
-                                <div class="text-[11px] text-indigo-100/90 mt-1">{{ tSettings('settings.batch_json_only_hint', '批量模式仅支持 JSON 模板导入，不支持手动输入。') }}</div>
-                            </div>
-                        </div>
+                    <div class="flex flex-wrap gap-2 lg:justify-end">
+                       <button @click="downloadTemplate" class="px-3 py-1.5 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-lg typo-button-compact transition-all border border-white/10">{{ localeStore.t('batch.download_template') }}</button>
+                       <label class="px-3 py-1.5 bg-white text-indigo-600 hover:bg-indigo-50 rounded-lg typo-button-compact transition-all cursor-pointer shadow-md hover:shadow-lg border border-white">
+                          {{ localeStore.t('batch.import_json') }} <input type="file" accept=".json" class="hidden" @change="handleJsonUpload" />
+                       </label>
                     </div>
                 </div>
             </div>
@@ -450,7 +419,7 @@
                             <img :src="batchDefaults.video.imageUrl" class="w-full h-full object-cover" />
                             <button @click="batchDefaults.video.imageUrl = ''" class="absolute top-2 right-2 bg-white/80 text-slate-600 hover:text-red-500 rounded-full w-7 h-7 flex items-center justify-center shadow">×</button>
                         </div>
-                        <n-upload v-else action="/api/upload" :max="1" accept="image/*" :show-file-list="false" @finish="handleBatchVideoImageUpload">
+                        <n-upload v-else :action="uploadAction" :max="1" accept="image/*" :show-file-list="false" @finish="handleBatchVideoImageUpload">
                             <div class="w-full h-32 rounded-xl border-2 border-dashed border-indigo-200 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-400 flex items-center justify-center text-indigo-500 transition-all cursor-pointer">
                                 <span class="typo-button-compact">{{ localeStore.t('video.upload_image') }}</span>
                             </div>
@@ -458,17 +427,17 @@
                     </div>
                 </div>
 
-                <div v-if="showAudioSettings" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <div v-if="showAudioSettings" class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5">
                     <div class="space-y-1.5">
                         <label class="typo-label pl-1">{{ localeStore.t('batch.audio_model') }}</label>
-                        <select v-model="batchDefaults.audio.model" :disabled="!ttsModelOptions.length" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                        <select v-model="batchDefaults.audio.model" :disabled="!ttsModelOptions.length" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                             <option v-if="!ttsModelOptions.length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
                             <option v-for="option in ttsModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                         </select>
                     </div>
                     <div class="space-y-1.5">
                         <label class="typo-label pl-1">{{ localeStore.t('batch.audio_voice') }}</label>
-                        <select v-model="batchDefaults.audio.voice" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                        <select v-model="batchDefaults.audio.voice" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
                             <option v-for="option in voiceOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                         </select>
                     </div>
@@ -480,58 +449,91 @@
                                 {{ localeStore.t('batch.audio_optimize') }}
                             </label>
                         </div>
-                        <textarea v-model="batchDefaults.audio.instructions" class="w-full p-3 bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl typo-input transition-all outline-none resize-none leading-relaxed shadow-sm h-20" :placeholder="localeStore.t('audio.instruction_placeholder')"></textarea>
+                        <textarea v-model="batchDefaults.audio.instructions" :class="batchType === 'digital_human' ? 'h-14' : 'h-20'" class="w-full p-3 bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl typo-input transition-all outline-none resize-none leading-relaxed shadow-sm" :placeholder="localeStore.t('audio.instruction_placeholder')"></textarea>
                     </div>
                 </div>
 
-                <div v-if="batchType === 'digital_human'" class="mt-6 space-y-4">
+                <div v-if="batchType === 'digital_human'" class="mt-5 space-y-2">
                     <div class="flex items-center justify-between px-1">
                         <span class="typo-label">{{ tSettings('settings.model_service_dh', '数字人') }}</span>
                         <span class="typo-caption-compact text-slate-400">{{ localeStore.t('batch.dh_audio_hint') }}</span>
                     </div>
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 bg-slate-50/70 border border-slate-200 rounded-2xl p-4">
-                        <div class="space-y-2 lg:col-span-1">
-                            <label class="typo-label pl-1">{{ localeStore.t('batch.avatar_upload') }}</label>
-                            <div v-if="batchDefaults.digital_human.avatarUrl" class="relative w-full h-36 rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
-                                <img :src="batchDefaults.digital_human.avatarUrl" class="w-full h-full object-cover" />
-                                <button @click="batchDefaults.digital_human.avatarUrl = ''" class="absolute top-2 right-2 bg-white/80 text-slate-600 hover:text-red-500 rounded-full w-7 h-7 flex items-center justify-center shadow">×</button>
-                            </div>
-                            <n-upload v-else action="/api/upload" :max="1" accept="image/*" :show-file-list="false" @finish="handleBatchAvatarUpload">
-                                <div class="w-full h-36 rounded-xl border-2 border-dashed border-indigo-200 bg-white hover:bg-indigo-50 hover:border-indigo-400 flex items-center justify-center text-indigo-500 transition-all cursor-pointer">
-                                    <span class="typo-button-compact">{{ localeStore.t('batch.avatar_upload') }}</span>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 space-y-3">
+                            <div class="typo-label pl-1">{{ localeStore.t('batch.audio_model') }}</div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div class="space-y-1.5">
+                                    <label class="typo-label pl-1">{{ localeStore.t('batch.audio_model') }}</label>
+                                    <select v-model="batchDefaults.audio.model" :disabled="!ttsModelOptions.length" class="w-full px-3 py-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <option v-if="!ttsModelOptions.length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                        <option v-for="option in ttsModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                    </select>
                                 </div>
-                            </n-upload>
+                                <div class="space-y-1.5">
+                                    <label class="typo-label pl-1">{{ localeStore.t('batch.audio_voice') }}</label>
+                                    <select v-model="batchDefaults.audio.voice" class="w-full px-3 py-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                                        <option v-for="option in voiceOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between">
+                                    <label class="typo-label pl-1">{{ localeStore.t('batch.audio_instructions') }}</label>
+                                    <label class="flex items-center gap-1.5 typo-button-compact text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded cursor-pointer hover:bg-indigo-100 transition-colors">
+                                        <input type="checkbox" v-model="batchDefaults.audio.optimize_instructions" class="accent-indigo-500" />
+                                        {{ localeStore.t('batch.audio_optimize') }}
+                                    </label>
+                                </div>
+                                <textarea v-model="batchDefaults.audio.instructions" class="w-full h-14 p-3 bg-white border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 rounded-xl typo-input transition-all outline-none resize-none leading-relaxed shadow-sm" :placeholder="localeStore.t('audio.instruction_placeholder')"></textarea>
+                            </div>
                         </div>
-                        <div class="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="space-y-1.5">
-                                <label class="typo-label pl-1">{{ localeStore.t('batch.dh_provider') }}</label>
-                                <select v-model="batchDefaults.digital_human.provider" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
-                                    <option v-for="option in digitalHumanProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                                </select>
-                            </div>
-                            <div class="space-y-1.5">
-                                <label class="typo-label pl-1">{{ localeStore.t('batch.dh_resolution') }}</label>
-                                <select v-model="batchDefaults.digital_human.resolution" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
-                                    <option v-for="option in digitalHumanResolutionOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                                </select>
-                            </div>
-                            <div class="space-y-1.5 md:col-span-2">
-                                <label class="typo-label pl-1">{{ tSettings('settings.model_service_dh', '数字人') }}</label>
-                                <select v-model="batchDefaults.digital_human.model" :disabled="!digitalHumanModelOptions.length" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                                    <option v-if="!digitalHumanModelOptions.length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
-                                    <option v-for="option in digitalHumanModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                                </select>
-                            </div>
-                            <div class="space-y-1.5">
-                                <label class="typo-label pl-1">{{ localeStore.t('batch.dh_style') }}</label>
-                                <select v-model="batchDefaults.digital_human.style" class="w-full px-4 py-3 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
-                                    <option v-for="option in digitalHumanStyleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                                </select>
+
+                        <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div class="space-y-2 md:col-span-1">
+                                    <label class="typo-label pl-1">{{ localeStore.t('batch.avatar_upload') }}</label>
+                                    <div v-if="batchDefaults.digital_human.avatarUrl" class="relative w-full h-28 rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                                        <img :src="batchDefaults.digital_human.avatarUrl" class="w-full h-full object-cover" />
+                                        <button @click="batchDefaults.digital_human.avatarUrl = ''" class="absolute top-2 right-2 bg-white/80 text-slate-600 hover:text-red-500 rounded-full w-7 h-7 flex items-center justify-center shadow">×</button>
+                                    </div>
+                                    <n-upload v-else :action="uploadAction" :max="1" accept="image/*" :show-file-list="false" @finish="handleBatchAvatarUpload">
+                                        <div class="w-full h-28 rounded-xl border-2 border-dashed border-indigo-200 bg-white hover:bg-indigo-50 hover:border-indigo-400 flex items-center justify-center text-indigo-500 transition-all cursor-pointer">
+                                            <span class="typo-button-compact">{{ localeStore.t('batch.avatar_upload') }}</span>
+                                        </div>
+                                    </n-upload>
+                                </div>
+                                <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <div class="space-y-1.5">
+                                        <label class="typo-label pl-1">{{ localeStore.t('batch.dh_provider') }}</label>
+                                        <select v-model="batchDefaults.digital_human.provider" class="w-full px-3 py-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                                            <option v-for="option in digitalHumanProviderOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="typo-label pl-1">{{ localeStore.t('batch.dh_resolution') }}</label>
+                                        <select v-model="batchDefaults.digital_human.resolution" class="w-full px-3 py-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                                            <option v-for="option in digitalHumanResolutionOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5 md:col-span-2">
+                                        <label class="typo-label pl-1">{{ tSettings('settings.model_service_dh', '数字人') }}</label>
+                                        <select v-model="batchDefaults.digital_human.model" :disabled="!digitalHumanModelOptions.length" class="w-full px-3 py-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                            <option v-if="!digitalHumanModelOptions.length" value="" disabled>{{ tSettings('settings.model_empty_hint', '请先配置模型') }}</option>
+                                            <option v-for="option in digitalHumanModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="typo-label pl-1">{{ localeStore.t('batch.dh_style') }}</label>
+                                        <select v-model="batchDefaults.digital_human.style" class="w-full px-3 py-2.5 bg-white border border-slate-200 hover:border-indigo-400 rounded-xl typo-input font-sans outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all shadow-sm">
+                                            <option v-for="option in digitalHumanStyleOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                                        </select>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                        头像上传会自动写入当前默认配置；开始前请确认队列卡片左上角类型是「数字人」，避免误跑成「音频」。
+                    <div class="text-[11px] text-slate-500 px-1">
+                        当前为单头像模式；请在任务中填写 `digital_human.avatarUrl`（完整 URL、`/static/uploads/...` 或文件名）。
                     </div>
                 </div>
             </div>
@@ -1150,6 +1152,33 @@
                         </div>
                     </div>
                 </div>
+                <div class="bg-white/70 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm space-y-4">
+                    <div class="flex items-center justify-between">
+                        <h4 class="typo-body font-extrabold text-slate-800">{{ tSettings('settings.user_batch_title', '批量导入账号') }}</h4>
+                        <span class="text-xs text-slate-400">{{ tSettings('settings.user_batch_desc', '每行一个账号，格式：用户名,密码,额度,是否专业版') }}</span>
+                    </div>
+                    <textarea
+                        v-model="batchUserImportText"
+                        class="w-full h-32 px-4 py-3 bg-white border border-slate-200 rounded-xl typo-input text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 resize-none"
+                        :placeholder="tSettings('settings.user_batch_placeholder', 'teacher01,123456,20,false\\nteacher02,123456,50,true')"
+                    ></textarea>
+                    <div class="flex flex-wrap items-center gap-4">
+                        <label class="flex items-center gap-2 text-sm text-slate-600">
+                            <input type="checkbox" v-model="batchUserSkipExisting" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                            {{ tSettings('settings.user_batch_skip_existing', '跳过已存在账号') }}
+                        </label>
+                        <button
+                            @click="importUsersBatch"
+                            :disabled="batchUserImporting"
+                            class="ml-auto px-4 py-2 bg-indigo-600 text-white rounded-xl typo-button-compact shadow-sm hover:bg-indigo-500 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            {{ batchUserImporting ? tSettings('settings.user_batch_importing', '导入中...') : tSettings('settings.user_batch_submit', '开始导入') }}
+                        </button>
+                    </div>
+                    <div v-if="batchImportResult" class="text-xs rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-600">
+                        {{ batchImportResult }}
+                    </div>
+                </div>
                 <div class="overflow-x-auto">
                     <table class="w-full typo-body text-left border-collapse">
                         <thead class="typo-table-head bg-white/70">
@@ -1268,6 +1297,7 @@ const emit = defineEmits(['update-tab'])
 const authStore = useAuthStore()
 const localeStore = useLocaleStore()
 const message = useMessage()
+const uploadAction = import.meta.env.VITE_PUBLIC_UPLOAD_URL || '/api/upload'
 const IMAGE_HISTORY_KEY = 'nbs_history_image'
 const VIDEO_SEED_KEY = 'nbs_seed_video_from_image'
 
@@ -1281,6 +1311,7 @@ const optimizing = ref(false)
 const singleTasks = ref([])
 const currentDisplayImage = ref(null)
 const batchQueue = ref([])
+const batchUploadImagesCache = ref({ ts: 0, items: [] })
 const batchRunning = ref(false)
 const batchStopRequested = ref(false)
 const refImageUrls = ref([])
@@ -1298,6 +1329,10 @@ const userPoolsDirtyLocked = ref(false)
 
 // Admin
 const usersList = ref([])
+const batchUserImportText = ref('')
+const batchUserSkipExisting = ref(true)
+const batchUserImporting = ref(false)
+const batchImportResult = ref('')
 const systemImageKey = ref('')
 const systemImageBackupKeysInput = ref('')
 const systemImageBaseUrl = ref('')
@@ -2473,7 +2508,7 @@ watch(
     }
 )
 
-const showAudioSettings = computed(() => batchType.value === 'audio' || batchType.value === 'digital_human')
+const showAudioSettings = computed(() => batchType.value === 'audio')
 
 const reversedBatchQueue = computed(() => [...batchQueue.value].reverse())
 const pendingCount = computed(() => batchQueue.value.filter((t) => t.status === 'pending' || t.status === 'draft').length)
@@ -2937,6 +2972,65 @@ const makeBatchId = () => {
 }
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value))
 const isLocalResultUrl = (url) => typeof url === 'string' && url.startsWith('/static/')
+const normalizeAvatarFilename = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    let cleaned = raw.split('#')[0].split('?')[0].trim()
+    try {
+        cleaned = decodeURIComponent(cleaned)
+    } catch (e) {}
+    const normalized = cleaned.replace(/\\/g, '/')
+    const parts = normalized.split('/').filter(Boolean)
+    return (parts[parts.length - 1] || '').trim()
+}
+const normalizeAvatarInputUrl = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    if (/^(https?:)?\/\//i.test(raw)) return raw
+    if (raw.startsWith('/static/uploads/')) {
+        const filename = normalizeAvatarFilename(raw)
+        return filename ? `/static/uploads/${encodeURIComponent(filename)}` : raw
+    }
+    if (raw.startsWith('/')) return raw
+    const filename = normalizeAvatarFilename(raw)
+    return `/static/uploads/${encodeURIComponent(filename || raw)}`
+}
+const getUploadsImageList = async (force = false) => {
+    const now = Date.now()
+    if (!force && now - Number(batchUploadImagesCache.value?.ts || 0) < 30000) {
+        return Array.isArray(batchUploadImagesCache.value?.items) ? batchUploadImagesCache.value.items : []
+    }
+    try {
+        const res = await api.get('/api/uploads')
+        const items = Array.isArray(res?.data?.images) ? res.data.images : []
+        batchUploadImagesCache.value = { ts: now, items }
+        return items
+    } catch (e) {
+        return Array.isArray(batchUploadImagesCache.value?.items) ? batchUploadImagesCache.value.items : []
+    }
+}
+const extractFilenameFromUrl = (url) => {
+    if (!url) return ''
+    return normalizeAvatarFilename(url)
+}
+const resolveAvatarUrlForTask = (value, uploadedImages = [], fallbackAvatarUrl = '') => {
+    const normalized = normalizeAvatarInputUrl(value)
+    if (!normalized) return ''
+    if (/^(https?:)?\/\//i.test(normalized)) return normalized
+    if (!normalized.startsWith('/static/uploads/')) return normalized
+    const targetName = extractFilenameFromUrl(normalized)
+    if (!targetName) return normalized
+    const match = uploadedImages.find((item) => {
+        const itemName = String(item?.name || '').trim()
+        if (itemName && itemName === targetName) return true
+        const urlName = extractFilenameFromUrl(item?.url || '')
+        return urlName && urlName === targetName
+    })
+    if (match?.url) return match.url
+    const fallback = normalizeAvatarInputUrl(fallbackAvatarUrl)
+    if (fallback) return fallback
+    return normalized
+}
 const normalizeBatchType = (value) => {
     const normalized = String(value || '').trim().toLowerCase().replace(/[-\s]/g, '_')
     if (normalized === 'digitalhuman' || normalized === 'dh') return 'digital_human'
@@ -2947,7 +3041,19 @@ const normalizeBatchType = (value) => {
 const inferBatchTypeFromRaw = (raw) => {
     if (!raw || typeof raw !== 'object') return ''
     if (raw.digital_human || raw.avatarUrl || raw.avatar_url || raw.audio_model) return 'digital_human'
-    if (raw.video || raw.image_url || raw.duration_seconds || raw.durationSeconds || raw.aspect_ratio) return 'video'
+    if (
+        raw.video ||
+        raw.image_url ||
+        raw.imageUrl ||
+        raw.duration_seconds ||
+        raw.durationSeconds ||
+        raw.aspect_ratio ||
+        raw.aspectRatio ||
+        raw.mode ||
+        raw.resolution ||
+        raw.video_model ||
+        raw.videoModel
+    ) return 'video'
     if (raw.audio || raw.voice || raw.language_type || raw.instructions) return 'audio'
     return ''
 }
@@ -2962,13 +3068,17 @@ const buildBatchTask = (raw) => {
 
     let prompt = ''
     let type = batchType.value
+    let explicitType = ''
 
     if (typeof raw === 'string') {
         prompt = raw
     } else if (raw && typeof raw === 'object') {
-        if (raw.type) type = normalizeBatchType(raw.type)
+        if (raw.type) {
+            explicitType = normalizeBatchType(raw.type)
+            type = explicitType
+        }
         const inferredType = inferBatchTypeFromRaw(raw)
-        if (inferredType) type = inferredType
+        if (!explicitType && inferredType) type = inferredType
         prompt = raw.prompt || raw.text || ''
 
         if (raw.image && typeof raw.image === 'object') Object.assign(baseSettings.image, raw.image)
@@ -3042,6 +3152,9 @@ const buildBatchTask = (raw) => {
                     baseSettings.digital_human[toKey] = raw.digital_human[fromKey]
                 }
             })
+            if (baseSettings.digital_human.avatarUrl) {
+                baseSettings.digital_human.avatarUrl = normalizeAvatarInputUrl(baseSettings.digital_human.avatarUrl)
+            }
         }
     }
 
@@ -3224,16 +3337,11 @@ const downloadTemplate = () => {
         template = [
             {
                 type: 'digital_human',
-                prompt: '示例数字人脚本：大家好，我是今天的讲解员，让我们开始吧。',
-                digital_human: {
-                    avatarUrl: 'https://your-domain.com/static/uploads/your_avatar.png',
-                    resolution: 480,
-                    style: 'speech'
-                },
-                audio: {
-                    voice: 'Cherry',
-                    model: batchDefaults.audio.model || ''
-                }
+                prompt: '示例数字人脚本：大家好，我是今天的讲解员，让我们开始吧。'
+            },
+            {
+                type: 'digital_human',
+                prompt: '示例数字人脚本：今天我们学习闭环控制在机器人抓取中的应用。'
             }
         ]
     } else {
@@ -3340,6 +3448,9 @@ const pollDigitalHumanStatus = async (taskId, model) => {
         const data = res?.data?.data || {}
         const status = data.status
         if (status === 'done' && data.video_url) return data.video_url
+        if (status === 'expired' && !data.error_message) {
+            throw new Error('任务ID无效或已过期，请重新提交任务。')
+        }
         if (status === 'failed' || status === 'expired') {
             throw new Error(data.error_message || 'Digital human failed')
         }
@@ -3400,11 +3511,36 @@ const runVideoTask = async (task) => {
 
 const runDigitalHumanTask = async (task) => {
     const dhSettings = task.settings?.digital_human || batchDefaults.digital_human
-    if (!dhSettings.avatarUrl) {
+    const rawAvatarUrl = String(dhSettings.avatarUrl || '').trim()
+    if (!rawAvatarUrl) {
         throw new Error(localeStore.t('batch.error_missing_avatar'))
     }
     if (!dhSettings.model) {
         throw new Error(tSettings('settings.model_required_dh', '请先在模型配置中添加数字人模型'))
+    }
+    const fallbackAvatarUrl = String(batchDefaults.digital_human?.avatarUrl || '').trim()
+    const uploadedImages = await getUploadsImageList()
+    const avatarUrl = resolveAvatarUrlForTask(rawAvatarUrl, uploadedImages, fallbackAvatarUrl)
+    if (avatarUrl.startsWith('/static/uploads/')) {
+        const targetName = extractFilenameFromUrl(avatarUrl)
+        let exists = uploadedImages.some((item) => {
+            const itemName = String(item?.name || '').trim()
+            if (itemName && itemName === targetName) return true
+            const urlName = extractFilenameFromUrl(item?.url || '')
+            return urlName && urlName === targetName
+        })
+        if (!exists) {
+            const latestUploads = await getUploadsImageList(true)
+            exists = latestUploads.some((item) => {
+                const itemName = String(item?.name || '').trim()
+                if (itemName && itemName === targetName) return true
+                const urlName = extractFilenameFromUrl(item?.url || '')
+                return urlName && urlName === targetName
+            })
+        }
+        if (!exists) {
+            throw new Error(`找不到任务头像文件：${targetName}。请先上传该头像后再执行。`)
+        }
     }
 
     task.phase = 'tts'
@@ -3413,7 +3549,7 @@ const runDigitalHumanTask = async (task) => {
 
     task.phase = 'submit'
     const submitRes = await api.post('/api/digital_human/submit', {
-        image_url: dhSettings.avatarUrl,
+        image_url: avatarUrl,
         audio_url: audio.url,
         audio_duration: audio.duration,
         model: dhSettings.model,
@@ -3507,13 +3643,14 @@ const handleBatchAvatarUpload = ({ event }) => {
     try {
         const res = JSON.parse(event.target.response)
         if (res.success) {
-            batchDefaults.digital_human.avatarUrl = res.url
+            batchDefaults.digital_human.avatarUrl = normalizeAvatarInputUrl(res.url)
+            batchUploadImagesCache.value.ts = 0
             // Keep pending/draft digital-human tasks in sync with latest default avatar.
             batchQueue.value.forEach((task) => {
                 if (task?.type !== 'digital_human') return
                 if (!['draft', 'pending'].includes(task.status)) return
                 if (!task.settings?.digital_human) task.settings = { ...(task.settings || {}), digital_human: {} }
-                task.settings.digital_human.avatarUrl = res.url
+                task.settings.digital_human.avatarUrl = normalizeAvatarInputUrl(res.url)
             })
         }
     } catch (e) {}
@@ -4024,6 +4161,23 @@ const newUserForm = reactive({
     quota_limit: 20
 })
 
+const parseBatchUserLine = (line) => {
+    const normalized = String(line || '').trim()
+    if (!normalized || normalized.startsWith('#')) return null
+    const parts = normalized.includes(',')
+        ? normalized.split(',')
+        : normalized.split(/\s+/)
+    const fields = parts.map((item) => String(item || '').trim()).filter(Boolean)
+    if (fields.length < 2) return null
+    const username = fields[0]
+    const password = fields[1]
+    const quotaRaw = fields.length >= 3 ? fields[2] : ''
+    const roleRaw = fields.length >= 4 ? fields[3].toLowerCase() : ''
+    const quota_limit = quotaRaw === '' ? 20 : Math.max(0, Number(quotaRaw) || 0)
+    const is_pro = ['1', 'true', 'yes', 'y', 'pro', 'vip'].includes(roleRaw)
+    return { username, password, quota_limit, is_pro }
+}
+
 const createUser = async () => {
     if (!newUserForm.username || !newUserForm.password) {
         message.warning(tSettings('settings.user_create_missing', '请输入用户名和密码'))
@@ -4049,6 +4203,47 @@ const createUser = async () => {
     } catch (e) {
         const detail = e?.response?.data?.detail || tSettings('settings.user_create_failed', '创建用户失败')
         message.error(detail)
+    }
+}
+
+const importUsersBatch = async () => {
+    const lines = String(batchUserImportText.value || '').split(/\r?\n/)
+    const users = lines
+        .map((line) => parseBatchUserLine(line))
+        .filter((item) => item && item.username && item.password)
+    if (!users.length) {
+        message.warning(tSettings('settings.user_batch_empty', '请先填写导入内容'))
+        return
+    }
+    batchUserImporting.value = true
+    batchImportResult.value = ''
+    try {
+        const res = await api.post(
+            '/api/admin/users/batch',
+            {
+                users,
+                skip_existing: batchUserSkipExisting.value !== false,
+            },
+            { headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {} }
+        )
+        const data = res?.data || {}
+        const createdCount = Number(data.created_count || 0)
+        const skippedCount = Number(data.skipped_count || 0)
+        const failedCount = Number(data.failed_count || 0)
+        batchImportResult.value = `导入完成：新增 ${createdCount}，跳过 ${skippedCount}，失败 ${failedCount}`
+        if (failedCount > 0 && Array.isArray(data.failed) && data.failed.length) {
+            const sample = data.failed.slice(0, 3).map((item) => `${item.username}: ${item.reason}`).join('；')
+            message.warning(`部分账号导入失败：${sample}`)
+        } else {
+            message.success(tSettings('settings.user_batch_success', '批量导入完成'))
+        }
+        batchUserImportText.value = ''
+        fetchUsers()
+    } catch (e) {
+        const detail = e?.response?.data?.detail || tSettings('settings.user_batch_failed', '批量导入失败')
+        message.error(detail)
+    } finally {
+        batchUserImporting.value = false
     }
 }
 

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app_state import AUDIO_DIR, db
 from core.qwen_tts import synthesize_tts
-from deps import get_current_user, get_current_user_optional
+from deps import get_current_user
 from helpers import (
     _build_model_candidates,
     _get_default_model,
@@ -46,7 +46,7 @@ async def get_audio_history(current_user: Dict = Depends(get_current_user)):
 async def generate_tts(
     req: TTSRequest,
     x_tts_key: Optional[str] = Header(None, alias="x-tts-key"),
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
 ):
     try:
         text = req.text.strip()

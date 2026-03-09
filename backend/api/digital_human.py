@@ -6,7 +6,7 @@ from typing import Dict, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app_state import db, digital_human_gen
-from deps import get_current_user_optional
+from deps import get_current_user
 from helpers import (
     _build_model_candidates,
     _ensure_public_url,
@@ -23,13 +23,29 @@ from helpers import (
 from schemas import DigitalHumanRequest
 
 router = APIRouter()
+MAX_DIGITAL_HUMAN_BILLABLE_SECONDS = 600.0
+
+
+def _normalize_audio_duration_seconds(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        duration = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(duration) or duration <= 0:
+        return None
+    # Some clients may send milliseconds (e.g. 44740). Convert to seconds.
+    if 600 < duration <= 600000:
+        duration = duration / 1000.0
+    return round(duration, 3)
 
 
 @router.post("/api/digital_human/submit")
 async def submit_digital_human_task(
     req: DigitalHumanRequest,
     request: Request,
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
     x_video_key: Optional[str] = Header(None, alias="x-video-key"),
     x_video_base_url: Optional[str] = Header(None, alias="x-video-base-url"),
 ):
@@ -62,10 +78,21 @@ async def submit_digital_human_task(
     if not model_name:
         raise HTTPException(status_code=400, detail="请先在模型配置中添加数字人模型")
 
-    duration_sec = req.audio_duration
+    raw_duration_sec = req.audio_duration
+    duration_sec = _normalize_audio_duration_seconds(raw_duration_sec)
+    local_audio_path = _resolve_local_audio_path(raw_audio_url)
+    local_duration_sec = _get_wav_duration_seconds(local_audio_path)
     if duration_sec is None:
-        local_audio_path = _resolve_local_audio_path(raw_audio_url)
-        duration_sec = _get_wav_duration_seconds(local_audio_path)
+        duration_sec = local_duration_sec
+    elif local_duration_sec and abs(duration_sec - local_duration_sec) > max(3.0, local_duration_sec * 0.5):
+        duration_sec = local_duration_sec
+    if duration_sec and duration_sec > MAX_DIGITAL_HUMAN_BILLABLE_SECONDS:
+        print(
+            "[digital_human] suspicious audio_duration "
+            f"raw={raw_duration_sec} normalized={duration_sec} local={local_duration_sec}; "
+            f"clamped={MAX_DIGITAL_HUMAN_BILLABLE_SECONDS}"
+        )
+        duration_sec = MAX_DIGITAL_HUMAN_BILLABLE_SECONDS
     cost_per_sec = _get_model_cost("digital_human", model_name) or 1
     if duration_sec:
         cost = max(1, int(math.ceil(duration_sec * cost_per_sec)))
@@ -157,7 +184,7 @@ async def get_digital_human_status(
     model: Optional[str] = None,
     x_video_key: Optional[str] = Header(None, alias="x-video-key"),
     x_video_base_url: Optional[str] = Header(None, alias="x-video-base-url"),
-    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    current_user: Dict = Depends(get_current_user),
 ):
     result = None
     last_error = None

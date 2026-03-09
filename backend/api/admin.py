@@ -26,6 +26,7 @@ from helpers import (
     validate_prompt_channels_config,
 )
 from schemas import (
+    AdminBulkCreateUsersRequest,
     AdminCreateUserRequest,
     ModelTestRequest,
     SystemConfigUpdateRequest,
@@ -430,6 +431,46 @@ async def admin_create_user(req: AdminCreateUserRequest, current_user: Dict = De
     if not user_id:
         raise HTTPException(status_code=400, detail="Create user failed")
     return {"success": True, "user_id": user_id}
+
+
+@router.post("/api/admin/users/batch")
+async def admin_batch_create_users(req: AdminBulkCreateUsersRequest, current_user: Dict = Depends(get_current_user)):
+    if current_user["username"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    created = []
+    skipped = []
+    failed = []
+    for item in req.users:
+        username = item.username.strip()
+        if db.get_user_by_username(username):
+            info = {"username": username, "reason": "Username already registered"}
+            if req.skip_existing:
+                skipped.append(info)
+            else:
+                failed.append(info)
+            continue
+
+        user_id = db.create_user(
+            username,
+            get_password_hash(item.password),
+            is_pro=item.is_pro,
+            quota_limit=item.quota_limit,
+        )
+        if user_id:
+            created.append({"username": username, "user_id": user_id})
+        else:
+            failed.append({"username": username, "reason": "Create user failed"})
+
+    return {
+        "success": True,
+        "created_count": len(created),
+        "skipped_count": len(skipped),
+        "failed_count": len(failed),
+        "created": created,
+        "skipped": skipped,
+        "failed": failed,
+    }
 
 
 @router.delete("/api/admin/users/{user_id}")

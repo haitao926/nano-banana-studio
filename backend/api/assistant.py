@@ -12,7 +12,7 @@ import requests
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
 
 from app_state import db
-from deps import get_current_user
+from deps import get_current_user, get_current_user_optional
 from helpers import _build_model_candidates
 from schemas import AssistantChatRequest
 
@@ -772,7 +772,7 @@ async def delete_assistant_conversation(
 @router.post("/api/assistant/chat")
 async def assistant_chat(
     req: AssistantChatRequest,
-    current_user: Dict = Depends(get_current_user),
+    current_user: Optional[Dict] = Depends(get_current_user_optional),
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
@@ -781,30 +781,36 @@ async def assistant_chat(
     runtime = _resolve_assistant_runtime(model=model_name, x_model_key=x_model_key, x_model_base_url=x_model_base_url)
     model_name = runtime["model"]
     temperature = _resolve_chat_temperature(model_name, runtime.get("base_url") or "", req.temperature)
-
-    title = req.message.strip().replace("\n", " ")[:48]
-    db.create_or_touch_assistant_conversation(
-        user_id=current_user["id"],
-        conversation_id=conversation_id,
-        model=model_name,
-        title=title,
-    )
-    db.add_assistant_message(
-        user_id=current_user["id"],
-        conversation_id=conversation_id,
-        role="user",
-        content=req.message.strip(),
-        metadata={"file_ids": req.file_ids},
-    )
-
-    history_messages = db.get_assistant_messages(
-        user_id=current_user["id"],
-        conversation_id=conversation_id,
-        limit=req.max_history_messages,
-    )
+    user_id = current_user["id"] if current_user else None
     outgoing_messages: List[Dict[str, str]] = [
         {"role": "system", "content": (req.system_prompt or DEFAULT_SYSTEM_PROMPT).strip()}
     ]
+
+    if user_id:
+        title = req.message.strip().replace("\n", " ")[:48]
+        db.create_or_touch_assistant_conversation(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            model=model_name,
+            title=title,
+        )
+        db.add_assistant_message(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            role="user",
+            content=req.message.strip(),
+            metadata={"file_ids": req.file_ids},
+        )
+        history_messages = db.get_assistant_messages(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            limit=req.max_history_messages,
+        )
+    else:
+        history_messages = []
+        if req.file_ids:
+            raise HTTPException(status_code=403, detail="Guest mode does not support file context")
+        outgoing_messages.append({"role": "user", "content": req.message.strip()})
 
     seen_file_ids = set()
     for file_id in req.file_ids:
@@ -949,17 +955,18 @@ async def assistant_chat(
     if not assistant_text:
         raise HTTPException(status_code=502, detail="Assistant returned empty response")
 
-    db.add_assistant_message(
-        user_id=current_user["id"],
-        conversation_id=conversation_id,
-        role="assistant",
-        content=assistant_text,
-        metadata={
-            "usage": body.get("usage") if isinstance(body, dict) else {},
-            "tool_events": tool_events,
-            "tools_enabled": bool(req.enable_tools),
-        },
-    )
+    if user_id:
+        db.add_assistant_message(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            role="assistant",
+            content=assistant_text,
+            metadata={
+                "usage": body.get("usage") if isinstance(body, dict) else {},
+                "tool_events": tool_events,
+                "tools_enabled": bool(req.enable_tools),
+            },
+        )
 
     return {
         "success": True,

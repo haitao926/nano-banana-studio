@@ -249,7 +249,8 @@ def _ensure_public_url(url: str, label: str):
             status_code=400,
             detail=(
                 f"{label} must be publicly accessible. "
-                "Set EXTERNAL_BASE_URL to a public domain or use a public URL."
+                "Set EXTERNAL_BASE_URL to a public domain, "
+                "or upload via /api/upload_public (OSS/public URL)."
             ),
         )
 
@@ -1044,8 +1045,16 @@ def _get_wav_duration_seconds(path: str) -> Optional[float]:
         with wave.open(path, "rb") as wf:
             frames = wf.getnframes()
             rate = wf.getframerate()
+            channels = wf.getnchannels()
+            sample_width = wf.getsampwidth()
             if rate <= 0:
                 return None
+            if channels > 0 and sample_width > 0:
+                bytes_per_frame = channels * sample_width
+                file_size = os.path.getsize(path)
+                estimated_frames = max(0, (file_size - 44) // bytes_per_frame)
+                if estimated_frames > 0 and (frames <= 0 or frames > estimated_frames * 4):
+                    frames = estimated_frames
             return frames / float(rate)
     except Exception:
         return None

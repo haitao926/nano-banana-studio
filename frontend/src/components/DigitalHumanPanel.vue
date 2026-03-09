@@ -1,9 +1,9 @@
 <template>
-  <div class="h-[calc(100vh-140px)] grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch overflow-hidden">
+  <div class="h-[calc(100vh-140px)] grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch overflow-hidden">
     <!-- Left: Controls -->
     <div class="lg:col-span-4 flex flex-col h-full min-h-0 animate-slide-up">
-       <div class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-6 shadow-sm flex flex-col h-full overflow-y-auto custom-scrollbar hover:shadow-md transition-shadow duration-300">
-          <div class="flex items-center gap-2 border-b border-slate-100 pb-5 mb-5 shrink-0">
+       <div class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-4 shadow-sm flex flex-col h-full overflow-y-auto custom-scrollbar hover:shadow-md transition-shadow duration-300">
+          <div class="flex items-center gap-2 border-b border-slate-100 pb-3 mb-3 shrink-0">
              <h3 class="typo-section-title flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full bg-indigo-500"></span> {{ localeStore.t('dh.title') }}
              </h3>
@@ -15,7 +15,7 @@
           </div>
 
           <!-- Config (Match Other Pages: Above Prompt) -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 shrink-0 mb-3">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 shrink-0 mb-2">
              <div class="space-y-1.5">
                 <label class="typo-label">{{ localeStore.t('video.model') }}</label>
                 <div class="relative group">
@@ -39,13 +39,13 @@
                 <input v-model="seedInput" type="number" placeholder="Seed" class="w-full px-3 py-2 bg-white border border-slate-200 hover:border-indigo-300 rounded-lg typo-input-mono outline-none transition-colors" />
              </div>
           </div>
-          <label class="flex items-center gap-2 cursor-pointer group px-1 mb-4 shrink-0">
+          <label class="flex items-center gap-2 cursor-pointer group px-1 mb-3 shrink-0">
              <input type="checkbox" v-model="fastMode" class="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-4 h-4 transition-all" />
              <span class="typo-label-compact text-slate-500 group-hover:text-indigo-600 transition-colors">{{ localeStore.t('dh.turbo_mode') }}</span>
           </label>
 
           <!-- Prompt Stage (Flexible Height) -->
-          <div class="flex-1 min-h-0 flex flex-col space-y-2">
+          <div class="flex-1 min-h-0 flex flex-col space-y-1.5">
             <div class="flex justify-between items-center shrink-0 px-1">
               <label class="typo-label">{{ localeStore.t('dh.motion_prompt') }}</label>
             </div>
@@ -54,18 +54,18 @@
                 v-model="prompt"
                 :maxlength="MAX_PROMPT_LENGTH"
                 :placeholder="localeStore.t('dh.motion_placeholder')"
-                class="w-full flex-1 p-4 bg-transparent border-none outline-none resize-none typo-prompt font-sans placeholder-slate-400 min-h-[120px]"
+                class="w-full flex-1 p-3 bg-transparent border-none outline-none resize-none typo-prompt font-sans placeholder-slate-400 min-h-[88px]"
               ></textarea>
 
               <div v-if="imageDisplayUrl || audioDisplayUrl" class="px-4 pb-2 flex flex-wrap gap-2 overflow-x-auto custom-scrollbar">
-                <div v-if="imageDisplayUrl" class="relative w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-white/70">
+                <div v-if="imageDisplayUrl" class="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-white/70">
                   <img :src="imageDisplayUrl" class="w-full h-full object-cover" />
                   <button @click="clearImage" class="absolute -top-1 -right-1 w-5 h-5 bg-white/90 border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-xs hover:text-red-500">×</button>
                   <div class="absolute bottom-1 left-1 bg-black/50 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-white">{{ localeStore.t('dh.avatar_image') }}</div>
                 </div>
                 <div
                   v-if="audioDisplayUrl"
-                  class="relative w-14 h-14 flex-shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-white/70 flex flex-col items-center justify-center gap-1 group/audio"
+                  class="relative w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-white/70 flex flex-col items-center justify-center gap-1 group/audio"
                   :title="audioInfo || localeStore.t('dh.driver_audio')"
                 >
                   <span class="text-base text-slate-500">🎵</span>
@@ -81,12 +81,12 @@
               <div class="px-3 py-2 border-t border-slate-100/50 flex items-center justify-between bg-white/50">
                 <div class="flex items-center gap-2">
                   <n-upload v-if="!imageDisplayUrl" :custom-request="handleImageCustomUpload" :max="1" accept="image/jpeg,image/png,image/bmp,image/webp" :show-file-list="false" @error="handleUploadError">
-                    <button class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition-all shadow-sm hover:shadow flex items-center gap-2 active:scale-95">
+                    <button class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition-all shadow-sm hover:shadow flex items-center gap-2 active:scale-95">
                       <span class="text-xs font-bold">{{ localeStore.t('dh.avatar_image') }}</span>
                     </button>
                   </n-upload>
                   <n-upload v-if="!audioDisplayUrl" :custom-request="handleAudioCustomUpload" :max="1" accept="audio/mpeg,audio/wav,.mp3,.wav" :show-file-list="false" @error="handleUploadError">
-                    <button class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition-all shadow-sm hover:shadow flex items-center gap-2 active:scale-95">
+                    <button class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition-all shadow-sm hover:shadow flex items-center gap-2 active:scale-95">
                       <span class="text-xs font-bold">{{ localeStore.t('dh.driver_audio') }}</span>
                     </button>
                   </n-upload>
@@ -106,7 +106,7 @@
           <button
              @click="submitTask"
              :disabled="!isValid || loading || !model"
-             class="w-full mt-4 py-3 bg-gradient-to-r from-blue-500 via-purple-500 to-orange-400 hover:from-blue-400 hover:to-orange-300 text-white rounded-xl typo-button shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group overflow-hidden relative shrink-0"
+             class="w-full mt-3 py-2.5 bg-gradient-to-r from-blue-500 via-purple-500 to-orange-400 hover:from-blue-400 hover:to-orange-300 text-white rounded-xl typo-button shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed group overflow-hidden relative shrink-0"
            >
              <span class="relative z-10 flex items-center justify-center gap-2">
                  <span v-if="loading" class="animate-spin">⟳</span>
@@ -118,7 +118,7 @@
 
     <!-- Right: Preview -->
     <div class="lg:col-span-8 h-full min-h-0 animate-scale-in" style="animation-delay: 100ms;">
-      <div class="h-full bg-white/60 backdrop-blur-xl rounded-[24px] border border-white/60 p-2 flex flex-col gap-4 shadow-xl shadow-slate-200/50 relative overflow-hidden">
+      <div class="h-full bg-white/60 backdrop-blur-xl rounded-[24px] border border-white/60 p-2 flex flex-col gap-3 shadow-xl shadow-slate-200/50 relative overflow-hidden">
         
         <!-- Screen Area -->
         <div class="flex-1 bg-slate-50/50 rounded-[20px] shadow-inner border border-white/50 relative overflow-hidden group flex items-center justify-center">
@@ -157,8 +157,8 @@
         </div>
 
         <!-- History Rail -->
-        <div v-if="videoHistory.length" class="shrink-0 bg-white/80 backdrop-blur-md rounded-[20px] border border-white/60 shadow-sm p-4 animate-slide-up">
-            <div class="flex items-center justify-between mb-3 px-2">
+        <div v-if="videoHistory.length" class="shrink-0 bg-white/80 backdrop-blur-md rounded-[20px] border border-white/60 shadow-sm p-3 animate-slide-up">
+            <div class="flex items-center justify-between mb-2 px-1">
                 <h4 class="typo-label-compact tracking-[0.2em]">HISTORY</h4>
                 <span class="typo-label-compact text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full">{{ videoHistory.length }}</span>
             </div>
@@ -167,13 +167,13 @@
                     v-for="item in videoHistory"
                     :key="item.id || item.task_id"
                     @click="resultVideoUrl = item.video_url"
-                    class="flex-shrink-0 w-48 text-left p-3 rounded-2xl border transition-all duration-300 group relative overflow-hidden"
+                    class="flex-shrink-0 w-40 text-left p-2.5 rounded-2xl border transition-all duration-300 group relative overflow-hidden"
                     :class="resultVideoUrl === item.video_url ? 'bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-500/30' : 'bg-white border-slate-100 hover:border-indigo-300 hover:shadow-md'">
                     <div class="flex items-center justify-between mb-2">
                         <span class="typo-label-compact" :class="resultVideoUrl === item.video_url ? 'text-indigo-200' : 'text-slate-400'">{{ formatTime(item.created_at) }}</span>
                         <span class="typo-caption-compact" :class="resultVideoUrl === item.video_url ? 'text-white' : 'text-slate-400'">🎬</span>
                     </div>
-                    <p class="typo-button-compact line-clamp-2 mb-2 leading-relaxed" :class="resultVideoUrl === item.video_url ? 'text-white' : 'text-slate-700'">{{ item.prompt || '—' }}</p>
+                        <p class="typo-button-compact line-clamp-2 mb-1.5 leading-relaxed" :class="resultVideoUrl === item.video_url ? 'text-white' : 'text-slate-700'">{{ item.prompt || '—' }}</p>
                     <div class="typo-label-compact" :class="resultVideoUrl === item.video_url ? 'text-indigo-200' : 'text-slate-400'">
                         {{ Math.round(item.duration || 0) }}s
                     </div>
@@ -182,7 +182,7 @@
         </div>
 
         <!-- Action Dock (Bottom) -->
-        <div v-if="resultVideoUrl" class="h-20 shrink-0 bg-white/80 backdrop-blur-md rounded-[20px] border border-white/60 shadow-lg px-8 flex items-center justify-between animate-slide-up">
+        <div v-if="resultVideoUrl" class="h-16 shrink-0 bg-white/80 backdrop-blur-md rounded-[20px] border border-white/60 shadow-lg px-6 flex items-center justify-between animate-slide-up">
             <div class="flex items-center gap-4">
                 <div class="w-12 h-12 rounded-full bg-green-50 text-green-500 flex items-center justify-center border border-green-100 shadow-sm animate-pulse">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>
