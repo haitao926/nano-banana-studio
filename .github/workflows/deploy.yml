@@ -28,7 +28,7 @@ jobs:
           # 不配置 PORT 时默认 22
           port: ${{ secrets.PORT }}
           script_stop: true
-          command_timeout: 30m
+          command_timeout: 60m
           script: |
             set -euo pipefail
             cd "${PROJECT_PATH:-/opt/nano-banana-studio}"

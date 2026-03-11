@@ -2111,16 +2111,9 @@ const refreshPromptHealth = async () => {
 }
 const subjectOptions = computed(() => [
   { label: localeStore.t('image.subjects.general'), value: 'general' },
-  { label: localeStore.t('image.subjects.it_ai'), value: 'it_ai' },
-  { label: localeStore.t('image.subjects.math'), value: 'math' },
-  { label: localeStore.t('image.subjects.physics'), value: 'physics' },
-  { label: localeStore.t('image.subjects.chemistry'), value: 'chemistry' },
-  { label: localeStore.t('image.subjects.chinese'), value: 'chinese' },
-  { label: localeStore.t('image.subjects.english'), value: 'english' },
-  { label: localeStore.t('image.subjects.humanities_psych'), value: 'humanities_psych' },
-  { label: localeStore.t('image.subjects.arts_pe'), value: 'arts_pe' },
   { label: localeStore.t('image.subjects.textbook'), value: 'textbook' },
-  { label: '手绘信息图 (Sketchnote)', value: 'sketchnote' }
+  { label: localeStore.t('image.subjects.sketchnote'), value: 'sketchnote' },
+  { label: localeStore.t('image.subjects.3d_model'), value: '3d_model' }
 ])
 const ratioOptions = computed(() => [
   { label: localeStore.t('image.options.ratio_1_1'), value: '1:1' },

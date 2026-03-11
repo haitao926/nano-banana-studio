@@ -50,7 +50,7 @@ export const useLocaleStore = defineStore('locale', () => {
         configuration: '参数配置',
         reset: '重置',
         model: '模型',
-        subject: '学科',
+        subject: '类别',
         ratio: '画幅',
         quality: '画质',
         prompt_label: '创意描述',
@@ -89,16 +89,10 @@ export const useLocaleStore = defineStore('locale', () => {
             ratio_3_4: '3:4 (标准竖图)'
         },
         subjects: {
-            general: '综合',
-            it_ai: '科技',
-            math: '数学',
-            physics: '物理',
-            chemistry: '化学',
-            chinese: '语文',
-            english: '英语',
-            humanities_psych: '人文',
-            arts_pe: '艺体',
-            textbook: '教材'
+            general: '通用',
+            textbook: '教材插图',
+            sketchnote: '手绘信息图',
+            '3d_model': '3D 模型'
         }
       },
       // Batch

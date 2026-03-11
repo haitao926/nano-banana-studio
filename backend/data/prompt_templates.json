@@ -11,7 +11,8 @@
     "it_ai": "no blurry screens, no nonsensical code, futuristic but logical, text labels in Chinese",
     "arts_pe": "aesthetic, dynamic composition, correct musical instruments, realistic sports action, text labels in Chinese",
     "humanities_psych": "accurate maps, historical accuracy, biological details, empathy, facial expressions, social scenes, text labels in Chinese",
-    "textbook": "no blurry details, no photographic noise, no dark background, no complex background, text labels in Chinese"
+    "textbook": "no blurry details, no photographic noise, no dark background, no complex background, text labels in Chinese",
+    "3d_model": "no flat 2D diagrams, no watercolor textures, no hand-drawn lines; emphasize clean 3D forms, correct perspective, and clear shading; text labels in Chinese"
   },
   "default_neg_constraint": "no distorted text, no blurry details, text labels in Chinese",
   "model_styles": {
