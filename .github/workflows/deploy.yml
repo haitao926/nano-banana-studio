@@ -1,0 +1,36 @@
+name: Deploy (SSH + Docker Compose)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT || 22 }}
+          script_stop: true
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.PROJECT_PATH }}"
+
+            # 推荐直接复用项目自带脚本（包含 build/up/health check）
+            chmod +x scripts/update_server.sh
+            NBS_REMOTE=${{ secrets.REMOTE || 'origin' }} \
+            NBS_BRANCH=${{ secrets.BRANCH || 'main' }} \
+            NBS_CHECK_URL=${{ secrets.CHECK_URL || 'http://127.0.0.1:18080' }} \
+            NBS_ALLOW_DIRTY=${{ secrets.ALLOW_DIRTY || '0' }} \
+            ./scripts/update_server.sh
+

@@ -547,7 +547,9 @@
                     <div class="flex gap-3 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
                         <button v-if="hasPending && !batchRunning" @click="startBatchProcessing" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg typo-button-compact shadow-sm hover:-translate-y-0.5 transition-all">{{ localeStore.t('batch.start_all') }}</button>
                         <button v-if="batchRunning" @click="pauseBatchProcessing" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg typo-button-compact shadow-sm">{{ localeStore.t('batch.pause') }}</button>
-                        <button @click="downloadBatchResults" class="px-4 py-2 hover:bg-slate-100 text-slate-700 rounded-lg typo-button-compact transition-colors" :disabled="!hasDownloadable">{{ localeStore.t('batch.download_results') }}</button>
+                        <button @click="downloadBatchResults" class="px-4 py-2 hover:bg-slate-100 text-slate-700 rounded-lg typo-button-compact transition-colors disabled:opacity-60 disabled:cursor-not-allowed" :disabled="!hasDownloadable || batchDownloading">
+                            {{ batchDownloading ? '打包中...' : localeStore.t('batch.download_results') }}
+                        </button>
                         <div class="w-px bg-slate-200 my-1"></div>
                         <button @click="batchQueue = []" class="px-4 py-2 text-red-500 hover:bg-red-50 rounded-lg typo-button-compact transition-colors">{{ localeStore.t('batch.clear') }}</button>
                     </div>
@@ -1314,6 +1316,7 @@ const batchQueue = ref([])
 const batchUploadImagesCache = ref({ ts: 0, items: [] })
 const batchRunning = ref(false)
 const batchStopRequested = ref(false)
+const batchDownloading = ref(false)
 const refImageUrls = ref([])
 const quickRefineText = ref('')
 const galleryImages = ref([]) 
@@ -3609,6 +3612,7 @@ const pauseBatchProcessing = () => {
 }
 
 const downloadBatchResults = async () => {
+    if (batchDownloading.value) return
     const localUrls = batchQueue.value
         .filter((t) => t.status === 'done')
         .flatMap((t) => (Array.isArray(t.resultUrls) && t.resultUrls.length ? t.resultUrls : [t.resultUrl]))
@@ -3617,6 +3621,8 @@ const downloadBatchResults = async () => {
         message.error(localeStore.t('batch.error_no_downloadable'))
         return
     }
+    batchDownloading.value = true
+    const loadingMsg = message.loading('正在打包下载，请稍候...', { duration: 0 })
     try {
         const filenames = [...new Set(localUrls.map((url) => decodeURIComponent(url.split('/').pop())))]
         const res = await api.post('/api/download/batch', { filenames }, { responseType: 'blob' })
@@ -3626,7 +3632,8 @@ const downloadBatchResults = async () => {
         a.href = url
         a.download = `batch_${Date.now()}.zip`
         a.click()
-        URL.revokeObjectURL(url)
+        setTimeout(() => URL.revokeObjectURL(url), 1500)
+        message.success(`下载已开始（${filenames.length} 个文件）`)
 
         const skipped = batchQueue.value.filter((t) => {
             if (t.status !== 'done') return false
@@ -3635,7 +3642,21 @@ const downloadBatchResults = async () => {
         })
         if (skipped.length) message.info(localeStore.t('batch.download_partial'))
     } catch (e) {
-        message.error('Download failed')
+        let detail = e?.message || 'Download failed'
+        const data = e?.response?.data
+        if (data && typeof Blob !== 'undefined' && data instanceof Blob) {
+            try {
+                const text = await data.text()
+                const parsed = text ? JSON.parse(text) : null
+                detail = parsed?.detail || parsed?.message || detail
+            } catch (_) {}
+        } else if (data && typeof data === 'object') {
+            detail = data.detail || data.message || detail
+        }
+        message.error(detail)
+    } finally {
+        loadingMsg.destroy()
+        batchDownloading.value = false
     }
 }
 
