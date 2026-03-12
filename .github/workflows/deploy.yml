@@ -12,6 +12,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 150
     env:
       PROJECT_PATH: ${{ secrets.PROJECT_PATH }}
       REMOTE: ${{ secrets.REMOTE }}
@@ -28,7 +29,7 @@ jobs:
           # 不配置 PORT 时默认 22
           port: ${{ secrets.PORT }}
           script_stop: true
-          command_timeout: 60m
+          command_timeout: 140m
           script: |
             set -euo pipefail
             cd "${PROJECT_PATH:-/opt/nano-banana-studio}"
