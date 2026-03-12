@@ -40,6 +40,28 @@ resolve_compose_cmd() {
   fail "docker compose is not available"
 }
 
+compose() {
+  if [ "$COMPOSE_CMD" = "docker compose" ]; then
+    docker compose "$@"
+  else
+    docker-compose "$@"
+  fi
+}
+
+has_changed_path() {
+  local pattern="$1"
+  shift || true
+  local path
+  for path in "$@"; do
+    case "$path" in
+      $pattern)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 require_cmd git
 require_cmd docker
 require_cmd curl
@@ -62,22 +84,64 @@ fi
 
 COMPOSE_CMD="$(resolve_compose_cmd)"
 
+BEFORE_HEAD="$(git rev-parse HEAD)"
 log "fetching latest code from $REMOTE/$BRANCH"
 git fetch "$REMOTE" --prune
 git pull --ff-only "$REMOTE" "$BRANCH"
+AFTER_HEAD="$(git rev-parse HEAD)"
 
-log "building docker images"
-if [ "$COMPOSE_CMD" = "docker compose" ]; then
-  docker compose build --pull
-  log "starting docker services"
-  docker compose up -d
-  docker compose ps
-else
-  docker-compose build --pull
-  log "starting docker services"
-  docker-compose up -d
-  docker-compose ps
+CHANGED_FILES=()
+if [ "$BEFORE_HEAD" != "$AFTER_HEAD" ]; then
+  while IFS= read -r line; do
+    [ -n "$line" ] && CHANGED_FILES+=("$line")
+  done < <(git diff --name-only "$BEFORE_HEAD..$AFTER_HEAD")
 fi
+
+BUILD_SERVICES=()
+UP_SERVICES=()
+USE_PULL=0
+
+if [ "${#CHANGED_FILES[@]}" -eq 0 ]; then
+  log "no code changes detected; skipping image rebuild"
+else
+  log "changed files since last deploy:"
+  printf ' - %s\n' "${CHANGED_FILES[@]}"
+
+  if has_changed_path "backend/*" "${CHANGED_FILES[@]}" || has_changed_path "docker-compose.yml" "${CHANGED_FILES[@]}"; then
+    BUILD_SERVICES+=("backend")
+    UP_SERVICES+=("backend")
+  fi
+  if has_changed_path "frontend/*" "${CHANGED_FILES[@]}" || has_changed_path "docker-compose.yml" "${CHANGED_FILES[@]}"; then
+    BUILD_SERVICES+=("frontend")
+    UP_SERVICES+=("frontend")
+  fi
+
+  if has_changed_path "backend/Dockerfile" "${CHANGED_FILES[@]}" \
+    || has_changed_path "frontend/Dockerfile" "${CHANGED_FILES[@]}" \
+    || has_changed_path "docker-compose.yml" "${CHANGED_FILES[@]}"; then
+    USE_PULL=1
+  fi
+fi
+
+if [ "${#UP_SERVICES[@]}" -eq 0 ]; then
+  UP_SERVICES=("backend" "frontend")
+fi
+
+if [ "${#BUILD_SERVICES[@]}" -gt 0 ]; then
+  if [ "$USE_PULL" = "1" ]; then
+    log "building changed docker services with --pull: ${BUILD_SERVICES[*]}"
+    compose build --pull "${BUILD_SERVICES[@]}"
+  else
+    log "building changed docker services: ${BUILD_SERVICES[*]}"
+    compose build "${BUILD_SERVICES[@]}"
+  fi
+else
+  log "no backend/frontend changes detected; skipping docker build"
+fi
+
+log "starting docker services: ${UP_SERVICES[*]}"
+compose up -d "${UP_SERVICES[@]}"
+compose ps
 
 log "waiting for service health: $CHECK_URL"
 for _ in $(seq 1 30); do
@@ -88,9 +152,5 @@ for _ in $(seq 1 30); do
   sleep 2
 done
 
-if [ "$COMPOSE_CMD" = "docker compose" ]; then
-  docker compose logs --tail=120 || true
-else
-  docker-compose logs --tail=120 || true
-fi
+compose logs --tail=120 || true
 fail "health check failed: $CHECK_URL"
