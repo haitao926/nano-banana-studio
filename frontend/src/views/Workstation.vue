@@ -1289,7 +1289,7 @@ import { fetchModelCatalog, clearModelCatalogCache } from '../services/modelCata
 import { useAuthStore } from '../stores/auth'
 import { useLocaleStore } from '../stores/locale'
 import { readUserKeyPools, saveUserKeyPools, buildLegacyPools, selectUserPoolWithFallback } from '../utils/userKeyPools'
-import { loadLocalHistory, prependLocalHistory, mergeLocalHistory } from '../utils/localHistory'
+import { loadLocalHistory, prependLocalHistory, mergeLocalHistory, saveLocalHistory } from '../utils/localHistory'
 import DigitalHumanPanel from '../components/DigitalHumanPanel.vue'
 import { voiceCatalog } from '../data/voiceCatalog'
 
@@ -1301,6 +1301,8 @@ const localeStore = useLocaleStore()
 const message = useMessage()
 const uploadAction = import.meta.env.VITE_PUBLIC_UPLOAD_URL || '/api/upload'
 const IMAGE_HISTORY_KEY = 'nbs_history_image'
+const BATCH_QUEUE_KEY = 'nbs_batch_queue'
+const BATCH_QUEUE_LIMIT = 200
 const VIDEO_SEED_KEY = 'nbs_seed_video_from_image'
 
 // --- State ---
@@ -3034,6 +3036,29 @@ const normalizeBatchType = (value) => {
     return batchType.value
 }
 
+const sanitizeBatchQueueForStorage = (items) => {
+    if (!Array.isArray(items)) return []
+    return items
+        .filter((item) => item && typeof item === 'object' && item.id && item.prompt)
+        .map((item) => {
+            const task = cloneDeep(item)
+            if (task.status === 'processing') {
+                task.status = 'pending'
+                task.phase = ''
+                task.error = task.error || '页面刷新后任务已中断，请重新开始'
+            }
+            return task
+        })
+}
+
+const restoreBatchQueue = () => {
+    batchQueue.value = sanitizeBatchQueueForStorage(loadLocalHistory(BATCH_QUEUE_KEY))
+}
+
+const persistBatchQueue = () => {
+    saveLocalHistory(BATCH_QUEUE_KEY, sanitizeBatchQueueForStorage(batchQueue.value), BATCH_QUEUE_LIMIT)
+}
+
 const inferBatchTypeFromRaw = (raw) => {
     if (!raw || typeof raw !== 'object') return ''
     if (raw.digital_human || raw.avatarUrl || raw.avatar_url || raw.audio_model) return 'digital_human'
@@ -3432,6 +3457,30 @@ const runAudioTask = async (task) => {
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const DIRECT_BATCH_DOWNLOAD_LIMIT = 20
+
+const toDownloadAssetUrl = (url) => {
+    if (!url) return ''
+    if (/^https?:\/\//i.test(url)) return url
+    if (url.startsWith('/')) return url
+    return `/${url}`
+}
+
+const triggerDirectDownloads = async (urls) => {
+    const uniqueUrls = [...new Set((urls || []).filter(Boolean))]
+    for (const rawUrl of uniqueUrls) {
+        const href = toDownloadAssetUrl(rawUrl)
+        const a = document.createElement('a')
+        a.href = href
+        a.download = decodeURIComponent(href.split('/').pop() || 'download')
+        a.rel = 'noopener'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        await sleep(120)
+    }
+    return uniqueUrls.length
+}
 
 const pollDigitalHumanStatus = async (taskId, model) => {
     const maxAttempts = 60
@@ -3615,18 +3664,29 @@ const downloadBatchResults = async () => {
         return
     }
     batchDownloading.value = true
-    const loadingMsg = message.loading('正在打包下载，请稍候...', { duration: 0 })
+    const uniqueLocalUrls = [...new Set(localUrls)]
+    const loadingMsg = message.loading(
+        uniqueLocalUrls.length <= DIRECT_BATCH_DOWNLOAD_LIMIT
+            ? '正在直接下载文件...'
+            : '正在打包下载，请稍候...',
+        { duration: 0 }
+    )
     try {
-        const filenames = [...new Set(localUrls.map((url) => decodeURIComponent(url.split('/').pop())))]
-        const res = await api.post('/api/download/batch', { filenames }, { responseType: 'blob' })
-        const blob = new Blob([res.data], { type: 'application/zip' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `batch_${Date.now()}.zip`
-        a.click()
-        setTimeout(() => URL.revokeObjectURL(url), 1500)
-        message.success(`下载已开始（${filenames.length} 个文件）`)
+        if (uniqueLocalUrls.length <= DIRECT_BATCH_DOWNLOAD_LIMIT) {
+            const count = await triggerDirectDownloads(uniqueLocalUrls)
+            message.success(`已开始下载 ${count} 个文件`)
+        } else {
+            const filenames = [...new Set(uniqueLocalUrls.map((url) => decodeURIComponent(url.split('/').pop())))]
+            const res = await api.post('/api/download/batch', { filenames }, { responseType: 'blob' })
+            const blob = new Blob([res.data], { type: 'application/zip' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `batch_${Date.now()}.zip`
+            a.click()
+            setTimeout(() => URL.revokeObjectURL(url), 1500)
+            message.success(`下载已开始（${filenames.length} 个文件）`)
+        }
 
         const skipped = batchQueue.value.filter((t) => {
             if (t.status !== 'done') return false
@@ -4280,12 +4340,21 @@ const deleteUser = async (u) => {
 onMounted(() => {
     loadUserKeyPools()
     loadModelCatalog()
+    restoreBatchQueue()
     if (authStore.isLoggedIn || authStore.isGuest) fetchHistory()
     if (props.activeTab === 'settings' && authStore.user.username === 'admin') {
         if (activeSettingsTab.value === 'models') fetchSystemConfig()
         if (activeSettingsTab.value === 'users') fetchUsers()
     }
 })
+
+watch(
+    () => batchQueue.value,
+    () => {
+        persistBatchQueue()
+    },
+    { deep: true }
+)
 
 watch(
     () => props.activeTab,
