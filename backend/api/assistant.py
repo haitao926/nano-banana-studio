@@ -4,12 +4,13 @@ import json
 import re
 import socket
 import ipaddress
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple
 from urllib.parse import parse_qs, urlparse, unquote
 from html import unescape
 
 import requests
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app_state import db
 from deps import get_current_user, get_current_user_optional
@@ -179,6 +180,7 @@ def _upstream_request(
     form_data: Optional[Dict[str, Any]] = None,
     files: Optional[Dict[str, Any]] = None,
     timeout: int = 180,
+    stream: bool = False,
 ) -> requests.Response:
     path = path if path.startswith("/") else f"/{path}"
     base = runtime["base_url"].rstrip("/")
@@ -197,6 +199,7 @@ def _upstream_request(
             data=form_data,
             files=files,
             timeout=timeout,
+            stream=stream,
         )
     except requests.RequestException as exc:
         raise HTTPException(status_code=502, detail=f"Assistant upstream network error: {exc}") from exc
@@ -243,6 +246,72 @@ def _extract_message_text(message: Dict[str, Any]) -> str:
                 chunks.append(item["content"])
         return "\n".join([v.strip() for v in chunks if isinstance(v, str) and v.strip()]).strip()
     return ""
+
+
+def _extract_delta_text(delta: Any) -> str:
+    if isinstance(delta, str):
+        return delta
+    if isinstance(delta, list):
+        chunks: List[str] = []
+        for item in delta:
+            chunks.append(_extract_delta_text(item))
+        return "".join(chunks)
+    if not isinstance(delta, dict):
+        return ""
+    if isinstance(delta.get("content"), str):
+        return delta["content"]
+    if isinstance(delta.get("content"), list):
+        return _extract_delta_text(delta.get("content"))
+    if isinstance(delta.get("content"), dict):
+        return _extract_delta_text(delta.get("content"))
+    if isinstance(delta.get("text"), str):
+        return delta["text"]
+    if delta.get("type") == "text":
+        if isinstance(delta.get("content"), str):
+            return delta["content"]
+        if isinstance(delta.get("text"), str):
+            return delta["text"]
+    return ""
+
+
+def _sse_event(event: str, payload: Dict[str, Any]) -> str:
+    text = json.dumps(payload, ensure_ascii=False)
+    return f"event: {event}\ndata: {text}\n\n"
+
+
+def _iter_sse_data_events(resp: requests.Response) -> Iterable[str]:
+    data_lines: List[str] = []
+    for raw_line in resp.iter_lines(decode_unicode=False):
+        if raw_line is None:
+            line = ""
+        elif isinstance(raw_line, bytes):
+            line = raw_line.decode("utf-8", errors="replace")
+        else:
+            line = str(raw_line)
+        if line.endswith("\r"):
+            line = line[:-1]
+
+        if line == "":
+            if data_lines:
+                yield "\n".join(data_lines)
+                data_lines = []
+            continue
+
+        if line.startswith(":"):
+            continue
+
+        if line.startswith("data:"):
+            data = line[5:]
+            if data.startswith(" "):
+                data = data[1:]
+            data_lines.append(data)
+            continue
+
+        if data_lines:
+            data_lines.append(line)
+
+    if data_lines:
+        yield "\n".join(data_lines)
 
 
 def _load_file_content(file_id: str, runtime: Dict[str, str]) -> str:
@@ -595,6 +664,233 @@ def _execute_tool_call(tool_name: str, arguments: Dict[str, Any]) -> Tuple[Dict[
         return {"error": str(exc)}, "tool_error"
 
 
+def _prepare_assistant_context(
+    req: AssistantChatRequest,
+    current_user: Optional[Dict],
+    runtime: Dict[str, str],
+) -> Tuple[str, str, float, Optional[int], List[Dict[str, Any]]]:
+    conversation_id = (req.conversation_id or "").strip() or secrets.token_hex(12)
+    model_name = runtime["model"]
+    temperature = _resolve_chat_temperature(model_name, runtime.get("base_url") or "", req.temperature)
+    user_id = current_user["id"] if current_user else None
+    outgoing_messages: List[Dict[str, Any]] = [
+        {"role": "system", "content": (req.system_prompt or DEFAULT_SYSTEM_PROMPT).strip()}
+    ]
+
+    if user_id:
+        title = req.message.strip().replace("\n", " ")[:48]
+        db.create_or_touch_assistant_conversation(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            model=model_name,
+            title=title,
+        )
+        db.add_assistant_message(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            role="user",
+            content=req.message.strip(),
+            metadata={"file_ids": req.file_ids},
+        )
+        history_messages = db.get_assistant_messages(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            limit=req.max_history_messages,
+        )
+    else:
+        history_messages = []
+        outgoing_messages.append({"role": "user", "content": req.message.strip()})
+
+    seen_file_ids = set()
+    for file_id in req.file_ids:
+        file_id = str(file_id).strip()
+        if not file_id or file_id in seen_file_ids:
+            continue
+        seen_file_ids.add(file_id)
+        try:
+            file_content = _load_file_content(file_id, runtime)
+            if file_content:
+                outgoing_messages.append({"role": "system", "content": f"[文件 {file_id}]\n{file_content}"})
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to read file {file_id}: {exc}") from exc
+
+    for item in history_messages:
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if role not in {"user", "assistant", "system"} or not content:
+            continue
+        outgoing_messages.append({"role": role, "content": content})
+
+    return conversation_id, model_name, temperature, user_id, outgoing_messages
+
+
+def _prepare_tool_augmented_messages(
+    req: AssistantChatRequest,
+    runtime: Dict[str, str],
+    model_name: str,
+    temperature: float,
+    outgoing_messages: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Optional[str]]:
+    if not req.enable_tools:
+        return list(outgoing_messages), [], None
+
+    loop_messages: List[Dict[str, Any]] = list(outgoing_messages)
+    tool_events: List[Dict[str, Any]] = []
+    max_rounds = max(1, int(req.max_tool_rounds or 4))
+
+    for round_index in range(max_rounds):
+        payload = {
+            "model": model_name,
+            "messages": loop_messages,
+            "temperature": temperature,
+            "tools": _get_builtin_tools(),
+            "tool_choice": "auto",
+        }
+        resp = _upstream_request("POST", "/v1/chat/completions", runtime, json_body=payload, timeout=300)
+        body = _response_json(resp)
+        choices = body.get("choices") if isinstance(body, dict) else None
+        choice = choices[0] if isinstance(choices, list) and choices else {}
+        finish_reason = str(choice.get("finish_reason") or "")
+        model_message = choice.get("message") if isinstance(choice, dict) else None
+
+        if finish_reason != "tool_calls":
+            break
+        if not isinstance(model_message, dict):
+            raise HTTPException(status_code=502, detail="Assistant returned invalid tool message")
+
+        loop_messages.append(model_message)
+        tool_calls = model_message.get("tool_calls")
+        if not isinstance(tool_calls, list) or not tool_calls:
+            raise HTTPException(status_code=502, detail="Assistant tool call payload is empty")
+
+        for call_index, tool_call in enumerate(tool_calls):
+            tool_call = tool_call if isinstance(tool_call, dict) else {}
+            call_id = str(tool_call.get("id") or f"tool-{round_index}-{call_index}")
+            function_obj = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
+            tool_name = str(function_obj.get("name") or "").strip()
+            raw_args = function_obj.get("arguments")
+            parsed_args: Dict[str, Any] = {}
+            status = "ok"
+            try:
+                parsed_args = _parse_tool_arguments(raw_args)
+                result, tool_status = _execute_tool_call(tool_name, parsed_args)
+                if tool_status:
+                    status = tool_status
+            except Exception as exc:
+                result = {"error": str(exc)}
+                status = "tool_error"
+
+            loop_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "name": tool_name or "unknown",
+                    "content": json.dumps(result, ensure_ascii=False),
+                }
+            )
+            tool_events.append(
+                {
+                    "round": round_index + 1,
+                    "tool": tool_name or "unknown",
+                    "status": status,
+                    "arguments": parsed_args,
+                }
+            )
+    else:
+        return (
+            list(loop_messages),
+            tool_events,
+            "工具调用达到最大轮次，请缩小问题范围后重试。",
+        )
+
+    final_messages = list(loop_messages)
+    if tool_events:
+        final_messages.append(
+            {
+                "role": "system",
+                "content": "请仅基于现有工具结果直接回答用户问题，不要继续调用工具。",
+            }
+        )
+    return final_messages, tool_events, None
+
+
+def _final_assistant_completion(
+    runtime: Dict[str, str],
+    model_name: str,
+    temperature: float,
+    messages: List[Dict[str, Any]],
+) -> Tuple[str, Dict[str, Any]]:
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    resp = _upstream_request("POST", "/v1/chat/completions", runtime, json_body=payload, timeout=300)
+    body = _response_json(resp)
+    assistant_text = _extract_assistant_text(body)
+    return assistant_text, body
+
+
+def _stream_assistant_completion(
+    runtime: Dict[str, str],
+    model_name: str,
+    temperature: float,
+    messages: List[Dict[str, Any]],
+) -> Iterable[Tuple[str, Optional[Dict[str, Any]]]]:
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+    }
+    resp = _upstream_request(
+        "POST",
+        "/v1/chat/completions",
+        runtime,
+        json_body=payload,
+        timeout=300,
+        stream=True,
+    )
+    usage_payload: Optional[Dict[str, Any]] = None
+    done_received = False
+    try:
+        for data in _iter_sse_data_events(resp):
+            if not data:
+                continue
+            if data == "[DONE]":
+                done_received = True
+                break
+            try:
+                chunk = json.loads(data)
+            except Exception:
+                continue
+            choices = chunk.get("choices") if isinstance(chunk, dict) else None
+            if isinstance(chunk, dict) and isinstance(chunk.get("usage"), dict):
+                usage_payload = chunk.get("usage")
+            if not isinstance(choices, list):
+                continue
+            for choice in choices:
+                if not isinstance(choice, dict):
+                    continue
+                if isinstance(choice.get("usage"), dict):
+                    usage_payload = choice.get("usage")
+                delta = choice.get("delta")
+                text = _extract_delta_text(delta)
+                if text:
+                    yield text, None
+            if isinstance(chunk, dict) and str(chunk.get("finish_reason") or "").strip():
+                # Kimi uses data: [DONE] as the only reliable completion signal.
+                # Keep reading until the sentinel arrives.
+                pass
+        if not done_received:
+            raise HTTPException(status_code=502, detail="Assistant stream ended before [DONE] marker")
+        yield "", usage_payload
+    finally:
+        resp.close()
+
+
 @router.post("/api/assistant/files")
 async def assistant_upload_file(
     file: UploadFile = File(...),
@@ -776,179 +1072,27 @@ async def assistant_chat(
     x_model_key: Optional[str] = Header(None, alias="x-model-key"),
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
-    conversation_id = (req.conversation_id or "").strip() or secrets.token_hex(12)
-    model_name = (req.model or DEFAULT_ASSISTANT_MODEL).strip() or DEFAULT_ASSISTANT_MODEL
-    runtime = _resolve_assistant_runtime(model=model_name, x_model_key=x_model_key, x_model_base_url=x_model_base_url)
-    model_name = runtime["model"]
-    temperature = _resolve_chat_temperature(model_name, runtime.get("base_url") or "", req.temperature)
-    user_id = current_user["id"] if current_user else None
-    outgoing_messages: List[Dict[str, str]] = [
-        {"role": "system", "content": (req.system_prompt or DEFAULT_SYSTEM_PROMPT).strip()}
-    ]
-
-    if user_id:
-        title = req.message.strip().replace("\n", " ")[:48]
-        db.create_or_touch_assistant_conversation(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            model=model_name,
-            title=title,
-        )
-        db.add_assistant_message(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            role="user",
-            content=req.message.strip(),
-            metadata={"file_ids": req.file_ids},
-        )
-        history_messages = db.get_assistant_messages(
-            user_id=user_id,
-            conversation_id=conversation_id,
-            limit=req.max_history_messages,
-        )
-    else:
-        history_messages = []
-        outgoing_messages.append({"role": "user", "content": req.message.strip()})
-
-    seen_file_ids = set()
-    for file_id in req.file_ids:
-        file_id = str(file_id).strip()
-        if not file_id or file_id in seen_file_ids:
-            continue
-        seen_file_ids.add(file_id)
-        try:
-            file_content = _load_file_content(file_id, runtime)
-            if file_content:
-                outgoing_messages.append(
-                    {"role": "system", "content": f"[文件 {file_id}]\n{file_content}"}
-                )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Failed to read file {file_id}: {exc}") from exc
-
-    for item in history_messages:
-        role = str(item.get("role") or "").strip()
-        content = str(item.get("content") or "").strip()
-        if role not in {"user", "assistant", "system"} or not content:
-            continue
-        outgoing_messages.append({"role": role, "content": content})
-
-    tool_events: List[Dict[str, Any]] = []
+    runtime = _resolve_assistant_runtime(
+        model=(req.model or DEFAULT_ASSISTANT_MODEL).strip() or DEFAULT_ASSISTANT_MODEL,
+        x_model_key=x_model_key,
+        x_model_base_url=x_model_base_url,
+    )
+    conversation_id, model_name, temperature, user_id, outgoing_messages = _prepare_assistant_context(
+        req,
+        current_user,
+        runtime,
+    )
+    final_messages, tool_events, forced_text = _prepare_tool_augmented_messages(
+        req,
+        runtime,
+        model_name,
+        temperature,
+        outgoing_messages,
+    )
     body: Dict[str, Any] = {}
-    assistant_text = ""
-
-    if req.enable_tools:
-        loop_messages: List[Dict[str, Any]] = list(outgoing_messages)
-        max_rounds = max(1, int(req.max_tool_rounds or 4))
-        for round_index in range(max_rounds + 1):
-            payload = {
-                "model": model_name,
-                "messages": loop_messages,
-                "temperature": temperature,
-                "tools": _get_builtin_tools(),
-                "tool_choice": "auto",
-            }
-            resp = _upstream_request("POST", "/v1/chat/completions", runtime, json_body=payload, timeout=300)
-            body = _response_json(resp)
-            choices = body.get("choices") if isinstance(body, dict) else None
-            choice = choices[0] if isinstance(choices, list) and choices else {}
-            finish_reason = str(choice.get("finish_reason") or "")
-            model_message = choice.get("message") if isinstance(choice, dict) else None
-
-            if finish_reason == "tool_calls":
-                if round_index >= max_rounds:
-                    forced_answer_messages: List[Dict[str, Any]] = list(loop_messages)
-                    forced_answer_messages.append(
-                        {
-                            "role": "system",
-                            "content": (
-                                "工具调用轮次已到上限。禁止继续调用任何工具，"
-                                "请仅基于现有工具返回内容直接回答用户问题。"
-                            ),
-                        }
-                    )
-                    forced_payload = {
-                        "model": model_name,
-                        "messages": forced_answer_messages,
-                        "temperature": temperature,
-                    }
-                    forced_resp = _upstream_request(
-                        "POST",
-                        "/v1/chat/completions",
-                        runtime,
-                        json_body=forced_payload,
-                        timeout=300,
-                    )
-                    body = _response_json(forced_resp)
-                    forced_choices = body.get("choices") if isinstance(body, dict) else None
-                    forced_choice = forced_choices[0] if isinstance(forced_choices, list) and forced_choices else {}
-                    forced_message = forced_choice.get("message") if isinstance(forced_choice, dict) else None
-                    if isinstance(forced_message, dict):
-                        assistant_text = _extract_message_text(forced_message)
-                    if not assistant_text:
-                        assistant_text = "工具调用达到最大轮次，请缩小问题范围后重试。"
-                    break
-                if not isinstance(model_message, dict):
-                    raise HTTPException(status_code=502, detail="Assistant returned invalid tool message")
-
-                loop_messages.append(model_message)
-                tool_calls = model_message.get("tool_calls")
-                if not isinstance(tool_calls, list) or not tool_calls:
-                    raise HTTPException(status_code=502, detail="Assistant tool call payload is empty")
-
-                for call_index, tool_call in enumerate(tool_calls):
-                    tool_call = tool_call if isinstance(tool_call, dict) else {}
-                    call_id = str(tool_call.get("id") or f"tool-{round_index}-{call_index}")
-                    function_obj = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else {}
-                    tool_name = str(function_obj.get("name") or "").strip()
-                    raw_args = function_obj.get("arguments")
-                    parsed_args: Dict[str, Any] = {}
-                    result: Dict[str, Any]
-                    status = "ok"
-                    try:
-                        parsed_args = _parse_tool_arguments(raw_args)
-                        result, tool_status = _execute_tool_call(tool_name, parsed_args)
-                        if tool_status:
-                            status = tool_status
-                    except Exception as exc:
-                        result = {"error": str(exc)}
-                        status = "tool_error"
-
-                    loop_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": call_id,
-                            "name": tool_name or "unknown",
-                            "content": json.dumps(result, ensure_ascii=False),
-                        }
-                    )
-                    tool_events.append(
-                        {
-                            "round": round_index + 1,
-                            "tool": tool_name or "unknown",
-                            "status": status,
-                            "arguments": parsed_args,
-                        }
-                    )
-                continue
-
-            if isinstance(model_message, dict):
-                assistant_text = _extract_message_text(model_message)
-            if not assistant_text:
-                assistant_text = _extract_assistant_text(body)
-            break
-        else:
-            assistant_text = "工具调用达到最大轮次，请缩小问题范围后重试。"
-    else:
-        payload = {
-            "model": model_name,
-            "messages": outgoing_messages,
-            "temperature": temperature,
-        }
-        resp = _upstream_request("POST", "/v1/chat/completions", runtime, json_body=payload, timeout=300)
-        body = _response_json(resp)
-        assistant_text = _extract_assistant_text(body)
+    assistant_text = forced_text or ""
+    if not assistant_text:
+        assistant_text, body = _final_assistant_completion(runtime, model_name, temperature, final_messages)
 
     if not assistant_text:
         raise HTTPException(status_code=502, detail="Assistant returned empty response")
@@ -974,3 +1118,93 @@ async def assistant_chat(
         "usage": body.get("usage") if isinstance(body, dict) else {},
         "tool_events": tool_events,
     }
+
+
+@router.post("/api/assistant/chat/stream")
+async def assistant_chat_stream(
+    req: AssistantChatRequest,
+    current_user: Optional[Dict] = Depends(get_current_user_optional),
+    x_model_key: Optional[str] = Header(None, alias="x-model-key"),
+    x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
+):
+    runtime = _resolve_assistant_runtime(
+        model=(req.model or DEFAULT_ASSISTANT_MODEL).strip() or DEFAULT_ASSISTANT_MODEL,
+        x_model_key=x_model_key,
+        x_model_base_url=x_model_base_url,
+    )
+    conversation_id, model_name, temperature, user_id, outgoing_messages = _prepare_assistant_context(
+        req,
+        current_user,
+        runtime,
+    )
+    final_messages, tool_events, forced_text = _prepare_tool_augmented_messages(
+        req,
+        runtime,
+        model_name,
+        temperature,
+        outgoing_messages,
+    )
+
+    def event_stream() -> Iterable[str]:
+        assistant_chunks: List[str] = []
+        usage: Dict[str, Any] = {}
+        yield _sse_event(
+            "meta",
+            {
+                "conversation_id": conversation_id,
+                "model": model_name,
+                "tool_events": tool_events,
+            },
+        )
+        try:
+            if forced_text:
+                assistant_chunks.append(forced_text)
+                yield _sse_event("delta", {"text": forced_text})
+            else:
+                for text, usage_payload in _stream_assistant_completion(runtime, model_name, temperature, final_messages):
+                    if text:
+                        assistant_chunks.append(text)
+                        yield _sse_event("delta", {"text": text})
+                    if usage_payload:
+                        usage = usage_payload
+
+            assistant_text = "".join(assistant_chunks).strip()
+            if not assistant_text:
+                raise HTTPException(status_code=502, detail="Assistant returned empty response")
+
+            if user_id:
+                db.add_assistant_message(
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    role="assistant",
+                    content=assistant_text,
+                    metadata={
+                        "usage": usage,
+                        "tool_events": tool_events,
+                        "tools_enabled": bool(req.enable_tools),
+                    },
+                )
+            yield _sse_event(
+                "done",
+                {
+                    "conversation_id": conversation_id,
+                    "model": model_name,
+                    "message": assistant_text,
+                    "usage": usage,
+                    "tool_events": tool_events,
+                },
+            )
+        except HTTPException as exc:
+            yield _sse_event("error", {"detail": exc.detail, "status_code": exc.status_code})
+        except Exception as exc:
+            yield _sse_event("error", {"detail": str(exc), "status_code": 500})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

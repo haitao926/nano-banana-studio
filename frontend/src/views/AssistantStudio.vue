@@ -229,7 +229,15 @@
                 class="rounded-2xl px-5 py-3.5 text-[13px] sm:text-sm leading-relaxed shadow-sm"
                 :class="msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm whitespace-pre-wrap' : 'bg-white border border-slate-100 text-slate-700 rounded-tl-sm'"
               >
-                <div v-if="msg.role === 'assistant'" class="assistant-render" v-html="renderAssistantMessage(msg.content)"></div>
+                <div
+                  v-if="msg.role === 'assistant' && !msg.content && msg.id === streamingAssistantId"
+                  class="flex items-center gap-1.5 h-6"
+                >
+                  <span class="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style="animation-delay: 0ms"></span>
+                  <span class="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style="animation-delay: 150ms"></span>
+                  <span class="w-2 h-2 rounded-full bg-slate-300 animate-bounce" style="animation-delay: 300ms"></span>
+                </div>
+                <div v-else-if="msg.role === 'assistant'" class="assistant-render" v-html="renderAssistantMessage(msg.content)"></div>
                 <template v-else>{{ msg.content }}</template>
               </div>
             </div>
@@ -246,7 +254,7 @@
           </div>
           
           <!-- Typing indicator -->
-          <div v-if="sending" class="flex items-start gap-4 animate-pulse">
+          <div v-if="sending && !streamingAssistantId" class="flex items-start gap-4 animate-pulse">
             <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm bg-white border border-slate-200 text-emerald-600">
               <Bot class="w-4 h-4" />
             </div>
@@ -318,6 +326,7 @@ const currentConversationId = ref('')
 const chatMessages = ref([])
 const inputText = ref('')
 const sending = ref(false)
+const streamingAssistantId = ref('')
 const latestToolEvents = ref([])
 
 const files = ref([])
@@ -495,6 +504,88 @@ function extractErrorDetail(err) {
   return String(err?.response?.data?.detail || err?.message || '')
 }
 
+async function extractResponseDetail(response) {
+  const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+  try {
+    if (contentType.includes('application/json')) {
+      const data = await response.json()
+      return String(data?.detail || data?.message || '')
+    }
+    return String((await response.text()) || '')
+  } catch {
+    return ''
+  }
+}
+
+function buildAssistantRequestPayload(text) {
+  return {
+    message: text,
+    conversation_id: currentConversationId.value || undefined,
+    model: model.value || undefined,
+    max_history_messages: maxHistoryMessages.value,
+    file_ids: selectedFileIds.value,
+    enable_tools: enableTools.value,
+    max_tool_rounds: enableTools.value ? Math.max(1, Math.min(10, Number(maxToolRounds.value || 4))) : 1
+  }
+}
+
+function updateAssistantMessage(messageId, content) {
+  const target = chatMessages.value.find((item) => item.id === messageId)
+  if (target) {
+    target.content = content
+  }
+}
+
+function removeChatMessage(messageId) {
+  chatMessages.value = chatMessages.value.filter((item) => item.id !== messageId)
+}
+
+function handleSseEventBlock(block, onEvent) {
+  const lines = String(block || '').split('\n')
+  let eventName = 'message'
+  const dataLines = []
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\r$/, '')
+    if (!line || line.startsWith(':')) continue
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim() || 'message'
+      continue
+    }
+    if (line.startsWith('data:')) {
+      let value = line.slice(5)
+      if (value.startsWith(' ')) value = value.slice(1)
+      dataLines.push(value)
+    }
+  }
+
+  if (!dataLines.length) return
+
+  const rawData = dataLines.join('\n')
+  let payload = {}
+  try {
+    payload = JSON.parse(rawData)
+  } catch {
+    payload = { raw: rawData }
+  }
+  onEvent(eventName, payload)
+}
+
+function flushSseBuffer(buffer, onEvent, force = false) {
+  const normalized = String(buffer || '').replace(/\r\n/g, '\n')
+  const parts = normalized.split('\n\n')
+  const limit = force ? parts.length : Math.max(parts.length - 1, 0)
+
+  for (let index = 0; index < limit; index += 1) {
+    const block = parts[index]
+    if (!block.trim()) continue
+    handleSseEventBlock(block, onEvent)
+  }
+
+  if (force) return ''
+  return parts[parts.length - 1] || ''
+}
+
 function isFileApiUnavailableError(status, detail) {
   const text = String(detail || '').toLowerCase()
   if (status === 400) {
@@ -657,48 +748,108 @@ async function sendMessage() {
   }
 
   const localId = `local-${Date.now()}`
+  const assistantId = `assistant-pending-${Date.now()}`
   chatMessages.value.push({ id: localId, role: 'user', content: text, created_at: Date.now() / 1000 })
+  chatMessages.value.push({ id: assistantId, role: 'assistant', content: '', created_at: Date.now() / 1000 })
+  streamingAssistantId.value = assistantId
   inputText.value = ''
   sending.value = true
   latestToolEvents.value = []
   await scrollToBottom()
 
   try {
-    const res = await api.post(
-      '/api/assistant/chat',
-      {
-        message: text,
-        conversation_id: currentConversationId.value || undefined,
-        model: model.value || undefined,
-        max_history_messages: maxHistoryMessages.value,
-        file_ids: selectedFileIds.value,
-        enable_tools: enableTools.value,
-        max_tool_rounds: enableTools.value ? Math.max(1, Math.min(10, Number(maxToolRounds.value || 4))) : 1
+    const response = await fetch('/api/assistant/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...authHeaders.value
       },
-      { headers: authHeaders.value }
-    )
-    latestToolEvents.value = Array.isArray(res.data?.tool_events) ? res.data.tool_events : []
-    const conversationId = res.data?.conversation_id
-    if (conversationId && authStore.isLoggedIn) {
-      currentConversationId.value = conversationId
-      await loadMessages(conversationId)
-      await refreshConversations()
-    } else if (!authStore.isLoggedIn) {
-      if (conversationId) currentConversationId.value = conversationId
-      const assistantText = String(res.data?.message || '').trim()
-      if (assistantText) {
-        chatMessages.value.push({
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: assistantText,
-          created_at: Date.now() / 1000,
-        })
+      body: JSON.stringify(buildAssistantRequestPayload(text))
+    })
+
+    if (!response.ok) {
+      throw new Error((await extractResponseDetail(response)) || '发送失败')
+    }
+    if (!response.body) {
+      throw new Error('浏览器未返回可读流')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let streamedText = ''
+    let sawDone = false
+    let resolvedConversationId = currentConversationId.value
+
+    const handleStreamEvent = (eventName, payload) => {
+      if (eventName === 'meta') {
+        if (payload?.conversation_id) {
+          resolvedConversationId = payload.conversation_id
+          currentConversationId.value = payload.conversation_id
+        }
+        latestToolEvents.value = Array.isArray(payload?.tool_events) ? payload.tool_events : []
+        return
+      }
+
+      if (eventName === 'delta') {
+        const textDelta = String(payload?.text || '')
+        if (!textDelta) return
+        streamedText += textDelta
+        updateAssistantMessage(assistantId, streamedText)
+        return
+      }
+
+      if (eventName === 'done') {
+        sawDone = true
+        if (payload?.conversation_id) {
+          resolvedConversationId = payload.conversation_id
+          currentConversationId.value = payload.conversation_id
+        }
+        latestToolEvents.value = Array.isArray(payload?.tool_events) ? payload.tool_events : latestToolEvents.value
+        const finalMessage = String(payload?.message || streamedText || '').trim()
+        updateAssistantMessage(assistantId, finalMessage)
+        streamedText = finalMessage
+        return
+      }
+
+      if (eventName === 'error') {
+        throw new Error(String(payload?.detail || '发送失败'))
       }
     }
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      buffer = flushSseBuffer(buffer, handleStreamEvent)
+    }
+
+    buffer += decoder.decode()
+    flushSseBuffer(buffer, handleStreamEvent, true)
+
+    if (!sawDone) {
+      throw new Error('流式输出未正常结束')
+    }
+
+    if (resolvedConversationId) {
+      currentConversationId.value = resolvedConversationId
+    }
+
+    if (authStore.isLoggedIn && resolvedConversationId) {
+      await loadMessages(resolvedConversationId)
+      await refreshConversations()
+    } else if (!streamedText.trim()) {
+      removeChatMessage(assistantId)
+    }
   } catch (err) {
-    message.error(err?.response?.data?.detail || '发送失败')
-    chatMessages.value = chatMessages.value.filter((item) => item.id !== localId)
+    removeChatMessage(assistantId)
+    if (!currentConversationId.value && !authStore.isLoggedIn) {
+      chatMessages.value = chatMessages.value.filter((item) => item.id !== localId)
+    }
+    message.error(extractErrorDetail(err) || '发送失败')
   } finally {
+    streamingAssistantId.value = ''
     sending.value = false
     await scrollToBottom()
   }
