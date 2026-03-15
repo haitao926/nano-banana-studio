@@ -75,6 +75,7 @@ class AdminBulkCreateUsersRequest(BaseModel):
 
 class BatchDownloadRequest(BaseModel):
     filenames: List[str]
+    items: List[Dict] = Field(default_factory=list)
 
 
 class BatchGenRequest(BaseModel):

@@ -1791,6 +1791,18 @@ watch(
     }
 )
 
+watch(
+    () => batchDefaults.image.optimize,
+    (value) => {
+        batchQueue.value.forEach((task) => {
+            if (task?.type !== 'image') return
+            if (!['draft', 'pending'].includes(task.status)) return
+            if (!task.settings?.image) task.settings = { ...(task.settings || {}), image: {} }
+            task.settings.image.optimize = value
+        })
+    }
+)
+
 const formatCatalogLabel = (item, withCost = false) => {
     const name = item?.label || item?.model || ''
     const costValue = Number.isFinite(Number(item?.cost)) ? Number(item.cost) : null
@@ -3466,20 +3478,71 @@ const toDownloadAssetUrl = (url) => {
     return `/${url}`
 }
 
-const triggerDirectDownloads = async (urls) => {
-    const uniqueUrls = [...new Set((urls || []).filter(Boolean))]
-    for (const rawUrl of uniqueUrls) {
-        const href = toDownloadAssetUrl(rawUrl)
+const guessDownloadExtension = (task, url) => {
+    const cleanUrl = String(url || '').split('#')[0].split('?')[0]
+    const match = cleanUrl.match(/\.([a-zA-Z0-9]+)$/)
+    if (match?.[1]) return `.${match[1].toLowerCase()}`
+    if (task?.resultType === 'audio') return '.wav'
+    if (task?.resultType === 'video') return '.mp4'
+    return '.png'
+}
+
+const buildBatchDownloadItems = () => {
+    const counters = { image: 0, audio: 0, video: 0, file: 0 }
+    const items = []
+    batchQueue.value
+        .filter((task) => task?.status === 'done')
+        .forEach((task) => {
+            const urls = Array.isArray(task.resultUrls) && task.resultUrls.length ? task.resultUrls : [task.resultUrl]
+            urls
+                .filter((url) => isLocalResultUrl(url))
+                .forEach((url) => {
+                    const typeKey = task?.resultType === 'audio'
+                        ? 'audio'
+                        : task?.resultType === 'video'
+                            ? 'video'
+                            : 'image'
+                    counters[typeKey] += 1
+                    const label = typeKey === 'audio'
+                        ? '音频'
+                        : typeKey === 'video'
+                            ? '视频'
+                            : '图片'
+                    const extension = guessDownloadExtension(task, url)
+                    const href = toDownloadAssetUrl(url)
+                    const filename = decodeURIComponent(href.split('/').pop() || '')
+                    if (!filename) return
+                    items.push({
+                        url,
+                        filename,
+                        downloadName: `${label}${counters[typeKey]}${extension}`
+                    })
+                })
+        })
+    return items
+}
+
+const triggerDirectDownloads = async (items) => {
+    const uniqueItems = []
+    const seen = new Set()
+    for (const item of items || []) {
+        const rawUrl = String(item?.url || '').trim()
+        if (!rawUrl || seen.has(rawUrl)) continue
+        seen.add(rawUrl)
+        uniqueItems.push(item)
+    }
+    for (const item of uniqueItems) {
+        const href = toDownloadAssetUrl(item.url)
         const a = document.createElement('a')
         a.href = href
-        a.download = decodeURIComponent(href.split('/').pop() || 'download')
+        a.download = item.downloadName || decodeURIComponent(href.split('/').pop() || 'download')
         a.rel = 'noopener'
         document.body.appendChild(a)
         a.click()
         a.remove()
         await sleep(120)
     }
-    return uniqueUrls.length
+    return uniqueItems.length
 }
 
 const pollDigitalHumanStatus = async (taskId, model) => {
@@ -3655,29 +3718,31 @@ const pauseBatchProcessing = () => {
 
 const downloadBatchResults = async () => {
     if (batchDownloading.value) return
-    const localUrls = batchQueue.value
-        .filter((t) => t.status === 'done')
-        .flatMap((t) => (Array.isArray(t.resultUrls) && t.resultUrls.length ? t.resultUrls : [t.resultUrl]))
-        .filter((url) => isLocalResultUrl(url))
-    if (!localUrls.length) {
+    const downloadItems = buildBatchDownloadItems()
+    if (!downloadItems.length) {
         message.error(localeStore.t('batch.error_no_downloadable'))
         return
     }
     batchDownloading.value = true
-    const uniqueLocalUrls = [...new Set(localUrls)]
+    const uniqueDownloadItems = downloadItems.filter((item, index, list) => list.findIndex((v) => v.url === item.url) === index)
     const loadingMsg = message.loading(
-        uniqueLocalUrls.length <= DIRECT_BATCH_DOWNLOAD_LIMIT
+        uniqueDownloadItems.length <= DIRECT_BATCH_DOWNLOAD_LIMIT
             ? '正在直接下载文件...'
             : '正在打包下载，请稍候...',
         { duration: 0 }
     )
     try {
-        if (uniqueLocalUrls.length <= DIRECT_BATCH_DOWNLOAD_LIMIT) {
-            const count = await triggerDirectDownloads(uniqueLocalUrls)
+        if (uniqueDownloadItems.length <= DIRECT_BATCH_DOWNLOAD_LIMIT) {
+            const count = await triggerDirectDownloads(uniqueDownloadItems)
             message.success(`已开始下载 ${count} 个文件`)
         } else {
-            const filenames = [...new Set(uniqueLocalUrls.map((url) => decodeURIComponent(url.split('/').pop())))]
-            const res = await api.post('/api/download/batch', { filenames }, { responseType: 'blob' })
+            const res = await api.post('/api/download/batch', {
+                filenames: uniqueDownloadItems.map((item) => item.filename),
+                items: uniqueDownloadItems.map((item) => ({
+                    filename: item.filename,
+                    download_name: item.downloadName
+                }))
+            }, { responseType: 'blob' })
             const blob = new Blob([res.data], { type: 'application/zip' })
             const url = URL.createObjectURL(blob)
             const a = document.createElement('a')
@@ -3685,7 +3750,7 @@ const downloadBatchResults = async () => {
             a.download = `batch_${Date.now()}.zip`
             a.click()
             setTimeout(() => URL.revokeObjectURL(url), 1500)
-            message.success(`下载已开始（${filenames.length} 个文件）`)
+            message.success(`下载已开始（${uniqueDownloadItems.length} 个文件）`)
         }
 
         const skipped = batchQueue.value.filter((t) => {
