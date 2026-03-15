@@ -15,7 +15,6 @@ jobs:
     timeout-minutes: 150
     env:
       PROJECT_PATH: ${{ secrets.PROJECT_PATH }}
-      REMOTE: ${{ secrets.REMOTE }}
       BRANCH: ${{ secrets.BRANCH }}
       CHECK_URL: ${{ secrets.CHECK_URL }}
       ALLOW_DIRTY: ${{ secrets.ALLOW_DIRTY }}
@@ -36,7 +35,7 @@ jobs:
 
             # 推荐直接复用项目自带脚本（包含 build/up/health check）
             chmod +x scripts/update_server.sh
-            NBS_REMOTE="${REMOTE:-github}" \
+            NBS_REMOTE="github" \
             NBS_BRANCH="${BRANCH:-main}" \
             NBS_CHECK_URL="${CHECK_URL:-http://127.0.0.1:18080}" \
             NBS_ALLOW_DIRTY="${ALLOW_DIRTY:-1}" \
