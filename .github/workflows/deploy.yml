@@ -39,5 +39,5 @@ jobs:
             NBS_REMOTE="${REMOTE:-github}" \
             NBS_BRANCH="${BRANCH:-main}" \
             NBS_CHECK_URL="${CHECK_URL:-http://127.0.0.1:18080}" \
-            NBS_ALLOW_DIRTY="${ALLOW_DIRTY:-0}" \
+            NBS_ALLOW_DIRTY="${ALLOW_DIRTY:-1}" \
             ./scripts/update_server.sh
