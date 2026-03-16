@@ -346,11 +346,8 @@
                            </button>
                         </n-popselect>
                     </div>
-                    <div class="md:col-span-4">
-                        <label class="flex items-center gap-2 typo-button-compact text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-indigo-100 transition-colors">
-                            <input type="checkbox" v-model="batchDefaults.image.optimize" class="accent-indigo-500" />
-                            {{ localeStore.t('batch.prompt_optimize') }}
-                        </label>
+                    <div class="md:col-span-4 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-700">
+                        {{ localeStore.t('batch.prompt_optimize_hint') }}
                     </div>
                     <div v-if="isBatchSeedreamGroupModel" class="md:col-span-4">
                         <div class="space-y-2 bg-slate-50 border border-slate-100 rounded-xl p-4">
@@ -545,6 +542,14 @@
                         {{ localeStore.t('batch.task_queue') }} <span class="bg-slate-200 text-slate-600 px-3 py-1 rounded-full typo-badge">{{ batchQueue.length }}</span>
                     </h3>
                     <div class="flex gap-3 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
+                        <button
+                            v-if="batchType === 'image' && hasPendingImageTasks && !batchRunning"
+                            @click="optimizeAndStartBatchProcessing"
+                            class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg typo-button-compact shadow-sm hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                            :disabled="batchOptimizingPrompts"
+                        >
+                            {{ batchOptimizingPrompts ? localeStore.t('batch.optimizing_prompts') : localeStore.t('batch.optimize_then_start') }}
+                        </button>
                         <button v-if="hasPending && !batchRunning" @click="startBatchProcessing" class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg typo-button-compact shadow-sm hover:-translate-y-0.5 transition-all">{{ localeStore.t('batch.start_all') }}</button>
                         <button v-if="batchRunning" @click="pauseBatchProcessing" class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg typo-button-compact shadow-sm">{{ localeStore.t('batch.pause') }}</button>
                         <button @click="downloadBatchResults" class="px-4 py-2 hover:bg-slate-100 text-slate-700 rounded-lg typo-button-compact transition-colors disabled:opacity-60 disabled:cursor-not-allowed" :disabled="!hasDownloadable || batchDownloading">
@@ -1319,6 +1324,7 @@ const batchUploadImagesCache = ref({ ts: 0, items: [] })
 const batchRunning = ref(false)
 const batchStopRequested = ref(false)
 const batchDownloading = ref(false)
+const batchOptimizingPrompts = ref(false)
 const refImageUrls = ref([])
 const quickRefineText = ref('')
 const galleryImages = ref([]) 
@@ -2526,6 +2532,7 @@ const processingCount = computed(() => batchQueue.value.filter((t) => t.status =
 const doneCount = computed(() => batchQueue.value.filter((t) => t.status === 'done').length)
 const failedCount = computed(() => batchQueue.value.filter((t) => t.status === 'failed').length)
 const hasPending = computed(() => batchQueue.value.some(t => t.status === 'draft' || t.status === 'pending'))
+const hasPendingImageTasks = computed(() => batchQueue.value.some((t) => t.type === 'image' && (t.status === 'draft' || t.status === 'pending')))
 const hasDone = computed(() => batchQueue.value.some(t => t.status === 'done'))
 const hasDownloadable = computed(() => batchQueue.value.some((t) => {
     if (t.status !== 'done') return false
@@ -3431,14 +3438,69 @@ const requestTtsAudio = async (text, audioSettings) => {
     return { url: res.data.url, type: res.data.type || 'audio/wav', duration: res.data.duration }
 }
 
+const optimizePendingImageTasks = async () => {
+    if (batchOptimizingPrompts.value) return false
+    const targets = batchQueue.value.filter((task) => task?.type === 'image' && ['draft', 'pending'].includes(task.status))
+    if (!targets.length) {
+        message.warning(localeStore.t('batch.optimize_no_image_tasks'))
+        return false
+    }
+
+    batchOptimizingPrompts.value = true
+    const loadingMsg = message.loading(localeStore.t('batch.optimizing_prompts'), { duration: 0 })
+    let successCount = 0
+    let failureCount = 0
+
+    try {
+        for (const task of targets) {
+            const cfg = task.settings?.image || batchDefaults.image
+            ensureImageModelSelection(cfg)
+            task.optimizedPrompt = ''
+            task.optimizationError = ''
+
+            if (!cfg.model) {
+                task.optimizationError = tSettings('settings.model_required_prompt', '请先在模型配置中添加提示词优化模型')
+                failureCount += 1
+                continue
+            }
+
+            try {
+                const optimized = await requestOptimizedPrompt(
+                    task.prompt,
+                    cfg.subject,
+                    cfg.model,
+                    cfg.imageProvider || settings.value.imageProvider,
+                    cfg.promptChannel || settings.value.promptChannel
+                )
+                task.optimizedPrompt = optimized
+                successCount += 1
+            } catch (e) {
+                task.optimizationError = e?.response?.data?.detail || e?.message || ''
+                failureCount += 1
+            }
+        }
+
+        if (successCount > 0) {
+            message.success(`${localeStore.t('batch.optimize_success')}（${successCount}）`)
+        }
+        if (failureCount > 0) {
+            message.warning(localeStore.t('batch.optimize_partial'))
+        }
+        return successCount > 0
+    } finally {
+        loadingMsg.destroy()
+        batchOptimizingPrompts.value = false
+    }
+}
+
 const runImageTask = async (task) => {
     const cfg = task.settings?.image || batchDefaults.image
     ensureImageModelSelection(cfg)
     if (!cfg.model) {
         throw new Error(tSettings('settings.model_required_image', '请先在模型配置中添加绘图模型'))
     }
-    let promptToUse = task.prompt
-    if (cfg.optimize) {
+    let promptToUse = String(task.optimizedPrompt || '').trim() || task.prompt
+    if (!task.optimizedPrompt && cfg.optimize) {
         try {
             promptToUse = await requestOptimizedPrompt(
                 task.prompt,
@@ -3681,6 +3743,13 @@ const executeBatchTask = async (task) => {
     if (task.type === 'video') return runVideoTask(task)
     if (task.type === 'digital_human') return runDigitalHumanTask(task)
     return runImageTask(task)
+}
+
+const optimizeAndStartBatchProcessing = async () => {
+    if (batchRunning.value || batchOptimizingPrompts.value) return
+    const hasOptimizedAny = await optimizePendingImageTasks()
+    if (!hasOptimizedAny && !hasPendingImageTasks.value) return
+    await startBatchProcessing()
 }
 
 const startBatchProcessing = async () => {
