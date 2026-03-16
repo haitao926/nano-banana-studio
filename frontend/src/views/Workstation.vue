@@ -618,7 +618,12 @@
                                  </div>
                             </div>
                             <div class="p-5">
-                                <p class="typo-caption-compact text-slate-600 line-clamp-2 mb-4 leading-relaxed font-mono bg-slate-50 p-2 rounded-lg" :title="task.prompt">{{ task.prompt }}</p>
+                                <p class="typo-caption-compact text-slate-600 line-clamp-2 mb-3 leading-relaxed font-mono bg-slate-50 p-2 rounded-lg" :title="task.prompt">
+                                    {{ task.originalPrompt ? `${localeStore.t('batch.prompt_final')}: ${task.prompt}` : task.prompt }}
+                                </p>
+                                <p v-if="task.originalPrompt" class="typo-caption-compact text-slate-400 line-clamp-2 mb-2" :title="task.originalPrompt">
+                                    {{ localeStore.t('batch.prompt_original') }}: {{ task.originalPrompt }}
+                                </p>
                                 <p v-if="task.optimizedPrompt" class="typo-caption-compact text-indigo-500 line-clamp-2 mb-3" :title="task.optimizedPrompt">{{ localeStore.t('batch.prompt_optimized') }}: {{ task.optimizedPrompt }}</p>
                                 <div class="flex flex-wrap gap-2">
                                     <span v-for="tag in getBatchTags(task)" :key="tag" class="px-2 py-1 bg-white border border-slate-200 rounded-md typo-caption-compact font-bold text-slate-500 shadow-sm">{{ tag }}</span>
@@ -3223,6 +3228,7 @@ const buildBatchTask = (raw) => {
         resultMime: '',
         error: '',
         optimizedPrompt: '',
+        originalPrompt: '',
         optimizationError: '',
         phase: ''
     }
@@ -3467,6 +3473,7 @@ const optimizePendingImageTasks = async () => {
         for (const task of targets) {
             const cfg = task.settings?.image || batchDefaults.image
             ensureImageModelSelection(cfg)
+            const sourcePrompt = String(task.originalPrompt || task.prompt || '').trim()
             task.optimizedPrompt = ''
             task.optimizationError = ''
 
@@ -3478,13 +3485,15 @@ const optimizePendingImageTasks = async () => {
 
             try {
                 const optimized = await requestOptimizedPrompt(
-                    task.prompt,
+                    sourcePrompt,
                     cfg.subject,
                     cfg.model,
                     cfg.imageProvider || settings.value.imageProvider,
                     cfg.promptChannel || settings.value.promptChannel
                 )
+                task.originalPrompt = sourcePrompt
                 task.optimizedPrompt = optimized
+                task.prompt = optimized
                 successCount += 1
             } catch (e) {
                 task.optimizationError = e?.response?.data?.detail || e?.message || ''
@@ -3514,14 +3523,17 @@ const runImageTask = async (task) => {
     let promptToUse = String(task.optimizedPrompt || '').trim() || task.prompt
     if (!task.optimizedPrompt && cfg.optimize) {
         try {
+            const sourcePrompt = String(task.originalPrompt || task.prompt || '').trim()
             promptToUse = await requestOptimizedPrompt(
-                task.prompt,
+                sourcePrompt,
                 cfg.subject,
                 cfg.model,
                 cfg.imageProvider || settings.value.imageProvider,
                 cfg.promptChannel || settings.value.promptChannel
             )
+            task.originalPrompt = sourcePrompt
             task.optimizedPrompt = promptToUse
+            task.prompt = promptToUse
         } catch (e) {
             task.optimizationError = e?.response?.data?.detail || e?.message || ''
         }
