@@ -6,6 +6,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
 REMOTE="${NBS_REMOTE:-origin}"
+REMOTE_URL="${NBS_REPO_URL:-}"
 BRANCH="${NBS_BRANCH:-main}"
 CHECK_URL="${NBS_CHECK_URL:-http://127.0.0.1:18080}"
 ALLOW_DIRTY="${NBS_ALLOW_DIRTY:-0}"
@@ -48,6 +49,47 @@ compose() {
   fi
 }
 
+ensure_remote() {
+  local current_url=""
+  if git remote get-url "$REMOTE" >/dev/null 2>&1; then
+    current_url="$(git remote get-url "$REMOTE")"
+    if [ -n "$REMOTE_URL" ] && [ "$current_url" != "$REMOTE_URL" ]; then
+      log "updating git remote '$REMOTE' -> $REMOTE_URL"
+      git remote set-url "$REMOTE" "$REMOTE_URL"
+    fi
+    return 0
+  fi
+
+  [ -n "$REMOTE_URL" ] || fail "git remote '$REMOTE' is missing and NBS_REPO_URL is not set"
+  log "creating git remote '$REMOTE' -> $REMOTE_URL"
+  git remote add "$REMOTE" "$REMOTE_URL"
+}
+
+compose_build_with_retry() {
+  local attempt
+  local max_attempts=3
+  for attempt in $(seq 1 "$max_attempts"); do
+    if [ "$USE_PULL" = "1" ]; then
+      log "building changed docker services with --pull (attempt $attempt/$max_attempts): ${BUILD_SERVICES[*]}"
+      if compose build --pull "${BUILD_SERVICES[@]}"; then
+        return 0
+      fi
+    else
+      log "building changed docker services (attempt $attempt/$max_attempts): ${BUILD_SERVICES[*]}"
+      if compose build "${BUILD_SERVICES[@]}"; then
+        return 0
+      fi
+    fi
+
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      log "docker build failed; retrying after backoff"
+      sleep $((attempt * 10))
+    fi
+  done
+
+  fail "docker build failed after $max_attempts attempts"
+}
+
 has_changed_path() {
   local pattern="$1"
   shift || true
@@ -83,6 +125,7 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 
 COMPOSE_CMD="$(resolve_compose_cmd)"
+ensure_remote
 
 BEFORE_HEAD="$(git rev-parse HEAD)"
 log "fetching latest code from $REMOTE/$BRANCH"
@@ -128,13 +171,7 @@ if [ "${#UP_SERVICES[@]}" -eq 0 ]; then
 fi
 
 if [ "${#BUILD_SERVICES[@]}" -gt 0 ]; then
-  if [ "$USE_PULL" = "1" ]; then
-    log "building changed docker services with --pull: ${BUILD_SERVICES[*]}"
-    compose build --pull "${BUILD_SERVICES[@]}"
-  else
-    log "building changed docker services: ${BUILD_SERVICES[*]}"
-    compose build "${BUILD_SERVICES[@]}"
-  fi
+  compose_build_with_retry
 else
   log "no backend/frontend changes detected; skipping docker build"
 fi
