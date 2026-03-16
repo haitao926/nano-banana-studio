@@ -34,7 +34,7 @@ jobs:
           npm ci --prefix frontend
           npm run build --prefix frontend
 
-      - name: Deploy via SSH
+      - name: Prepare frontend target
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.HOST }}
@@ -49,17 +49,6 @@ jobs:
             cd "${PROJECT_PATH:-/opt/nano-banana-studio}"
             mkdir -p frontend/dist
 
-            # 推荐直接复用项目自带脚本（包含 build/up/health check）
-            chmod +x scripts/update_server.sh
-            NBS_REMOTE="github" \
-            NBS_REPO_URL="https://github.com/${{ github.repository }}.git" \
-            NBS_BRANCH="${BRANCH:-main}" \
-            NBS_CHECK_URL="${CHECK_URL:-http://127.0.0.1:18080}" \
-            NBS_ALLOW_DIRTY="${ALLOW_DIRTY:-1}" \
-            NBS_SKIP_BUILD_SERVICES="frontend" \
-            NBS_SKIP_UP_SERVICES="frontend" \
-            ./scripts/update_server.sh
-
       - name: Upload frontend assets
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -68,9 +57,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.PORT }}
           overwrite: true
-          strip_components: 1
-          source: "frontend/dist/*,frontend/nginx.conf"
-          target: "${{ secrets.PROJECT_PATH }}/frontend"
+          source: "docker-compose.yml,frontend/dist/*,frontend/nginx.conf"
+          target: "${{ secrets.PROJECT_PATH }}"
 
       - name: Reload frontend
         uses: appleboy/ssh-action@v1.2.0
