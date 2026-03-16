@@ -349,6 +349,18 @@
                     <div class="md:col-span-4 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-xs text-indigo-700">
                         {{ localeStore.t('batch.prompt_optimize_hint') }}
                     </div>
+                    <div class="md:col-span-4 flex flex-wrap items-center gap-3">
+                        <button
+                            @click="optimizeAndStartBatchProcessing"
+                            class="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg typo-button-compact shadow-sm hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                            :disabled="batchOptimizingPrompts || batchRunning || !hasPendingImageTasks"
+                        >
+                            {{ batchOptimizingPrompts ? localeStore.t('batch.optimizing_prompts') : localeStore.t('batch.optimize_then_start') }}
+                        </button>
+                        <span class="text-xs text-slate-500">
+                            {{ hasPendingImageTasks ? localeStore.t('batch.prompt_optimize_hint') : localeStore.t('batch.optimize_no_image_tasks') }}
+                        </span>
+                    </div>
                     <div v-if="isBatchSeedreamGroupModel" class="md:col-span-4">
                         <div class="space-y-2 bg-slate-50 border border-slate-100 rounded-xl p-4">
                             <div class="flex items-center justify-between">
