@@ -19,6 +19,21 @@ jobs:
       CHECK_URL: ${{ secrets.CHECK_URL }}
       ALLOW_DIRTY: ${{ secrets.ALLOW_DIRTY }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend assets
+        run: |
+          npm ci --prefix frontend
+          npm run build --prefix frontend
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -40,4 +55,34 @@ jobs:
             NBS_BRANCH="${BRANCH:-main}" \
             NBS_CHECK_URL="${CHECK_URL:-http://127.0.0.1:18080}" \
             NBS_ALLOW_DIRTY="${ALLOW_DIRTY:-1}" \
+            NBS_SKIP_BUILD_SERVICES="frontend" \
+            NBS_SKIP_UP_SERVICES="frontend" \
             ./scripts/update_server.sh
+
+      - name: Upload frontend assets
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          overwrite: true
+          strip_components: 1
+          source: "frontend/dist/*,frontend/nginx.conf"
+          target: "${{ secrets.PROJECT_PATH }}/frontend"
+
+      - name: Reload frontend
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PORT }}
+          script_stop: true
+          command_timeout: 20m
+          script: |
+            set -euo pipefail
+            cd "${PROJECT_PATH:-/opt/nano-banana-studio}"
+            docker compose up -d frontend
+            docker compose ps
+            curl -fsS "${CHECK_URL:-http://127.0.0.1:18080}" >/dev/null

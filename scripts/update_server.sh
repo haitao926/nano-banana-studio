@@ -11,6 +11,8 @@ BRANCH="${NBS_BRANCH:-main}"
 CHECK_URL="${NBS_CHECK_URL:-http://127.0.0.1:18080}"
 ALLOW_DIRTY="${NBS_ALLOW_DIRTY:-0}"
 COMPOSE_OVERRIDE="${NBS_COMPOSE_CMD:-}"
+SKIP_BUILD_SERVICES="${NBS_SKIP_BUILD_SERVICES:-}"
+SKIP_UP_SERVICES="${NBS_SKIP_UP_SERVICES:-}"
 
 log() {
   echo "[update] $*"
@@ -47,6 +49,15 @@ compose() {
   else
     docker-compose "$@"
   fi
+}
+
+list_has_item() {
+  local list="$1"
+  local item="$2"
+  case ",$list," in
+    *",$item,"*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 ensure_remote() {
@@ -151,12 +162,20 @@ else
   printf ' - %s\n' "${CHANGED_FILES[@]}"
 
   if has_changed_path "backend/*" "${CHANGED_FILES[@]}" || has_changed_path "docker-compose.yml" "${CHANGED_FILES[@]}"; then
-    BUILD_SERVICES+=("backend")
-    UP_SERVICES+=("backend")
+    if ! list_has_item "$SKIP_BUILD_SERVICES" "backend"; then
+      BUILD_SERVICES+=("backend")
+    fi
+    if ! list_has_item "$SKIP_UP_SERVICES" "backend"; then
+      UP_SERVICES+=("backend")
+    fi
   fi
   if has_changed_path "frontend/*" "${CHANGED_FILES[@]}" || has_changed_path "docker-compose.yml" "${CHANGED_FILES[@]}"; then
-    BUILD_SERVICES+=("frontend")
-    UP_SERVICES+=("frontend")
+    if ! list_has_item "$SKIP_BUILD_SERVICES" "frontend"; then
+      BUILD_SERVICES+=("frontend")
+    fi
+    if ! list_has_item "$SKIP_UP_SERVICES" "frontend"; then
+      UP_SERVICES+=("frontend")
+    fi
   fi
 
   if has_changed_path "backend/Dockerfile" "${CHANGED_FILES[@]}" \
@@ -167,7 +186,12 @@ else
 fi
 
 if [ "${#UP_SERVICES[@]}" -eq 0 ]; then
-  UP_SERVICES=("backend" "frontend")
+  if ! list_has_item "$SKIP_UP_SERVICES" "backend"; then
+    UP_SERVICES+=("backend")
+  fi
+  if ! list_has_item "$SKIP_UP_SERVICES" "frontend"; then
+    UP_SERVICES+=("frontend")
+  fi
 fi
 
 if [ "${#BUILD_SERVICES[@]}" -gt 0 ]; then
