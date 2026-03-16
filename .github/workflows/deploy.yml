@@ -47,6 +47,7 @@ jobs:
           script: |
             set -euo pipefail
             cd "${PROJECT_PATH:-/opt/nano-banana-studio}"
+            mkdir -p frontend/dist
 
             # 推荐直接复用项目自带脚本（包含 build/up/health check）
             chmod +x scripts/update_server.sh
