@@ -3778,7 +3778,6 @@ const startBatchProcessing = async () => {
         if (batchStopRequested.value) break
         task.status = 'processing'
         task.error = ''
-        task.optimizedPrompt = ''
         task.optimizationError = ''
         task.phase = ''
         try {
