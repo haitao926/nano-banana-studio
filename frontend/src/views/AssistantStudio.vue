@@ -337,6 +337,7 @@ const fileApiUnavailable = ref(false)
 const fileApiUnavailableReason = ref('')
 
 const messagePanel = ref(null)
+const GUEST_ASSISTANT_SESSION_KEY = 'nbs_assistant_guest_session'
 
 const purposeOptions = [
   { label: '文档', value: 'file-extract', icon: FileText },
@@ -350,6 +351,61 @@ const authHeaders = computed(() => {
 })
 const canUseAssistant = computed(() => authStore.isLoggedIn || authStore.isGuest)
 const isGuestMode = computed(() => authStore.isGuest && !authStore.isLoggedIn)
+
+function buildGuestHistoryMessages(limit = maxHistoryMessages.value) {
+  const normalizedLimit = Math.max(1, Math.min(100, Number(limit || 20)))
+  return chatMessages.value
+    .filter((item) => item && item.role && item.content && item.id !== streamingAssistantId.value)
+    .filter((item) => item.role === 'user' || item.role === 'assistant')
+    .slice(-normalizedLimit)
+    .map((item) => ({
+      role: item.role,
+      content: String(item.content || '')
+    }))
+}
+
+function saveGuestSession() {
+  if (!isGuestMode.value) return
+  try {
+    const payload = {
+      chat_messages: buildGuestHistoryMessages(100),
+      model: model.value || 'kimi-k2.5',
+      max_history_messages: Math.max(4, Math.min(100, Number(maxHistoryMessages.value || 20))),
+      enable_tools: !!enableTools.value,
+      max_tool_rounds: Math.max(1, Math.min(10, Number(maxToolRounds.value || 4)))
+    }
+    localStorage.setItem(GUEST_ASSISTANT_SESSION_KEY, JSON.stringify(payload))
+  } catch (_) {}
+}
+
+function loadGuestSession() {
+  try {
+    const raw = localStorage.getItem(GUEST_ASSISTANT_SESSION_KEY)
+    if (!raw) return
+    const payload = JSON.parse(raw)
+    const nextMessages = Array.isArray(payload?.chat_messages)
+      ? payload.chat_messages
+          .filter((item) => item && (item.role === 'user' || item.role === 'assistant') && String(item.content || '').trim())
+          .map((item, index) => ({
+            id: `guest-${Date.now()}-${index}`,
+            role: item.role,
+            content: String(item.content || ''),
+            created_at: Date.now() / 1000
+          }))
+      : []
+    chatMessages.value = nextMessages
+    if (payload?.model) model.value = String(payload.model)
+    if (payload?.max_history_messages) maxHistoryMessages.value = Math.max(4, Math.min(100, Number(payload.max_history_messages || 20)))
+    enableTools.value = !!payload?.enable_tools
+    if (payload?.max_tool_rounds) maxToolRounds.value = Math.max(1, Math.min(10, Number(payload.max_tool_rounds || 4)))
+  } catch (_) {}
+}
+
+function clearGuestSession() {
+  try {
+    localStorage.removeItem(GUEST_ASSISTANT_SESSION_KEY)
+  } catch (_) {}
+}
 
 const CODE_FENCE_RE = /```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g
 
@@ -524,6 +580,7 @@ function buildAssistantRequestPayload(text) {
     model: model.value || undefined,
     max_history_messages: maxHistoryMessages.value,
     file_ids: selectedFileIds.value,
+    history_messages: !authStore.isLoggedIn ? buildGuestHistoryMessages(maxHistoryMessages.value) : undefined,
     enable_tools: enableTools.value,
     max_tool_rounds: enableTools.value ? Math.max(1, Math.min(10, Number(maxToolRounds.value || 4))) : 1
   }
@@ -628,6 +685,7 @@ function createConversation() {
   currentConversationId.value = ''
   chatMessages.value = []
   inputText.value = ''
+  if (isGuestMode.value) clearGuestSession()
 }
 
 async function refreshConversations() {
@@ -746,6 +804,7 @@ async function sendMessage() {
     message.error('请先登录或开启访客模式')
     return
   }
+  const requestPayload = buildAssistantRequestPayload(text)
 
   const localId = `local-${Date.now()}`
   const assistantId = `assistant-pending-${Date.now()}`
@@ -765,7 +824,7 @@ async function sendMessage() {
         Accept: 'text/event-stream',
         ...authHeaders.value
       },
-      body: JSON.stringify(buildAssistantRequestPayload(text))
+      body: JSON.stringify(requestPayload)
     })
 
     if (!response.ok) {
@@ -841,6 +900,8 @@ async function sendMessage() {
       await refreshConversations()
     } else if (!streamedText.trim()) {
       removeChatMessage(assistantId)
+    } else if (isGuestMode.value) {
+      saveGuestSession()
     }
   } catch (err) {
     removeChatMessage(assistantId)
@@ -851,6 +912,7 @@ async function sendMessage() {
   } finally {
     streamingAssistantId.value = ''
     sending.value = false
+    if (isGuestMode.value) saveGuestSession()
     await scrollToBottom()
   }
 }
@@ -860,6 +922,7 @@ async function initializeAssistant() {
   if (!authStore.isLoggedIn) {
     conversations.value = []
     latestToolEvents.value = []
+    loadGuestSession()
     try {
       await refreshFiles()
     } catch (err) {
@@ -886,6 +949,7 @@ watch(
       fileApiUnavailable.value = false
       fileApiUnavailableReason.value = ''
       createConversation()
+      clearGuestSession()
       return
     }
     try {
@@ -900,6 +964,7 @@ watch(
 watch(
   chatMessages,
   async () => {
+    if (isGuestMode.value && !sending.value) saveGuestSession()
     await scrollToBottom()
   },
   { deep: true }

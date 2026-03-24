@@ -11,6 +11,13 @@ class UserRegister(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None
+    refresh_expires_in: Optional[int] = None
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: Optional[str] = None
 
 
 class SingleGenRequest(BaseModel):
@@ -71,6 +78,11 @@ class AdminBulkCreateUserItem(BaseModel):
 class AdminBulkCreateUsersRequest(BaseModel):
     users: List[AdminBulkCreateUserItem] = Field(default_factory=list, min_length=1, max_length=500)
     skip_existing: bool = True
+
+
+class AssistantHistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: constr(min_length=1, max_length=20000)
 
 
 class BatchDownloadRequest(BaseModel):
@@ -192,6 +204,7 @@ class AssistantChatRequest(BaseModel):
     temperature: float = 0.6
     max_history_messages: int = Field(default=20, ge=4, le=100)
     file_ids: List[str] = Field(default_factory=list)
+    history_messages: List[AssistantHistoryMessage] = Field(default_factory=list, max_length=100)
     system_prompt: Optional[str] = None
     enable_tools: bool = False
     max_tool_rounds: int = Field(default=4, ge=1, le=10)

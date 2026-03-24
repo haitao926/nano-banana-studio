@@ -24,6 +24,10 @@ DEFAULT_MOONSHOT_BASE_URL = os.getenv("MOONSHOT_BASE_URL", "https://api.moonshot
 DEFAULT_SYSTEM_PROMPT = (
     "你是 Kimi，由 Moonshot AI 提供的人工智能助手，你更擅长中文和英文对话。"
     "请给出安全、准确、有帮助的回答。"
+    "面向学生使用场景时，如果用户上传了题目、课本、讲义、试卷或拍照图片，优先以 OCR 识别图片文字为第一目标，"
+    "尽可能准确提取原文内容，保留题号、段落、换行、选项和结构，不要凭空补写图片中看不清的内容；"
+    "如果存在识别不清的字词，请明确标注。"
+    "当用户基于图片提问时，默认先给出识别后的文字，再根据用户意图继续做讲解、总结、答题或整理。"
     "当用户需要代码、页面、Demo、原型或可视化内容时，你必须返回完整、可直接运行的代码，"
     "不要只给片段、伪代码、思路或省略关键依赖。"
     "如果用户没有明确指定输出语言或技术栈，默认输出完整 HTML 代码，"
@@ -705,8 +709,10 @@ def _prepare_assistant_context(
             limit=req.max_history_messages,
         )
     else:
-        history_messages = []
-        outgoing_messages.append({"role": "user", "content": req.message.strip()})
+        history_messages = [
+            {"role": item.role, "content": item.content}
+            for item in req.history_messages[-req.max_history_messages :]
+        ]
 
     seen_file_ids = set()
     for file_id in req.file_ids:
@@ -729,6 +735,9 @@ def _prepare_assistant_context(
         if role not in {"user", "assistant", "system"} or not content:
             continue
         outgoing_messages.append({"role": role, "content": content})
+
+    if not user_id:
+        outgoing_messages.append({"role": "user", "content": req.message.strip()})
 
     return conversation_id, model_name, temperature, user_id, outgoing_messages
 
