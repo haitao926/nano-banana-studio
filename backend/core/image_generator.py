@@ -627,12 +627,30 @@ class ImageGenerator:
             print(f"❌ Gemini 图片生成失败: {e}")
             return None
 
-    def optimize_prompt(self, raw_prompt: str, subject: str = "general", model: str = None, api_key: str = None, base_url: str = None) -> Optional[str]:
+    @staticmethod
+    def _normalize_aspect_ratio(aspect_ratio: Optional[str]) -> str:
+        text = str(aspect_ratio or "").strip()
+        return text or "1:1"
+
+    @staticmethod
+    def _describe_aspect_ratio(aspect_ratio: Optional[str]) -> str:
+        ratio = ImageGenerator._normalize_aspect_ratio(aspect_ratio)
+        if ratio in {"9:16", "3:4", "4:5", "2:3", "1:4", "1:8"}:
+            return f"竖向画布（{ratio}）"
+        if ratio in {"16:9", "4:3", "5:4", "3:2", "4:1", "8:1", "21:9"}:
+            return f"横向画布（{ratio}）"
+        return f"方形或居中构图画布（{ratio}）"
+
+    def optimize_prompt(self, raw_prompt: str, subject: str = "general", model: str = None, api_key: str = None, base_url: str = None, aspect_ratio: Optional[str] = None) -> Optional[str]:
         """
         使用 LLM 优化提示词 (融入结构化思维)
         :param model: 目标绘图模型 (Target Image Model)，用于定制提示词风格。
                       实际推理仍然使用 self.model (System LLM)。
         """
+        raw_prompt = (raw_prompt or "").strip()
+        if not raw_prompt:
+            return None
+
         # 1. 确定 LLM 和 目标风格
         llm_model = model or self.llm_model or self.model
         target_model = model or self.model
@@ -671,6 +689,8 @@ class ImageGenerator:
         templates = p_conf.get("templates", {})
         system_instruction = ""
         user_content = f"Create an educational infographic prompt for: {raw_prompt}. Subject context: {subject}"
+        normalized_aspect_ratio = self._normalize_aspect_ratio(aspect_ratio)
+        layout_hint = self._describe_aspect_ratio(aspect_ratio)
 
         # 针对“教材绘图”的特殊处理
         if subject == "textbook":
@@ -680,24 +700,57 @@ class ImageGenerator:
                 system_instruction = template.format(
                     neg_constraint=neg_constraint,
                     style_instruction=style_instruction,
-                    lang_instruction=lang_instruction
+                    lang_instruction=lang_instruction,
+                    aspect_ratio=normalized_aspect_ratio,
+                    layout_hint=layout_hint
                 )
             user_content = f"Create a textbook illustration prompt for: {raw_prompt}. Style requirements: {style_keywords}. Subject context: {subject}"
         elif subject == "sketchnote":
-            system_instruction = templates.get("sketchnote", "")
-            user_content = f"用户提供的内容：\n{raw_prompt}\n\n请严格按照System Prompt的规则，生成对应的绘画指令。不要解释，直接输出最终的 Prompt。"
+            template = templates.get("sketchnote", "")
+            if template:
+                system_instruction = template.format(
+                    neg_constraint=neg_constraint,
+                    style_instruction=style_instruction,
+                    lang_instruction=lang_instruction,
+                    aspect_ratio=normalized_aspect_ratio,
+                    layout_hint=layout_hint
+                )
+            user_content = (
+                f"用户提供的内容：\n{raw_prompt}\n\n"
+                f"用户当前选择的画幅：{normalized_aspect_ratio}。\n"
+                f"请严格按照System Prompt的规则，生成对应的绘画指令。不要解释，直接输出最终的 Prompt。"
+            )
         else:
             template = templates.get("general", "")
             if template:
                 system_instruction = template.format(
                     neg_constraint=neg_constraint,
                     style_instruction=style_instruction,
-                    lang_instruction=lang_instruction
+                    lang_instruction=lang_instruction,
+                    aspect_ratio=normalized_aspect_ratio,
+                    layout_hint=layout_hint
                 )
         
         # Fallback if template is missing
         if not system_instruction:
             system_instruction = "You are a prompt expert. Rewrite the user prompt."
+
+        guardrail_instruction = (
+            "Faithfulness rules (highest priority):\n"
+            "1) Preserve the user's core intent and scene.\n"
+            "2) Do NOT change key entities, counts, formulas, time/place, or relationships.\n"
+            "3) Keep explicitly quoted/backticked text exactly unchanged.\n"
+            "4) If uncertain, keep the original wording instead of inventing details.\n"
+            "5) Output only one final prompt line, no markdown, no explanation."
+        )
+        system_instruction = f"{system_instruction}\n\n{guardrail_instruction}"
+        must_keep_fragments = self._extract_must_keep_fragments(raw_prompt)
+        must_keep_text = "; ".join(must_keep_fragments[:12])
+        user_content = (
+            f"{user_content}\n\n"
+            f"Original prompt (must stay faithful):\n{raw_prompt}\n\n"
+            f"Critical terms to preserve when present: {must_keep_text or 'None'}"
+        )
 
         # 注意: 这里使用 llm_model (self.model) 发起请求，而不是传入的 model (可能只是 image model)
         data = {
@@ -706,7 +759,7 @@ class ImageGenerator:
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_content}
             ],
-            "temperature": 0.7
+            "temperature": 0.2
         }
         
         print(f"✨ 正在优化提示词 (Target: {target_model}): {raw_prompt}")
@@ -731,6 +784,16 @@ class ImageGenerator:
             # 移除 markdown 图片链接
             content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
             content = re.sub(r'\[Image\]', '', content, flags=re.IGNORECASE)
+            content = re.sub(r"^(optimized\s*prompt|prompt)\s*[:：]\s*", "", content, flags=re.IGNORECASE)
+            content = re.sub(r"\s+", " ", content).strip()
+
+            drifted, missing = self._is_prompt_drifted(raw_prompt, content, must_keep_fragments)
+            if drifted:
+                print(f"⚠️ 优化结果偏离原意，回退原提示词。missing={missing[:3]}")
+                return raw_prompt
+            if missing:
+                keep_terms = ", ".join(f"`{x}`" for x in missing[:3])
+                content = f"{content}. Keep exact terms: {keep_terms}."
             content = content.strip()
             
             if not content or len(content) < 5:
@@ -741,6 +804,66 @@ class ImageGenerator:
             return content
         
         return None
+
+    def _extract_must_keep_fragments(self, text: str) -> List[str]:
+        if not text:
+            return []
+
+        fragments: List[str] = []
+        seen = set()
+
+        def _add(value: str):
+            v = (value or "").strip()
+            if len(v) < 2:
+                return
+            key = v.lower()
+            if key in seen:
+                return
+            seen.add(key)
+            fragments.append(v)
+
+        # Keep exact user-specified literal strings first.
+        for m in re.findall(r"`([^`]{1,80})`", text):
+            _add(m)
+        for m in re.findall(r"[\"“”'‘’]([^\"“”'‘’]{2,80})[\"“”'‘’]", text):
+            _add(m)
+
+        # Keep common technical tokens and constraints.
+        for m in re.findall(r"\b\d{1,4}[:xX]\d{1,4}\b", text):
+            _add(m)
+        for m in re.findall(r"\b[A-Za-z][A-Za-z0-9_.:/-]{2,}\b", text):
+            if any(ch.isdigit() for ch in m) or "-" in m or "_" in m:
+                _add(m)
+        for m in re.findall(r"\b\d+(?:\.\d+)?(?:%|°|cm|mm|m|km|fps|k|K)?\b", text):
+            _add(m)
+
+        return fragments[:20]
+
+    def _is_prompt_drifted(self, raw_prompt: str, optimized_prompt: str, must_keep_fragments: List[str]) -> tuple[bool, List[str]]:
+        if not optimized_prompt:
+            return True, must_keep_fragments[:]
+
+        raw = raw_prompt.strip()
+        opt = optimized_prompt.strip()
+        if not raw:
+            return False, []
+
+        missing: List[str] = []
+        low_opt = opt.lower()
+        for frag in must_keep_fragments or []:
+            low_frag = frag.lower()
+            if low_frag not in low_opt and frag not in opt:
+                missing.append(frag)
+
+        # Overly long rewrite usually means it is adding too much invented detail.
+        if len(opt) > max(1200, len(raw) * 8):
+            return True, missing
+
+        # If many hard constraints are lost, fallback to original prompt.
+        if must_keep_fragments and len(missing) >= max(2, int(len(must_keep_fragments) * 0.6)):
+            return True, missing
+
+        return False, missing
 
     def generate_seedream_images(
         self,

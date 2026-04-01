@@ -221,7 +221,7 @@
                                   <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 opacity-0 group-hover/img:opacity-100 transition-opacity duration-300 flex justify-between items-end">
                                       <div class="text-white flex-1 min-w-0 mr-4">
                                           <p class="typo-label-compact text-white/80 mb-1">{{ getSubjectLabel(currentDisplayImage.subject) }}</p>
-                                          <p class="typo-body font-bold text-white line-clamp-1" :title="currentDisplayImage.prompt">{{ currentDisplayImage.prompt }}</p>
+                                          <p class="typo-body font-bold text-white line-clamp-1" :title="getDisplayPrompt(currentDisplayImage)">{{ getDisplayPrompt(currentDisplayImage) }}</p>
                                       </div>
                                       <div class="flex gap-2 items-center shrink-0">
                                           <button @click.stop="handleDownload" class="bg-white text-slate-900 p-2 rounded-lg typo-button-compact hover:bg-indigo-500 hover:text-white transition-colors shadow-lg" :title="localeStore.t('image.download') || 'Download'">
@@ -673,7 +673,7 @@
                          <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-5">
                              <div class="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 delay-75">
-                                 <p class="text-white typo-button-compact line-clamp-2 mb-2">{{ img.prompt }}</p>
+                                 <p class="text-white typo-button-compact line-clamp-2 mb-2">{{ getDisplayPrompt(img) }}</p>
                                  <span class="inline-block px-2 py-0.5 bg-white/20 backdrop-blur-md rounded typo-caption-compact font-bold text-white border border-white/20">{{ getSubjectLabel(img.subject) }}</span>
                              </div>
                          </div>
@@ -1267,7 +1267,7 @@
                      <div class="space-y-4 flex-1">
                         <div>
                            <label class="typo-label-compact mb-2 block">{{ localeStore.t('image.prompt_label') }}</label>
-                           <div class="bg-slate-50 p-5 rounded-2xl typo-body font-mono leading-relaxed select-text border border-slate-100">{{ selectedImage.enhanced_prompt || selectedImage.prompt }}</div>
+                           <div class="bg-slate-50 p-5 rounded-2xl typo-body font-mono leading-relaxed select-text border border-slate-100">{{ getDisplayPrompt(selectedImage) }}</div>
                         </div>
                         
                         <div class="grid grid-cols-2 gap-4 typo-caption-compact">
@@ -1433,9 +1433,9 @@ const SYSTEM_PROVIDER_BASE_URLS = {
 const USER_PROVIDER_BASE_URLS = MODEL_PLATFORM_BASE_URLS
 const PROMPT_CHANNEL_KEYS = ['google', 'bytedance', 'aliyun']
 const PROMPT_CHANNEL_DEFAULTS = {
-    google: ['gemini-3.1-pro-preview', 'claude-sonnet-4-6', 'gpt-5.2-chat', 'kimi-k2.5'],
-    bytedance: ['gemini-3.1-pro-preview', 'claude-sonnet-4-6', 'gpt-5.2-chat', 'kimi-k2.5'],
-    aliyun: ['gemini-3.1-pro-preview', 'claude-sonnet-4-6', 'gpt-5.2-chat', 'kimi-k2.5']
+    google: ['gemini-3.1-pro-preview', 'kimi-k2.5'],
+    bytedance: ['gemini-3.1-pro-preview', 'kimi-k2.5'],
+    aliyun: ['gemini-3.1-pro-preview', 'kimi-k2.5']
 }
 
 const clonePromptDefaults = () => ({
@@ -1974,9 +1974,9 @@ const promptChannelPrimaryModel = {
     aliyun: 'gemini-3.1-pro-preview'
 }
 const promptModelHintsByChannel = {
-    google: ['gemini-3.1-pro-preview', 'gemini', 'claude-sonnet-4-6', 'gpt-5.2-chat', 'kimi-k2.5'],
-    bytedance: ['gemini-3.1-pro-preview', 'gemini', 'claude-sonnet-4-6', 'gpt-5.2-chat', 'kimi-k2.5'],
-    aliyun: ['gemini-3.1-pro-preview', 'gemini', 'claude-sonnet-4-6', 'gpt-5.2-chat', 'kimi-k2.5']
+    google: ['gemini-3.1-pro-preview', 'gemini', 'kimi-k2.5', 'kimi'],
+    bytedance: ['gemini-3.1-pro-preview', 'gemini', 'kimi-k2.5', 'kimi'],
+    aliyun: ['gemini-3.1-pro-preview', 'gemini', 'kimi-k2.5', 'kimi']
 }
 const resolvePromptModel = (channel, fallbackModel = '') => {
     const normalizedChannel = normalizePromptChannel(channel)
@@ -2704,6 +2704,7 @@ const resolvePromptChannelByImageProvider = (provider) => {
 const requestOptimizedPrompt = async (
     prompt,
     subject,
+    aspectRatio,
     imageModel,
     imageProvider = settings.value.imageProvider,
     preferredPromptChannel = ''
@@ -2716,13 +2717,19 @@ const requestOptimizedPrompt = async (
     }
     const res = await api.post(
         '/api/optimize_prompt',
-        { prompt, subject, model: promptModel, channel: normalizedChannel },
+        { prompt, subject, aspect_ratio: aspectRatio, model: promptModel, channel: normalizedChannel },
         { headers: buildPromptHeaders(promptModel) }
     )
     if (!res?.data?.optimized_prompt) {
         throw new Error(res?.data?.detail || 'Optimization failed')
     }
-    return res.data.optimized_prompt
+    return {
+        prompt: String(res.data.optimized_prompt || prompt),
+        optimized: !!res.data.optimized,
+        fallbackToOriginal: !!res.data.fallback_to_original,
+        model: String(res.data.model || ''),
+        errors: Array.isArray(res.data.errors) ? res.data.errors : []
+    }
 }
 
 const handleOptimizePrompt = async () => {
@@ -2737,13 +2744,16 @@ const handleOptimizePrompt = async () => {
         const optimized = await requestOptimizedPrompt(
             original,
             settings.value.subject,
+            settings.value.aspectRatio,
             settings.value.model,
             settings.value.imageProvider,
             settings.value.promptChannel
         )
-        if (optimized && optimized !== original) {
-            inputText.value = optimized
+        if (optimized.optimized && optimized.prompt !== original) {
+            inputText.value = optimized.prompt
             message.success('润色完成', { duration: 2000 })
+        } else if (optimized.fallbackToOriginal) {
+            message.info('优化失败，已保留原提示词', { duration: 2500 })
         } else {
             message.info('润色无改动', { duration: 2000 })
         }
@@ -2813,7 +2823,13 @@ const handleGenerateSingle = async () => {
             referenceImageUrls: refImageUrls.value
         })
         settings.value.model = result.model
-        currentDisplayImage.value = { ...result.data, is_mine: true, prompt: inputText.value, model: result.model }
+        currentDisplayImage.value = {
+            ...result.data,
+            is_mine: true,
+            prompt: inputText.value,
+            enhanced_prompt: result.data?.enhanced_prompt || '',
+            model: result.model
+        }
         if (!authStore.isLoggedIn) {
             persistLocalImage({
                 id: result.data?.id || `local_${Date.now()}`,
@@ -2885,6 +2901,10 @@ const fetchHistory = async () => {
 }
 
 const handleHistorySelect = (img) => currentDisplayImage.value = img
+const getDisplayPrompt = (img) => {
+    if (!img) return ''
+    return String(img.enhanced_prompt || img.prompt || '').trim()
+}
 const openImage = (img) => {
     if (!img) return
     const urls = Array.isArray(img.urls) ? [...img.urls] : undefined
@@ -2893,7 +2913,7 @@ const openImage = (img) => {
 }
 const closeModal = () => showModal.value = false
 const copyPrompt = () => {
-    const promptText = selectedImage.value?.enhanced_prompt || selectedImage.value?.prompt || ''
+    const promptText = getDisplayPrompt(selectedImage.value)
     if (!promptText) return
     navigator.clipboard.writeText(promptText)
     message.success(localeStore.t('image.copy_success'))
@@ -2924,7 +2944,7 @@ const handleDownload = () => {
 const handleRedraw = () => {
     const img = currentDisplayImage.value
     if (!img) return
-    inputText.value = img.prompt || inputText.value
+    inputText.value = getDisplayPrompt(img) || inputText.value
     if (img.url) {
         refImageUrls.value = [img.url]
     }
@@ -2946,7 +2966,13 @@ const handleQuickRefine = async () => {
             referenceImageUrls: [currentDisplayImage.value.url]
         })
         settings.value.model = result.model
-        currentDisplayImage.value = { ...result.data, is_mine: true, prompt: quickRefineText.value, model: result.model }
+        currentDisplayImage.value = {
+            ...result.data,
+            is_mine: true,
+            prompt: quickRefineText.value,
+            enhanced_prompt: result.data?.enhanced_prompt || '',
+            model: result.model
+        }
         if (!authStore.isLoggedIn) {
             persistLocalImage({
                 id: result.data?.id || `local_${Date.now()}`,
@@ -2984,7 +3010,7 @@ const handleQuickRefine = async () => {
 
 const jumpToVideo = (img) => {
     if (!img?.url) return
-    const basePrompt = img.prompt || img.enhanced_prompt || ''
+    const basePrompt = getDisplayPrompt(img)
     const defaultVideoPrompt = localeStore.t('image.to_video_prompt') || '在该图基础上做轻微镜头运动'
     const mergedPrompt = basePrompt ? `${basePrompt}。${defaultVideoPrompt}` : defaultVideoPrompt
     const payload = {
@@ -3230,6 +3256,7 @@ const buildBatchTask = (raw) => {
         optimizedPrompt: '',
         originalPrompt: '',
         optimizationError: '',
+        optimizationAttempted: false,
         phase: ''
     }
 }
@@ -3476,6 +3503,7 @@ const optimizePendingImageTasks = async () => {
             const sourcePrompt = String(task.originalPrompt || task.prompt || '').trim()
             task.optimizedPrompt = ''
             task.optimizationError = ''
+            task.optimizationAttempted = false
 
             if (!cfg.model) {
                 task.optimizationError = tSettings('settings.model_required_prompt', '请先在模型配置中添加提示词优化模型')
@@ -3487,16 +3515,26 @@ const optimizePendingImageTasks = async () => {
                 const optimized = await requestOptimizedPrompt(
                     sourcePrompt,
                     cfg.subject,
+                    cfg.aspectRatio,
                     cfg.model,
                     cfg.imageProvider || settings.value.imageProvider,
                     cfg.promptChannel || settings.value.promptChannel
                 )
                 task.originalPrompt = sourcePrompt
-                task.optimizedPrompt = optimized
-                task.prompt = optimized
-                successCount += 1
+                task.optimizationAttempted = true
+                if (optimized.optimized) {
+                    task.optimizedPrompt = optimized.prompt
+                    task.prompt = optimized.prompt
+                    successCount += 1
+                } else {
+                    task.optimizedPrompt = ''
+                    task.prompt = sourcePrompt
+                    task.optimizationError = optimized.errors?.[optimized.errors.length - 1] || ''
+                    failureCount += 1
+                }
             } catch (e) {
                 task.optimizationError = e?.response?.data?.detail || e?.message || ''
+                task.optimizationAttempted = true
                 failureCount += 1
             }
         }
@@ -3521,21 +3559,32 @@ const runImageTask = async (task) => {
         throw new Error(tSettings('settings.model_required_image', '请先在模型配置中添加绘图模型'))
     }
     let promptToUse = String(task.optimizedPrompt || '').trim() || task.prompt
-    if (!task.optimizedPrompt && cfg.optimize) {
+    if (!task.optimizationAttempted && !task.optimizedPrompt && cfg.optimize) {
         try {
             const sourcePrompt = String(task.originalPrompt || task.prompt || '').trim()
-            promptToUse = await requestOptimizedPrompt(
+            const optimized = await requestOptimizedPrompt(
                 sourcePrompt,
                 cfg.subject,
+                cfg.aspectRatio,
                 cfg.model,
                 cfg.imageProvider || settings.value.imageProvider,
                 cfg.promptChannel || settings.value.promptChannel
             )
+            promptToUse = optimized.prompt || sourcePrompt
             task.originalPrompt = sourcePrompt
-            task.optimizedPrompt = promptToUse
-            task.prompt = promptToUse
+            task.optimizationAttempted = true
+            if (optimized.optimized) {
+                task.optimizedPrompt = promptToUse
+                task.prompt = promptToUse
+            } else {
+                task.optimizedPrompt = ''
+                task.prompt = sourcePrompt
+                task.optimizationError = optimized.errors?.[optimized.errors.length - 1] || ''
+                promptToUse = sourcePrompt
+            }
         } catch (e) {
             task.optimizationError = e?.response?.data?.detail || e?.message || ''
+            task.optimizationAttempted = true
         }
     }
     const result = await generateImageWithFallback({ prompt: promptToUse, cfg })

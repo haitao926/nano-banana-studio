@@ -11,7 +11,6 @@ from app_state import GENERATED_DIR, MAX_BATCH_TASKS, BATCH_WORKERS, BATCH_DELAY
 from deps import get_current_user
 from helpers import (
     _build_model_candidates,
-    _build_prompt_model_chain,
     _dedupe_preserve_order,
     _download_reference_image,
     _download_public_image_bytes,
@@ -27,6 +26,9 @@ from helpers import (
 from schemas import BatchGenRequest, ModifyGenRequest, OptimizePromptRequest, SingleGenRequest
 
 router = APIRouter()
+
+PROMPT_OPTIMIZER_PRIMARY_MODEL = "gemini-3.1-pro-preview"
+PROMPT_OPTIMIZER_FALLBACK_MODEL = "kimi-k2.5"
 
 
 def _build_seedream_image_param(image_url: str) -> Optional[str]:
@@ -289,6 +291,7 @@ async def generate_single(
                 "model": request_model,
                 "reference_image_url": req.reference_image_url,
                 "reference_image_urls": req.reference_image_urls,
+                "enhanced_prompt": enhanced_prompt,
                 "seedream_group": True,
                 "group_total": len(seedream_files),
             }
@@ -313,6 +316,8 @@ async def generate_single(
                 "success": True,
                 "url": urls[0],
                 "urls": urls,
+                "prompt": req.prompt,
+                "enhanced_prompt": enhanced_prompt,
                 "remaining_quota": remaining,
             }
 
@@ -329,6 +334,7 @@ async def generate_single(
                 "model": request_model,
                 "reference_image_url": req.reference_image_url,
                 "reference_image_urls": req.reference_image_urls,
+                "enhanced_prompt": enhanced_prompt,
             }
             db.log_image(
                 user_id=current_user["id"] if current_user else None,
@@ -347,6 +353,8 @@ async def generate_single(
             return {
                 "success": True,
                 "url": f"/static/generated/{filename}",
+                "prompt": req.prompt,
+                "enhanced_prompt": enhanced_prompt,
                 "remaining_quota": remaining,
             }
 
@@ -572,20 +580,15 @@ async def optimize_prompt_endpoint(
     x_model_base_url: Optional[str] = Header(None, alias="x-model-base-url"),
 ):
     try:
-        prompt_default = _get_default_model("prompt")
-        preferred_model = (req.model or prompt_default or "").strip()
         prompt_channel = _normalize_prompt_channel(req.channel)
-        prompt_model_chain = _build_prompt_model_chain(preferred_model, prompt_channel)
-        if not prompt_model_chain:
-            image_default = (req.model or _get_default_model("image") or "").strip()
-            if not image_default:
-                raise HTTPException(status_code=400, detail="请先在模型配置中添加提示词优化模型")
-            prompt_model_chain = [image_default]
+        prompt_model_chain = [
+            PROMPT_OPTIMIZER_PRIMARY_MODEL,
+            PROMPT_OPTIMIZER_FALLBACK_MODEL,
+        ]
         _enforce_rate_limit(request, current_user)
 
         errors: List[str] = []
         attempted_models: List[str] = []
-        last_auth_error: Optional[HTTPException] = None
 
         for prompt_model in prompt_model_chain:
             # Prefer dedicated prompt service; fallback to image service for legacy compatibility.
@@ -602,8 +605,7 @@ async def optimize_prompt_endpoint(
                         model=prompt_model,
                     )
                 except HTTPException as auth_error:
-                    if auth_error.status_code in (401, 403):
-                        last_auth_error = auth_error
+                    if auth_error.status_code in (400, 401, 403):
                         errors.append(f"{prompt_model}@{prompt_service}: {auth_error.detail}")
                         continue
                     raise
@@ -630,6 +632,7 @@ async def optimize_prompt_endpoint(
                         model=prompt_model,
                         api_key=candidate.get("key"),
                         base_url=candidate.get("base_url"),
+                        aspect_ratio=req.aspect_ratio,
                     )
                     if optimized:
                         return {
@@ -637,6 +640,8 @@ async def optimize_prompt_endpoint(
                             "optimized_prompt": optimized,
                             "model": prompt_model,
                             "channel": prompt_channel,
+                            "optimized": optimized != req.prompt,
+                            "fallback_to_original": False,
                         }
                     last_error = getattr(img_gen, "last_error", None) or {}
                     if last_error.get("message"):
@@ -644,14 +649,15 @@ async def optimize_prompt_endpoint(
                     else:
                         errors.append(f"{prompt_model}@{prompt_service}: optimization returned empty")
 
-        if last_auth_error and not attempted_models:
-            raise last_auth_error
-
-        model_chain_text = ", ".join(prompt_model_chain[:6])
-        detail = f"Prompt optimization failed. Tried models: {model_chain_text}"
-        if errors:
-            detail = f"{detail}. Last errors: {' | '.join(errors[-3:])}"
-        raise HTTPException(status_code=502, detail=detail)
+        return {
+            "success": True,
+            "optimized_prompt": req.prompt,
+            "model": "",
+            "channel": prompt_channel,
+            "optimized": False,
+            "fallback_to_original": True,
+            "errors": errors[-6:],
+        }
     except HTTPException as he:
         raise he
     except Exception as e:

@@ -27,9 +27,9 @@ MODEL_PLATFORM_BASE_URLS = {
 }
 PROMPT_CHANNEL_KEYS = ("google", "bytedance", "aliyun")
 DEFAULT_PROMPT_CHANNEL_MODELS = {
-    "google": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "gpt-5.2-chat", "kimi-k2.5"],
-    "bytedance": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "gpt-5.2-chat", "kimi-k2.5"],
-    "aliyun": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "gpt-5.2-chat", "kimi-k2.5"],
+    "google": ["gemini-3.1-pro-preview", "kimi-k2.5"],
+    "bytedance": ["gemini-3.1-pro-preview", "kimi-k2.5"],
+    "aliyun": ["gemini-3.1-pro-preview", "kimi-k2.5"],
 }
 from core.video_generator import VideoGenerator
 from app_state import (

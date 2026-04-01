@@ -43,6 +43,7 @@ class OptimizePromptRequest(BaseModel):
     prompt: str
     subject: str = "general"
     model: Optional[str] = None
+    aspect_ratio: Optional[str] = None
     channel: Optional[Literal["google", "bytedance", "aliyun", "byte"]] = None
 
 
