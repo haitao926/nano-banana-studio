@@ -89,21 +89,21 @@
                 :placeholder="localeStore.t('video.prompt_placeholder')"
               ></textarea>
 
-              <div v-if="requiresImage && imagePreviewUrl" class="px-4 pb-2 flex gap-2 overflow-x-auto custom-scrollbar">
+              <div v-if="requiresImage && imageDisplayUrl" class="px-4 pb-2 flex gap-2 overflow-x-auto custom-scrollbar">
                 <div class="relative w-6 h-6 flex-shrink-0 rounded-md overflow-hidden border border-slate-200 group/img">
-                  <img :src="imagePreviewUrl" class="w-full h-full object-cover" />
+                  <img :src="imageDisplayUrl" class="w-full h-full object-cover" />
                   <button @click="clearImage" class="absolute -top-1 -right-1 w-4 h-4 bg-white/90 border border-slate-200 text-slate-500 rounded-full flex items-center justify-center text-[9px] hover:text-red-500">×</button>
                 </div>
               </div>
 
               <div class="px-3 py-2 border-t border-slate-100/50 flex items-center justify-between bg-white/50">
                 <div class="flex items-center gap-2">
-                  <n-upload v-if="requiresImage && !imagePreviewUrl" :custom-request="handleImageUpload" :max="1" accept="image/jpeg,image/png,image/webp" :show-file-list="false">
+                  <n-upload v-if="requiresImage && !imageDisplayUrl" :custom-request="handleImageUpload" :max="1" accept="image/jpeg,image/png,image/webp" :show-file-list="false">
                     <button class="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 rounded-lg transition-all shadow-sm hover:shadow flex items-center gap-2 active:scale-95">
                       <span class="text-xs font-bold">{{ localeStore.t('video.upload_image') }}</span>
                     </button>
                   </n-upload>
-                  <div v-if="requiresImage && imagePreviewUrl" class="flex items-center gap-2 animate-fade-in">
+                  <div v-if="requiresImage && imageDisplayUrl" class="flex items-center gap-2 animate-fade-in">
                     <div class="h-4 w-px bg-slate-200"></div>
                     <span class="text-xs text-slate-400 font-medium">1 / 1</span>
                   </div>
@@ -156,7 +156,7 @@
             </div>
 
             <div v-if="resultVideoUrl" class="relative w-full h-full p-4 flex items-center justify-center animate-scale-in">
-              <video :src="resultVideoUrl" controls class="max-w-full max-h-full rounded-2xl shadow-2xl ring-1 ring-black/5" autoplay loop></video>
+              <video :src="resultVideoDisplayUrl || resultVideoUrl" controls class="max-w-full max-h-full rounded-2xl shadow-2xl ring-1 ring-black/5" autoplay loop></video>
             </div>
           </div>
 
@@ -169,7 +169,7 @@
               <button
                 v-for="item in filteredHistory"
                 :key="item.id || item.task_id"
-                @click="resultVideoUrl = item.video_url"
+                @click="selectHistoryItem(item)"
                 class="flex-shrink-0 w-48 text-left p-3 rounded-2xl border transition-all duration-300 group relative overflow-hidden"
                 :class="resultVideoUrl === item.video_url ? 'bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-500/30' : 'bg-white border-slate-100 hover:border-indigo-300 hover:shadow-md'">
                 <div class="flex items-center justify-between mb-2">
@@ -194,7 +194,7 @@
                 <span class="typo-label-compact text-slate-500 tracking-wide">Ready for download</span>
               </div>
             </div>
-            <a :href="resultVideoUrl" download class="py-3 px-6 bg-slate-900 hover:bg-black text-white typo-button-compact rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 transform hover:-translate-y-0.5">
+            <a :href="resultVideoDisplayUrl || resultVideoUrl" download class="py-3 px-6 bg-slate-900 hover:bg-black text-white typo-button-compact rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 transform hover:-translate-y-0.5">
               <span>📥</span> {{ localeStore.t('video.download') }}
             </a>
           </div>
@@ -213,6 +213,7 @@ import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
 import { selectUserPoolWithFallback } from '../utils/userKeyPools'
 import { loadLocalHistory, prependLocalHistory } from '../utils/localHistory'
+import { createProtectedMediaLoader } from '../utils/protectedMedia'
 
 const localeStore = useLocaleStore()
 const authStore = useAuthStore()
@@ -236,14 +237,17 @@ const settings = ref({
 })
 const imageUrl = ref('')
 const imagePreviewUrl = ref('')
+const imageDisplayUrl = ref('')
 const loading = ref(false)
 const status = ref('')
 const taskId = ref('')
 const resultVideoUrl = ref('')
+const resultVideoDisplayUrl = ref('')
 const pollTimer = ref(null)
 const videoHistory = ref([])
 const modelCatalog = ref([])
 const pendingVideoMeta = ref(null)
+const protectedMedia = createProtectedMediaLoader(api)
 
 const loadModelCatalog = async () => {
   try {
@@ -357,6 +361,19 @@ const filteredHistory = computed(() => {
   return items.filter((item) => (item.mode || 'text') === activeMode.value)
 })
 
+const decorateHistoryItems = async (items) => Promise.all((items || []).map(async (item) => ({
+  ...item,
+  display_video_url: await protectedMedia.resolveUrl(item?.video_url)
+})))
+
+const updateImageDisplayUrl = async () => {
+  imageDisplayUrl.value = imagePreviewUrl.value || await protectedMedia.resolveUrl(imageUrl.value)
+}
+
+const updateResultVideoDisplayUrl = async () => {
+  resultVideoDisplayUrl.value = await protectedMedia.resolveUrl(resultVideoUrl.value)
+}
+
 const setMode = (mode) => {
   if (mode === 'text' && isI2vModelName(settings.value.model)) {
     const fallback = (videoModelOptionsAll.value || []).find((option) => !isI2vModelName(option.value))
@@ -379,10 +396,12 @@ const resetState = () => {
   prompt.value = ''
   imageUrl.value = ''
   imagePreviewUrl.value = ''
+  imageDisplayUrl.value = ''
   loading.value = false
   status.value = ''
   taskId.value = ''
   resultVideoUrl.value = ''
+  resultVideoDisplayUrl.value = ''
   stopPolling()
 }
 
@@ -395,7 +414,7 @@ const applySeededImage = () => {
     if (!payload?.image_url) return
     setMode('image')
     imageUrl.value = payload.image_url
-    imagePreviewUrl.value = payload.image_url
+    imagePreviewUrl.value = ''
     if (payload.prompt && !prompt.value) prompt.value = payload.prompt
     if (payload.aspect_ratio === '16:9' || payload.aspect_ratio === '9:16') {
       settings.value.aspectRatio = payload.aspect_ratio
@@ -443,7 +462,7 @@ const handleImageUpload = async ({ file, onProgress }) => {
       })
       if (res.data?.success) {
         imageUrl.value = res.data.url
-        imagePreviewUrl.value = res.data.url
+        imagePreviewUrl.value = ''
         message.success(localeStore.t('video.upload_success'))
       } else {
         throw new Error(res.data?.detail || 'Upload failed')
@@ -468,6 +487,7 @@ const handleImageUpload = async ({ file, onProgress }) => {
 const clearImage = () => {
   imageUrl.value = ''
   imagePreviewUrl.value = ''
+  imageDisplayUrl.value = ''
 }
 
 const submitTask = async () => {
@@ -544,12 +564,12 @@ const stopPolling = () => {
 
 const fetchVideoHistory = async () => {
   if (!authStore.token) {
-    videoHistory.value = loadLocalHistory(VIDEO_HISTORY_KEY)
+    videoHistory.value = await decorateHistoryItems(loadLocalHistory(VIDEO_HISTORY_KEY))
     return
   }
   try {
     const res = await api.get('/api/video/history', { headers: buildVideoHeaders(settings.value.model) })
-    videoHistory.value = Array.isArray(res.data) ? res.data : []
+    videoHistory.value = await decorateHistoryItems(Array.isArray(res.data) ? res.data : [])
   } catch (e) {
     const status = e?.response?.status
     if (status === 401) message.warning('请先登录后查看历史记录')
@@ -575,6 +595,11 @@ const persistLocalVideo = (videoUrl) => {
   })
 }
 
+const selectHistoryItem = (item) => {
+  resultVideoUrl.value = item?.video_url || ''
+  resultVideoDisplayUrl.value = item?.display_video_url || item?.video_url || ''
+}
+
 const formatTime = (ts) => {
   if (!ts) return ''
   const date = new Date(ts * 1000)
@@ -589,5 +614,14 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  protectedMedia.revokeAll()
 })
+
+watch([imagePreviewUrl, imageUrl], () => {
+  updateImageDisplayUrl()
+}, { immediate: true })
+
+watch(resultVideoUrl, () => {
+  updateResultVideoDisplayUrl()
+}, { immediate: true })
 </script>

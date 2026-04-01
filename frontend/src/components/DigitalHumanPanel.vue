@@ -152,7 +152,7 @@
 
             <!-- Result Video -->
             <div v-if="resultVideoUrl" class="relative w-full h-full p-4 flex items-center justify-center animate-scale-in">
-              <video :src="resultVideoUrl" controls class="max-w-full max-h-full rounded-2xl shadow-2xl ring-1 ring-black/5" autoplay loop></video>
+              <video :src="resultVideoDisplayUrl || resultVideoUrl" controls class="max-w-full max-h-full rounded-2xl shadow-2xl ring-1 ring-black/5" autoplay loop></video>
             </div>
         </div>
 
@@ -166,7 +166,7 @@
                 <button
                     v-for="item in videoHistory"
                     :key="item.id || item.task_id"
-                    @click="resultVideoUrl = item.video_url"
+                    @click="selectHistoryItem(item)"
                     class="flex-shrink-0 w-40 text-left p-2.5 rounded-2xl border transition-all duration-300 group relative overflow-hidden"
                     :class="resultVideoUrl === item.video_url ? 'bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-500/30' : 'bg-white border-slate-100 hover:border-indigo-300 hover:shadow-md'">
                     <div class="flex items-center justify-between mb-2">
@@ -192,7 +192,7 @@
                     <span class="typo-label-compact text-slate-500 tracking-wide">Ready for download</span>
                 </div>
             </div>
-            <a :href="resultVideoUrl" download class="py-3 px-6 bg-slate-900 hover:bg-black text-white typo-button-compact rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 transform hover:-translate-y-0.5">
+            <a :href="resultVideoDisplayUrl || resultVideoUrl" download class="py-3 px-6 bg-slate-900 hover:bg-black text-white typo-button-compact rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center gap-2 transform hover:-translate-y-0.5">
                 <span>📥</span> {{ localeStore.t('dh.download_video') }}
             </a>
         </div>
@@ -210,6 +210,7 @@ import { useLocaleStore } from '../stores/locale'
 import { useAuthStore } from '../stores/auth'
 import { selectUserPoolWithFallback } from '../utils/userKeyPools'
 import { loadLocalHistory, prependLocalHistory } from '../utils/localHistory'
+import { createProtectedMediaLoader } from '../utils/protectedMedia'
 
 const localeStore = useLocaleStore()
 const message = useMessage()
@@ -269,9 +270,11 @@ const loading = ref(false)
 const taskId = ref('')
 const status = ref('') // processing, done, failed
 const resultVideoUrl = ref('')
+const resultVideoDisplayUrl = ref('')
 const pollTimer = ref(null)
 const videoHistory = ref([])
 const pendingMeta = ref(null)
+const protectedMedia = createProtectedMediaLoader(api)
 
 const imageMeta = ref({ size: 0, width: 0, height: 0, type: '' })
 const audioMeta = ref({ size: 0, duration: 0, type: '' })
@@ -326,8 +329,10 @@ const audioInfo = computed(() => {
     return parts.join(' · ')
 })
 
-const imageDisplayUrl = computed(() => imagePreviewUrl.value || imageUrl.value)
-const audioDisplayUrl = computed(() => audioPreviewUrl.value || audioUrl.value)
+const resolvedImageUrl = ref('')
+const resolvedAudioUrl = ref('')
+const imageDisplayUrl = computed(() => imagePreviewUrl.value || resolvedImageUrl.value || imageUrl.value)
+const audioDisplayUrl = computed(() => audioPreviewUrl.value || resolvedAudioUrl.value || audioUrl.value)
 
 const isValid = computed(() => imageUrl.value && audioUrl.value && !imageError.value && !audioError.value && !promptError.value)
 const statusMsg = computed(() => {
@@ -394,6 +399,7 @@ const clearImage = () => {
     revokeObjectUrl(imagePreviewUrl.value)
     imagePreviewUrl.value = ''
     imageUrl.value = ''
+    resolvedImageUrl.value = ''
     imageMeta.value = { size: 0, width: 0, height: 0, type: '' }
     resetTaskState()
 }
@@ -402,9 +408,24 @@ const clearAudio = () => {
     revokeObjectUrl(audioPreviewUrl.value)
     audioPreviewUrl.value = ''
     audioUrl.value = ''
+    resolvedAudioUrl.value = ''
     audioMeta.value = { size: 0, duration: 0, type: '' }
     resetTaskState()
 }
+
+const updateResolvedMedia = async () => {
+    resolvedImageUrl.value = await protectedMedia.resolveUrl(imageUrl.value)
+    resolvedAudioUrl.value = await protectedMedia.resolveUrl(audioUrl.value)
+}
+
+const updateResultVideoDisplayUrl = async () => {
+    resultVideoDisplayUrl.value = await protectedMedia.resolveUrl(resultVideoUrl.value)
+}
+
+const decorateHistoryItems = async (items) => Promise.all((items || []).map(async (item) => ({
+    ...item,
+    display_video_url: await protectedMedia.resolveUrl(item?.video_url)
+})))
 
 const uploadFileToPublic = async (rawFile, onProgress) => {
     const form = new FormData()
@@ -582,18 +603,19 @@ const resetTaskState = () => {
     taskId.value = ''
     status.value = ''
     resultVideoUrl.value = ''
+    resultVideoDisplayUrl.value = ''
     if (pollTimer.value) clearInterval(pollTimer.value)
 }
 
 const fetchVideoHistory = async () => {
     if (!authStore.token) {
-        videoHistory.value = loadLocalHistory(DIGITAL_HUMAN_HISTORY_KEY)
+        videoHistory.value = await decorateHistoryItems(loadLocalHistory(DIGITAL_HUMAN_HISTORY_KEY))
         return
     }
     try {
         const res = await api.get('/api/video/history', { headers: buildVideoHeaders(model.value) })
         if (Array.isArray(res.data)) {
-            videoHistory.value = res.data.filter((item) => item.video_url && (item.mode || 'digital_human') === 'digital_human')
+            videoHistory.value = await decorateHistoryItems(res.data.filter((item) => item.video_url && (item.mode || 'digital_human') === 'digital_human'))
         }
     } catch (e) {}
 }
@@ -614,6 +636,11 @@ const persistLocalHistory = (videoUrl) => {
     videoHistory.value = prependLocalHistory(DIGITAL_HUMAN_HISTORY_KEY, entry, {
         idResolver: (item) => item?.id || item?.task_id || item?.video_url
     })
+}
+
+const selectHistoryItem = (item) => {
+    resultVideoUrl.value = item?.video_url || ''
+    resultVideoDisplayUrl.value = item?.display_video_url || item?.video_url || ''
 }
 
 const updateImageMeta = (rawFile) => {
@@ -697,10 +724,19 @@ onUnmounted(() => {
     if (pollTimer.value) clearInterval(pollTimer.value)
     revokeObjectUrl(imagePreviewUrl.value)
     revokeObjectUrl(audioPreviewUrl.value)
+    protectedMedia.revokeAll()
 })
 
 onMounted(() => {
     loadModelCatalog()
     fetchVideoHistory()
 })
+
+watch([imageUrl, audioUrl], () => {
+    updateResolvedMedia()
+}, { immediate: true })
+
+watch(resultVideoUrl, () => {
+    updateResultVideoDisplayUrl()
+}, { immediate: true })
 </script>

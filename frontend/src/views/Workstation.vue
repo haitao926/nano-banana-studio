@@ -215,7 +215,7 @@
                           <!-- Image Display Area -->
                           <div class="flex-1 flex items-center justify-center p-4 min-h-0 overflow-hidden relative">
                               <div class="relative group/img max-w-full max-h-full shadow-2xl rounded-lg overflow-hidden transition-transform duration-500 hover:scale-[1.01]">
-                                  <img :src="currentDisplayImage.url" class="max-w-full max-h-full object-contain" @click="openImage(currentDisplayImage)" />
+                                  <img :src="currentDisplayImage.display_url || currentDisplayImage.url" class="max-w-full max-h-full object-contain" @click="openImage(currentDisplayImage)" />
                                   
                                   <!-- Image Actions Overlay -->
                                   <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 opacity-0 group-hover/img:opacity-100 transition-opacity duration-300 flex justify-between items-end">
@@ -265,7 +265,7 @@
                        <div v-for="img in recentHistory" :key="img.id" @click="handleHistorySelect(img)" 
                             class="h-12 w-12 flex-shrink-0 rounded-xl overflow-hidden cursor-pointer transition-all duration-300 relative group"
                             :class="currentDisplayImage?.id === img.id ? 'ring-2 ring-indigo-500 ring-offset-2 scale-110' : 'opacity-60 hover:opacity-100 hover:scale-105'">
-                            <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover" />
+                            <img :src="img.display_thumbnail_url || img.display_url || img.thumbnail_url || img.url" class="w-full h-full object-cover" />
                        </div>
                   </div>
                </div>
@@ -596,7 +596,7 @@
                             <div class="aspect-video bg-slate-50 relative border-b border-slate-100 group-hover:border-indigo-100 transition-colors">
                                  <span class="absolute top-2 left-2 px-2 py-1 bg-white/80 text-slate-600 rounded-full typo-badge shadow-sm">{{ getBatchTypeLabel(task.type) }}</span>
                                  <template v-if="task.status === 'done' && task.resultUrl">
-                                     <img v-if="task.resultType === 'image'" :src="task.resultUrl" class="w-full h-full object-cover cursor-pointer transition-transform duration-700 group-hover:scale-110" @click="openBatchImage(task)" />
+                                     <img v-if="task.resultType === 'image'" :src="task.displayResultUrl || task.resultUrl" class="w-full h-full object-cover cursor-pointer transition-transform duration-700 group-hover:scale-110" @click="openBatchImage(task)" />
                                      <div v-else-if="task.resultType === 'audio'" class="absolute inset-0 flex items-center justify-center p-4">
                                          <audio :src="task.resultUrl" controls class="w-full" />
                                      </div>
@@ -670,7 +670,7 @@
              <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                  <TransitionGroup name="list">
                      <div v-for="img in filteredGallery" :key="img.id" class="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 cursor-pointer group relative aspect-square" @click="openImage(img)">
-                         <img :src="img.thumbnail_url || img.url" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                         <img :src="img.display_thumbnail_url || img.display_url || img.thumbnail_url || img.url" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                          <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-5">
                              <div class="transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300 delay-75">
                                  <p class="text-white typo-button-compact line-clamp-2 mb-2">{{ getDisplayPrompt(img) }}</p>
@@ -1249,10 +1249,10 @@
                 
                 <!-- Image Container -->
                 <div class="flex-1 checker-bg flex items-center justify-center p-8 relative overflow-hidden group">
-                     <img :src="selectedImage.url" class="max-w-full max-h-full object-contain shadow-2xl rounded-lg transition-transform duration-500 hover:scale-[1.02]" />
+                     <img :src="selectedImage.display_url || selectedImage.url" class="max-w-full max-h-full object-contain shadow-2xl rounded-lg transition-transform duration-500 hover:scale-[1.02]" />
                      <div v-if="selectedImage.urls && selectedImage.urls.length > 1" class="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-wrap gap-2 bg-white/80 backdrop-blur-sm border border-white/60 rounded-2xl p-2 shadow-lg">
-                         <button v-for="(imgUrl, idx) in selectedImage.urls" :key="imgUrl" @click.stop="selectedImage.url = imgUrl" class="w-12 h-12 rounded-lg overflow-hidden border border-transparent hover:border-indigo-400 transition-all" :class="imgUrl === selectedImage.url ? 'border-indigo-500 ring-2 ring-indigo-200' : ''">
-                             <img :src="imgUrl" class="w-full h-full object-cover" :alt="`seedream-${idx + 1}`" />
+                         <button v-for="(imgUrl, idx) in selectedImage.urls" :key="imgUrl" @click.stop="selectModalImage(idx)" class="w-12 h-12 rounded-lg overflow-hidden border border-transparent hover:border-indigo-400 transition-all" :class="imgUrl === selectedImage.url ? 'border-indigo-500 ring-2 ring-indigo-200' : ''">
+                             <img :src="selectedImage.display_urls?.[idx] || imgUrl" class="w-full h-full object-cover" :alt="`seedream-${idx + 1}`" />
                          </button>
                      </div>
                 </div>
@@ -1287,7 +1287,7 @@
                             <Video class="w-4 h-4" />
                             <span>{{ localeStore.t('image.to_video') || '生成视频' }}</span>
                          </button>
-                         <a :href="selectedImage.url" download class="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-bold shadow-lg hover:shadow-xl text-center transition-all flex items-center justify-center gap-2">
+                         <a :href="selectedImage.display_url || selectedImage.url" download class="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-bold shadow-lg hover:shadow-xl text-center transition-all flex items-center justify-center gap-2">
                             <span>⬇️</span> {{ localeStore.t('image.download') }}
                          </a>
                          <button @click="copyPrompt" class="w-full py-4 bg-white border-2 border-slate-100 hover:border-slate-300 text-slate-600 font-bold rounded-2xl transition-all hover:bg-slate-50">
@@ -1303,7 +1303,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, reactive, watch, nextTick } from 'vue'
 import { NPopselect, useMessage, NUpload } from 'naive-ui'
 import { Wand2, Image as ImageIcon, Bot, Zap, Download, RefreshCw, Maximize2, Video } from 'lucide-vue-next'
 import api from '../services/api'
@@ -1312,6 +1312,7 @@ import { useAuthStore } from '../stores/auth'
 import { useLocaleStore } from '../stores/locale'
 import { readUserKeyPools, saveUserKeyPools, buildLegacyPools, selectUserPoolWithFallback } from '../utils/userKeyPools'
 import { loadLocalHistory, prependLocalHistory, mergeLocalHistory, saveLocalHistory } from '../utils/localHistory'
+import { createProtectedMediaLoader, isProtectedStaticUrl } from '../utils/protectedMedia'
 import DigitalHumanPanel from '../components/DigitalHumanPanel.vue'
 import { voiceCatalog } from '../data/voiceCatalog'
 
@@ -1354,6 +1355,7 @@ const userKeyPools = ref([])
 const expandedUserPools = reactive(new Set())
 const userPoolsDirty = ref(false)
 const userPoolsDirtyLocked = ref(false)
+const protectedMedia = createProtectedMediaLoader(api)
 
 // Admin
 const usersList = ref([])
@@ -2823,15 +2825,15 @@ const handleGenerateSingle = async () => {
             referenceImageUrls: refImageUrls.value
         })
         settings.value.model = result.model
-        currentDisplayImage.value = {
+        currentDisplayImage.value = await decorateImageRecord({
             ...result.data,
             is_mine: true,
             prompt: inputText.value,
             enhanced_prompt: result.data?.enhanced_prompt || '',
             model: result.model
-        }
+        })
         if (!authStore.isLoggedIn) {
-            persistLocalImage({
+            await persistLocalImage({
                 id: result.data?.id || `local_${Date.now()}`,
                 url: result.data?.url || result.data?.urls?.[0],
                 urls: Array.isArray(result.data?.urls) ? result.data.urls : undefined,
@@ -2873,7 +2875,27 @@ const handleGenerateSingle = async () => {
 
 const getLocalImageKey = (item) => item?.id || item?.url
 
-const persistLocalImage = (entry) => {
+const revokeMediaObjectUrls = () => {
+    protectedMedia.revokeAll()
+}
+
+const getDisplayableMediaUrl = async (url) => {
+    return protectedMedia.resolveUrl(url)
+}
+
+const decorateImageRecord = async (entry) => {
+    if (!entry || typeof entry !== 'object') return entry
+    const next = { ...entry }
+    next.display_url = await getDisplayableMediaUrl(next.url)
+    if (next.thumbnail_url) next.display_thumbnail_url = await getDisplayableMediaUrl(next.thumbnail_url)
+    if (Array.isArray(next.urls) && next.urls.length) {
+        next.display_urls = await Promise.all(next.urls.map((url) => getDisplayableMediaUrl(url)))
+        if (!next.display_url) next.display_url = next.display_urls[0]
+    }
+    return next
+}
+
+const persistLocalImage = async (entry) => {
     const normalized = {
         ...entry,
         id: entry?.id || `local_${Date.now()}`,
@@ -2882,7 +2904,8 @@ const persistLocalImage = (entry) => {
         is_mine: true
     }
     const updated = prependLocalHistory(IMAGE_HISTORY_KEY, normalized, { idResolver: getLocalImageKey })
-    galleryImages.value = mergeLocalHistory(updated, galleryImages.value, { idResolver: getLocalImageKey })
+    const decorated = await Promise.all(updated.map((item) => decorateImageRecord(item)))
+    galleryImages.value = mergeLocalHistory(decorated, galleryImages.value, { idResolver: getLocalImageKey })
 }
 
 const fetchHistory = async () => {
@@ -2890,9 +2913,9 @@ const fetchHistory = async () => {
     try {
         const headers = authStore.isLoggedIn && authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
         const res = await api.get('/api/gallery', { headers })
-        const remoteImages = Array.isArray(res.data) ? res.data : []
+        const remoteImages = await Promise.all((Array.isArray(res.data) ? res.data : []).map((item) => decorateImageRecord(item)))
         if (!authStore.isLoggedIn) {
-            const localImages = loadLocalHistory(IMAGE_HISTORY_KEY)
+            const localImages = await Promise.all(loadLocalHistory(IMAGE_HISTORY_KEY).map((item) => decorateImageRecord(item)))
             galleryImages.value = mergeLocalHistory(localImages, remoteImages, { idResolver: getLocalImageKey })
             return
         }
@@ -2908,19 +2931,51 @@ const getDisplayPrompt = (img) => {
 const openImage = (img) => {
     if (!img) return
     const urls = Array.isArray(img.urls) ? [...img.urls] : undefined
-    selectedImage.value = { ...img, ...(urls ? { urls } : {}) }
+    const displayUrls = Array.isArray(img.display_urls) ? [...img.display_urls] : undefined
+    selectedImage.value = { ...img, ...(urls ? { urls } : {}), ...(displayUrls ? { display_urls: displayUrls } : {}) }
     showModal.value = true
 }
 const closeModal = () => showModal.value = false
+const selectModalImage = (idx) => {
+    if (!selectedImage.value || !Array.isArray(selectedImage.value.urls)) return
+    selectedImage.value.url = selectedImage.value.urls[idx]
+    if (Array.isArray(selectedImage.value.display_urls)) {
+        selectedImage.value.display_url = selectedImage.value.display_urls[idx] || selectedImage.value.url
+    }
+}
 const copyPrompt = () => {
     const promptText = getDisplayPrompt(selectedImage.value)
     if (!promptText) return
-    navigator.clipboard.writeText(promptText)
-    message.success(localeStore.t('image.copy_success'))
+    const fallbackCopy = () => {
+        const textarea = document.createElement('textarea')
+        textarea.value = promptText
+        textarea.setAttribute('readonly', 'true')
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        const success = document.execCommand('copy')
+        textarea.remove()
+        if (!success) throw new Error('copy_failed')
+    }
+    Promise.resolve()
+        .then(() => {
+            if (navigator?.clipboard?.writeText) return navigator.clipboard.writeText(promptText)
+            fallbackCopy()
+        })
+        .then(() => message.success(localeStore.t('image.copy_success')))
+        .catch(() => {
+            try {
+                fallbackCopy()
+                message.success(localeStore.t('image.copy_success'))
+            } catch (_) {
+                message.error(localeStore.t('image.copy_failed') || '复制失败，请手动复制')
+            }
+        })
 }
-const openBatchImage = (task) => {
+const openBatchImage = async (task) => {
     if (!task?.resultUrl) return
-    openImage({
+    const image = await decorateImageRecord({
         url: task.resultUrl,
         urls: task.resultUrls || undefined,
         prompt: task.prompt,
@@ -2928,13 +2983,18 @@ const openBatchImage = (task) => {
         aspectRatio: task.settings?.image?.aspectRatio || '1:1',
         model: task.settings?.image?.model
     })
+    openImage(image)
 }
+
+onBeforeUnmount(() => {
+    revokeMediaObjectUrls()
+})
 
 const handleDownload = () => {
     const img = currentDisplayImage.value
     if (!img?.url) return
     const link = document.createElement('a')
-    link.href = img.url
+    link.href = img.display_url || img.url
     link.download = img.filename || `generated_${Date.now()}.png`
     document.body.appendChild(link)
     link.click()
@@ -2966,15 +3026,15 @@ const handleQuickRefine = async () => {
             referenceImageUrls: [currentDisplayImage.value.url]
         })
         settings.value.model = result.model
-        currentDisplayImage.value = {
+        currentDisplayImage.value = await decorateImageRecord({
             ...result.data,
             is_mine: true,
             prompt: quickRefineText.value,
             enhanced_prompt: result.data?.enhanced_prompt || '',
             model: result.model
-        }
+        })
         if (!authStore.isLoggedIn) {
-            persistLocalImage({
+            await persistLocalImage({
                 id: result.data?.id || `local_${Date.now()}`,
                 url: result.data?.url || result.data?.urls?.[0],
                 urls: Array.isArray(result.data?.urls) ? result.data.urls : undefined,
@@ -3031,7 +3091,7 @@ const makeBatchId = () => {
     return `${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value))
-const isLocalResultUrl = (url) => typeof url === 'string' && url.startsWith('/static/')
+const isLocalResultUrl = isProtectedStaticUrl
 const normalizeAvatarFilename = (value) => {
     const raw = String(value || '').trim()
     if (!raw) return ''
@@ -3593,6 +3653,7 @@ const runImageTask = async (task) => {
     task.resultUrls = Array.isArray(result.data.urls) && result.data.urls.length > 1 ? result.data.urls : null
     if (!task.resultUrl) throw new Error(result.data?.detail || 'Image generation failed')
     task.resultType = 'image'
+    task.displayResultUrl = await getDisplayableMediaUrl(task.resultUrl)
 }
 
 const runAudioTask = async (task) => {
@@ -3667,7 +3728,15 @@ const triggerDirectDownloads = async (items) => {
         uniqueItems.push(item)
     }
     for (const item of uniqueItems) {
-        const href = toDownloadAssetUrl(item.url)
+        let href = toDownloadAssetUrl(item.url)
+        let tempObjectUrl = ''
+        if (isLocalResultUrl(item.url)) {
+            try {
+                const res = await api.get(item.url, { responseType: 'blob' })
+                tempObjectUrl = URL.createObjectURL(res.data)
+                href = tempObjectUrl
+            } catch (_) {}
+        }
         const a = document.createElement('a')
         a.href = href
         a.download = item.downloadName || decodeURIComponent(href.split('/').pop() || 'download')
@@ -3675,6 +3744,7 @@ const triggerDirectDownloads = async (items) => {
         document.body.appendChild(a)
         a.click()
         a.remove()
+        if (tempObjectUrl) setTimeout(() => URL.revokeObjectURL(tempObjectUrl), 1500)
         await sleep(120)
     }
     return uniqueItems.length
