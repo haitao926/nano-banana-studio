@@ -13,16 +13,23 @@ from core.qwen_tts import synthesize_tts
 from deps import get_current_user
 from helpers import (
     _build_model_candidates,
+    _get_credentials,
     _get_model_catalog,
+    _get_model_route_summary,
+    _get_model_routes,
     _get_prompt_channels_config,
+    _get_service_routes,
     _get_system_config_with_env,
     _get_tts_base_url,
     _get_video_base_url,
     _load_system_config,
     _merge_candidates,
     _save_system_config,
+    normalize_credentials,
     normalize_prompt_channels,
     normalize_model_catalog,
+    normalize_model_routes,
+    normalize_service_routes,
     validate_prompt_channels_config,
 )
 from schemas import (
@@ -131,6 +138,39 @@ def _build_prompt_health(prompt_channels: Optional[Dict[str, Dict[str, Any]]] = 
     return health
 
 
+def _build_credential_reference_counts(
+    model_routes: List[Dict[str, Any]],
+    service_routes: List[Dict[str, Any]],
+) -> Dict[str, int]:
+    counts: Dict[str, int] = {}
+
+    def add(credential_id: Optional[str]) -> None:
+        cred_id = str(credential_id or "").strip()
+        if not cred_id:
+            return
+        counts[cred_id] = counts.get(cred_id, 0) + 1
+
+    for item in model_routes or []:
+        add(item.get("primary_credential_id"))
+        for cred_id in item.get("fallback_credential_ids") or []:
+            add(cred_id)
+    for item in service_routes or []:
+        add(item.get("primary_credential_id"))
+        for cred_id in item.get("fallback_credential_ids") or []:
+            add(cred_id)
+    return counts
+
+
+def _build_admin_model_entries(models: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    output: List[Dict[str, Any]] = []
+    for item in models or []:
+        summary = _get_model_route_summary(item.get("service"), item.get("model"))
+        next_item = dict(item)
+        next_item["route"] = summary
+        output.append(next_item)
+    return output
+
+
 @router.post("/api/admin/toggle_feature")
 async def toggle_feature(req: ToggleFeatureRequest, current_user: Dict = Depends(get_current_user)):
     if current_user["username"] != "admin":
@@ -149,7 +189,11 @@ async def get_system_config(current_user: Dict = Depends(get_current_user)):
     tts_cfg = cfg.get("tts", {}) or {}
     video_cfg = cfg.get("video", {}) or {}
     key_pools = normalize_key_pools(cfg.get("key_pools") or [])
+    credentials = _get_credentials()
     model_catalog = _get_model_catalog()
+    model_routes = _get_model_routes()
+    service_routes = _get_service_routes()
+    reference_counts = _build_credential_reference_counts(model_routes, service_routes)
     prompt_channels = normalize_prompt_channels(cfg.get("prompt_channels"), model_catalog)
     return {
         "image": {
@@ -168,7 +212,17 @@ async def get_system_config(current_user: Dict = Depends(get_current_user)):
             "base_url": video_cfg.get("base_url", ""),
         },
         "key_pools": key_pools,
-        "models": model_catalog,
+        "models": _build_admin_model_entries(model_catalog),
+        "model_catalog": model_catalog,
+        "credentials": [
+            {
+                **item,
+                "reference_count": reference_counts.get(item.get("id"), 0),
+            }
+            for item in credentials
+        ],
+        "model_routes": model_routes,
+        "service_routes": service_routes,
         "prompt_channels": prompt_channels,
         "prompt_health": PROMPT_HEALTH_CACHE or None,
     }
@@ -181,15 +235,17 @@ async def update_system_config(req: SystemConfigUpdateRequest, current_user: Dic
     cfg = _load_system_config()
     cfg.setdefault("auth", {})
     cfg.setdefault("api", {})
-    cfg["auth"]["api_key"] = req.image.api_key.strip()
-    cfg["auth"]["backup_keys"] = normalize_key_list(req.image.backup_keys)
-    if req.image.base_url is not None:
-        cfg["api"]["base_url"] = req.image.base_url.strip()
+    if req.image is not None:
+        cfg["auth"]["api_key"] = req.image.api_key.strip()
+        cfg["auth"]["backup_keys"] = normalize_key_list(req.image.backup_keys)
+        if req.image.base_url is not None:
+            cfg["api"]["base_url"] = req.image.base_url.strip()
     cfg.setdefault("tts", {})
-    cfg["tts"]["api_key"] = req.tts.api_key.strip()
-    cfg["tts"]["backup_keys"] = normalize_key_list(req.tts.backup_keys)
-    if req.tts.base_url is not None:
-        cfg["tts"]["base_url"] = req.tts.base_url.strip()
+    if req.tts is not None:
+        cfg["tts"]["api_key"] = req.tts.api_key.strip()
+        cfg["tts"]["backup_keys"] = normalize_key_list(req.tts.backup_keys)
+        if req.tts.base_url is not None:
+            cfg["tts"]["base_url"] = req.tts.base_url.strip()
     cfg["tts"].pop("ws_url", None)
     if req.video is not None:
         cfg.setdefault("video", {})
@@ -199,17 +255,50 @@ async def update_system_config(req: SystemConfigUpdateRequest, current_user: Dic
             cfg["video"]["base_url"] = req.video.base_url.strip()
     if req.key_pools is not None:
         cfg["key_pools"] = normalize_key_pools(req.key_pools)
-    if req.models is not None:
+    raw_model_items = req.model_catalog if req.model_catalog is not None else req.models
+    if raw_model_items is not None:
         raw_models = []
-        for item in req.models:
+        for item in raw_model_items:
             if hasattr(item, "model_dump"):
                 raw_models.append(item.model_dump())
             elif hasattr(item, "dict"):
                 raw_models.append(item.dict())
             else:
                 raw_models.append(item)
-        cfg["models"] = normalize_model_catalog(raw_models)
-    prompt_models = normalize_model_catalog(cfg.get("models") or [])
+        cfg["model_catalog"] = normalize_model_catalog(raw_models)
+        cfg["models"] = cfg["model_catalog"]
+    if req.credentials is not None:
+        raw_credentials = []
+        for item in req.credentials:
+            if hasattr(item, "model_dump"):
+                raw_credentials.append(item.model_dump())
+            elif hasattr(item, "dict"):
+                raw_credentials.append(item.dict())
+            else:
+                raw_credentials.append(item)
+        cfg["credentials"] = normalize_credentials(raw_credentials)
+    if req.model_routes is not None:
+        raw_model_routes = []
+        for item in req.model_routes:
+            if hasattr(item, "model_dump"):
+                raw_model_routes.append(item.model_dump())
+            elif hasattr(item, "dict"):
+                raw_model_routes.append(item.dict())
+            else:
+                raw_model_routes.append(item)
+        cfg["model_routes"] = normalize_model_routes(raw_model_routes, normalize_credentials(cfg.get("credentials") or []))
+    if req.service_routes is not None:
+        raw_service_routes = []
+        for item in req.service_routes:
+            if hasattr(item, "model_dump"):
+                raw_service_routes.append(item.model_dump())
+            elif hasattr(item, "dict"):
+                raw_service_routes.append(item.dict())
+            else:
+                raw_service_routes.append(item)
+        cfg["service_routes"] = normalize_service_routes(raw_service_routes, normalize_credentials(cfg.get("credentials") or []))
+
+    prompt_models = normalize_model_catalog(cfg.get("model_catalog") or cfg.get("models") or [])
     prompt_key_pools = normalize_key_pools(cfg.get("key_pools") or [])
     requested_channels = req.prompt_channels if req.prompt_channels is not None else cfg.get("prompt_channels")
     cfg["prompt_channels"] = normalize_prompt_channels(requested_channels, prompt_models)
@@ -218,6 +307,9 @@ async def update_system_config(req: SystemConfigUpdateRequest, current_user: Dic
         models=prompt_models,
         key_pools=prompt_key_pools,
         prompt_channels=cfg.get("prompt_channels") or {},
+        credentials=cfg.get("credentials") or [],
+        model_routes=cfg.get("model_routes") or [],
+        service_routes=cfg.get("service_routes") or [],
     )
     if validation.get("errors"):
         raise HTTPException(

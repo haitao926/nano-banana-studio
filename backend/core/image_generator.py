@@ -298,6 +298,13 @@ class ImageGenerator:
     def _supports_seedream_multi_image(model: Optional[str]) -> bool:
         return ImageGenerator._supports_seedream_group(model)
 
+    @staticmethod
+    def _is_grok_image_model(model: Optional[str]) -> bool:
+        if not model:
+            return False
+        text = str(model).lower()
+        return "grok" in text and "image" in text
+
     def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0, base_url: str = None, api_key: str = None, model: str = None) -> Optional[Dict]:
         """发送API请求 (支持多Key轮询)"""
         current_base_url = (base_url or self.base_url).rstrip("/")
@@ -458,6 +465,14 @@ class ImageGenerator:
             return None
 
         if isinstance(payload, dict):
+            if payload.get("type") == "image_generation_call":
+                result_val = payload.get("result")
+                if isinstance(result_val, str) and result_val.strip():
+                    normalized = cls._normalize_data_uri(result_val.strip())
+                    if normalized.startswith(("http://", "https://", "data:image")):
+                        return normalized
+                    return f"data:image/png;base64,{result_val.strip()}"
+
             # Gemini style: candidates -> content -> parts -> inlineData/inline_data
             candidates = payload.get("candidates")
             if isinstance(candidates, list):
@@ -528,13 +543,9 @@ class ImageGenerator:
         candidate = cls._extract_image_candidate(payload)
         return [candidate] if candidate else []
 
-    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
-        """通过 Chat API 生成图片 (针对 Gemini 等模型)"""
-        
-        # 针对 Gemini 的 Prompt 增强: 注入画幅比例指令
+    @staticmethod
+    def _build_chat_image_prompt(prompt: str, size: str = None, quality: str = None) -> str:
         final_prompt = prompt
-        
-        # 1. 画幅处理
         if size:
             if size == "1792x1024":
                 final_prompt += " --ar 16:9"
@@ -542,14 +553,16 @@ class ImageGenerator:
                 final_prompt += " --ar 9:16"
             elif size == "1024x1024":
                 final_prompt += " --ar 1:1"
-        
-        # 2. 画质/分辨率处理 (通过提示词增强)
-        # 虽然物理分辨率受限，但通过指令可以显著提升细节密度
         if quality:
             if quality.lower() in ["2k", "high"]:
                 final_prompt += ", (highly detailed, 2k resolution, sharp focus)"
             elif quality.lower() in ["4k", "ultra"]:
                 final_prompt += ", (ultra detailed, 4k resolution, 8k, masterpiece, best quality, extreme detail, hyperrealistic)"
+        return final_prompt
+
+    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+        """通过 Chat API 生成图片 (针对 Gemini 等模型)"""
+        final_prompt = self._build_chat_image_prompt(prompt, size=size, quality=quality)
 
         print(f"🎨 Chat生成提示词: {final_prompt}")
 
@@ -583,8 +596,31 @@ class ImageGenerator:
                 candidate = self._extract_image_candidate(response)
                 if candidate:
                     return candidate
-                print("⚠️ Gemini 返回内容非图片，准备重试更严格指令...")
+                print("⚠️ Chat 接口返回内容非图片，准备重试更严格指令...")
         
+        return None
+
+    def _generate_image_via_responses(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+        """通过 Responses API 生成图片 (针对 Grok / OpenAI Responses 兼容链路)"""
+        final_prompt = self._build_chat_image_prompt(prompt, size=size, quality=quality)
+        print(f"🎨 Responses生成提示词: {final_prompt}")
+        data: Dict[str, Any] = {
+            "model": model or self.model,
+            "input": final_prompt,
+            "tools": [{"type": "image_generation"}],
+        }
+        response = self._make_request("/v1/responses", data, base_url=base_url, api_key=api_key, model=model)
+        if not response:
+            return None
+        candidate = self._extract_image_candidate(response)
+        if candidate:
+            return candidate
+        output = response.get("output")
+        if isinstance(output, list):
+            for item in output:
+                candidate = self._extract_image_candidate(item)
+                if candidate:
+                    return candidate
         return None
 
     @staticmethod
@@ -1094,6 +1130,15 @@ class ImageGenerator:
         if "gemini-3" in target_model_lower and "image-preview" in target_model_lower:
             print(f"🤖 检测到 Gemini 3 Image Preview，切换到 Chat 接口...")
             return self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
+        if self._is_grok_image_model(target_model):
+            print("🤖 检测到 Grok Image，优先尝试 Chat / Responses 兼容接口...")
+            chat_result = self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
+            if chat_result:
+                return chat_result
+            responses_result = self._generate_image_via_responses(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
+            if responses_result:
+                return responses_result
+            print("⚠️ Grok Chat / Responses 未返回图片，回退到 images/generations...")
         # Gemini 2.5 Flash Image: 使用 generateContent
         if "gemini-2.5-flash-image" in target_model_lower:
             print(f"🤖 检测到 Gemini 2.5 Flash Image，切换到 generateContent 接口...")

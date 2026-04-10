@@ -27,9 +27,9 @@ MODEL_PLATFORM_BASE_URLS = {
 }
 PROMPT_CHANNEL_KEYS = ("google", "bytedance", "aliyun")
 DEFAULT_PROMPT_CHANNEL_MODELS = {
-    "google": ["gemini-3.1-pro-preview", "kimi-k2.5"],
-    "bytedance": ["gemini-3.1-pro-preview", "kimi-k2.5"],
-    "aliyun": ["gemini-3.1-pro-preview", "kimi-k2.5"],
+    "google": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "MiniMax-M2.7"],
+    "bytedance": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "MiniMax-M2.7"],
+    "aliyun": ["gemini-3.1-pro-preview", "claude-sonnet-4-6", "MiniMax-M2.7"],
 }
 from core.video_generator import VideoGenerator
 from app_state import (
@@ -369,9 +369,10 @@ def _get_system_config_with_env() -> Dict:
     cfg.setdefault("api", {})
     cfg.setdefault("tts", {})
     cfg.setdefault("video", {})
+    cfg = _merge_explicit_config(cfg)
     cfg["prompt_channels"] = normalize_prompt_channels(
         cfg.get("prompt_channels"),
-        normalize_model_catalog(cfg.get("models") or cfg.get("model_catalog") or []),
+        normalize_model_catalog(cfg.get("model_catalog") or cfg.get("models") or []),
     )
 
     return cfg
@@ -488,6 +489,26 @@ def _normalize_prompt_channel_models(value: Any, fallback: List[str]) -> List[st
     return models
 
 
+def _filter_prompt_channel_models(models: List[str], allowed_models: List[str]) -> List[str]:
+    if not allowed_models:
+        return models
+    allowed = {str(model or "").strip().lower() for model in allowed_models if str(model or "").strip()}
+    if not allowed:
+        return models
+    filtered: List[str] = []
+    seen = set()
+    for model in models:
+        text = str(model or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if lowered not in allowed or lowered in seen:
+            continue
+        seen.add(lowered)
+        filtered.append(text)
+    return filtered
+
+
 def normalize_prompt_channels(raw: Any, prompt_model_catalog: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Dict[str, Any]]:
     prompt_models = []
     if prompt_model_catalog:
@@ -496,6 +517,15 @@ def normalize_prompt_channels(raw: Any, prompt_model_catalog: Optional[List[Dict
             for item in prompt_model_catalog
             if str(item.get("service") or "").strip().lower() == "prompt"
         ]
+    prompt_models = [model for model in prompt_models if model]
+
+    def _normalize_models(value: Any, fallback_models: List[str]) -> List[str]:
+        normalized = _normalize_prompt_channel_models(value, fallback_models)
+        filtered = _filter_prompt_channel_models(normalized, prompt_models)
+        if filtered:
+            return filtered
+        return _filter_prompt_channel_models(fallback_models, prompt_models) or normalized
+
     normalized_input: Dict[str, Dict[str, Any]] = {}
     if isinstance(raw, dict):
         for key, value in raw.items():
@@ -510,19 +540,19 @@ def normalize_prompt_channels(raw: Any, prompt_model_catalog: Optional[List[Dict
                 payload = value
             else:
                 payload = {}
-            fallback_models = DEFAULT_PROMPT_CHANNEL_MODELS.get(channel) or prompt_models or []
+            fallback_models = prompt_models or (DEFAULT_PROMPT_CHANNEL_MODELS.get(channel) or [])
             normalized_input[channel] = {
                 "enabled": _coerce_bool(payload.get("enabled"), True),
-                "models": _normalize_prompt_channel_models(payload.get("models"), fallback_models),
+                "models": _normalize_models(payload.get("models"), fallback_models),
             }
 
     result: Dict[str, Dict[str, Any]] = {}
     for channel in PROMPT_CHANNEL_KEYS:
-        fallback_models = DEFAULT_PROMPT_CHANNEL_MODELS.get(channel) or prompt_models or []
+        fallback_models = prompt_models or (DEFAULT_PROMPT_CHANNEL_MODELS.get(channel) or [])
         payload = normalized_input.get(channel) or {}
         result[channel] = {
             "enabled": _coerce_bool(payload.get("enabled"), True),
-            "models": _normalize_prompt_channel_models(payload.get("models"), fallback_models),
+            "models": _normalize_models(payload.get("models"), fallback_models),
         }
     return result
 
@@ -581,9 +611,534 @@ def normalize_model_catalog(raw: Any) -> List[Dict[str, Any]]:
     return normalized
 
 
+def _normalize_service_name(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in ("image", "video", "audio", "digital_human", "prompt"):
+        return text
+    return "image"
+
+
+def _slug_identifier(value: str, fallback: str) -> str:
+    text = re.sub(r"[^a-zA-Z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+    return text or fallback
+
+
+def _generate_credential_id(
+    label: str,
+    service: str,
+    scope: str,
+    seen: Optional[set[str]] = None,
+    provider: str = "",
+) -> str:
+    base = _slug_identifier(label or f"{scope}_{service}_{provider or 'credential'}", f"{scope}_{service}")
+    candidate = base
+    suffix = 2
+    seen = seen or set()
+    while candidate in seen:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def normalize_credentials(raw: Any, scope: str = "system") -> List[Dict[str, Any]]:
+    if not raw:
+        return []
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return []
+    if isinstance(data, dict):
+        data = data.get("credentials") or data.get("items") or []
+    if not isinstance(data, list):
+        return []
+
+    normalized: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    normalized_scope = "personal" if str(scope or "").strip().lower() == "personal" else "system"
+    for index, item in enumerate(data):
+        if not isinstance(item, dict):
+            continue
+        service = _normalize_service_name(item.get("service"))
+        provider = _normalize_model_platform(item.get("provider"))
+        label = str(item.get("label") or item.get("name") or item.get("title") or "").strip()
+        base_url = str(item.get("base_url") or "").strip() or None
+        primary_secret = str(
+            item.get("primary_secret")
+            or item.get("primarySecret")
+            or item.get("key")
+            or item.get("api_key")
+            or ""
+        ).strip()
+        backup_secrets = normalize_key_list(
+            item.get("backup_secrets")
+            or item.get("backupSecrets")
+            or item.get("backup_keys")
+            or []
+        )
+        if primary_secret and primary_secret in backup_secrets:
+            backup_secrets = [secret for secret in backup_secrets if secret != primary_secret]
+        if not primary_secret and not backup_secrets:
+            continue
+        cred_id = str(item.get("id") or item.get("credential_id") or "").strip()
+        if not cred_id:
+            seed_label = label or f"{normalized_scope}_{service}_{provider or index + 1}"
+            cred_id = _generate_credential_id(seed_label, service, normalized_scope, seen_ids, provider)
+        if cred_id in seen_ids:
+            cred_id = _generate_credential_id(cred_id, service, normalized_scope, seen_ids, provider)
+        seen_ids.add(cred_id)
+        normalized.append({
+            "id": cred_id,
+            "label": label or f"{service.upper()} Credential {len(normalized) + 1}",
+            "scope": normalized_scope,
+            "service": service,
+            "provider": provider,
+            "base_url": base_url,
+            "primary_secret": primary_secret,
+            "backup_secrets": backup_secrets,
+            "enabled": _coerce_bool(item.get("enabled"), True),
+        })
+    return normalized
+
+
+def normalize_model_routes(raw: Any, credentials: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not raw:
+        return []
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return []
+    if isinstance(data, dict):
+        data = data.get("model_routes") or data.get("routes") or []
+    if not isinstance(data, list):
+        return []
+
+    valid_ids = {str(item.get("id") or "").strip() for item in credentials if str(item.get("id") or "").strip()}
+    normalized: List[Dict[str, Any]] = []
+    seen_models = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("model_id") or item.get("model") or item.get("id") or "").strip()
+        if not model_id or model_id in seen_models:
+            continue
+        primary_credential_id = str(item.get("primary_credential_id") or item.get("primaryCredentialId") or "").strip()
+        if primary_credential_id and primary_credential_id not in valid_ids:
+            primary_credential_id = ""
+        fallback_credential_ids = [
+            cred_id
+            for cred_id in normalize_key_list(
+                item.get("fallback_credential_ids") or item.get("fallbackCredentialIds") or []
+            )
+            if cred_id in valid_ids and cred_id != primary_credential_id
+        ]
+        seen_models.add(model_id)
+        normalized.append({
+            "model_id": model_id,
+            "primary_credential_id": primary_credential_id or None,
+            "fallback_credential_ids": _dedupe_preserve_order(fallback_credential_ids),
+            "allow_personal_override": _coerce_bool(item.get("allow_personal_override"), True),
+            "enabled": _coerce_bool(item.get("enabled"), True),
+        })
+    return normalized
+
+
+def normalize_service_routes(raw: Any, credentials: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not raw:
+        return []
+    data = raw
+    if isinstance(raw, str):
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return []
+    if isinstance(data, dict):
+        data = data.get("service_routes") or data.get("routes") or []
+    if not isinstance(data, list):
+        return []
+
+    valid_ids = {str(item.get("id") or "").strip() for item in credentials if str(item.get("id") or "").strip()}
+    normalized: List[Dict[str, Any]] = []
+    seen_services = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        service = _normalize_service_name(item.get("service"))
+        if service in seen_services:
+            continue
+        primary_credential_id = str(item.get("primary_credential_id") or item.get("primaryCredentialId") or "").strip()
+        if primary_credential_id and primary_credential_id not in valid_ids:
+            primary_credential_id = ""
+        fallback_credential_ids = [
+            cred_id
+            for cred_id in normalize_key_list(
+                item.get("fallback_credential_ids") or item.get("fallbackCredentialIds") or []
+            )
+            if cred_id in valid_ids and cred_id != primary_credential_id
+        ]
+        seen_services.add(service)
+        normalized.append({
+            "service": service,
+            "primary_credential_id": primary_credential_id or None,
+            "fallback_credential_ids": _dedupe_preserve_order(fallback_credential_ids),
+        })
+    return normalized
+
+
+def _expand_credential_candidates(credential: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not credential or credential.get("enabled") is False:
+        return []
+    keys = [credential.get("primary_secret")] + (credential.get("backup_secrets") or [])
+    seen = set()
+    candidates: List[Dict[str, Any]] = []
+    for key in keys:
+        key = str(key or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        candidates.append(
+            {
+                "id": credential.get("id"),
+                "label": credential.get("label"),
+                "key": key,
+                "base_url": credential.get("base_url"),
+                "platform": credential.get("provider") or None,
+            }
+        )
+    return candidates
+
+
+def _append_route_credential(target: List[str], credential_id: Optional[str]) -> None:
+    cred_id = str(credential_id or "").strip()
+    if cred_id and cred_id not in target:
+        target.append(cred_id)
+
+
+def _merge_explicit_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    next_cfg = dict(cfg or {})
+    model_catalog = normalize_model_catalog(next_cfg.get("model_catalog") or next_cfg.get("models") or [])
+    credentials = normalize_credentials(next_cfg.get("credentials") or [], scope="system")
+    credential_map = {item["id"]: item for item in credentials}
+    seen_ids = set(credential_map.keys())
+    explicit_route_mode = any(
+        key in next_cfg
+        for key in ("credentials", "model_routes", "service_routes")
+    )
+
+    def add_credential(
+        *,
+        label: str,
+        service: str,
+        provider: str = "",
+        base_url: Optional[str] = None,
+        primary_secret: str = "",
+        backup_secrets: Optional[List[str]] = None,
+        enabled: bool = True,
+    ) -> Optional[str]:
+        primary = str(primary_secret or "").strip()
+        backups = normalize_key_list(backup_secrets or [])
+        if primary and primary in backups:
+            backups = [item for item in backups if item != primary]
+        if not primary and not backups:
+            return None
+        cred_id = _generate_credential_id(label, service, "system", seen_ids, provider)
+        seen_ids.add(cred_id)
+        credential = {
+            "id": cred_id,
+            "label": label,
+            "scope": "system",
+            "service": _normalize_service_name(service),
+            "provider": _normalize_model_platform(provider),
+            "base_url": str(base_url or "").strip() or None,
+            "primary_secret": primary,
+            "backup_secrets": backups,
+            "enabled": enabled is not False,
+        }
+        credentials.append(credential)
+        credential_map[cred_id] = credential
+        return cred_id
+
+    model_route_candidates: Dict[str, List[str]] = {}
+    model_route_allow: Dict[str, bool] = {}
+
+    def route_list_for_model(model_id: str) -> List[str]:
+        key = str(model_id or "").strip()
+        if key not in model_route_candidates:
+            model_route_candidates[key] = []
+        return model_route_candidates[key]
+
+    service_route_candidates: Dict[str, List[str]] = {}
+    if not explicit_route_mode:
+        for item in model_catalog:
+            model_id = str(item.get("model") or "").strip()
+            if not model_id:
+                continue
+            inline_cred_id = add_credential(
+                label=f"{model_id} Inline Credential",
+                service=item.get("service") or "image",
+                provider=item.get("platform") or "",
+                base_url=item.get("base_url"),
+                primary_secret=item.get("api_key") or "",
+                backup_secrets=item.get("backup_keys") or [],
+                enabled=item.get("enabled", True),
+            )
+            if inline_cred_id:
+                _append_route_credential(route_list_for_model(model_id), inline_cred_id)
+            model_route_allow[model_id] = True
+
+        legacy_pools = normalize_key_pools(next_cfg.get("key_pools") or [])
+        catalog_by_service: Dict[str, List[Dict[str, Any]]] = {}
+        for item in model_catalog:
+            catalog_by_service.setdefault(_normalize_service_name(item.get("service")), []).append(item)
+
+        for index, pool in enumerate(legacy_pools, start=1):
+            service = _normalize_service_name((pool.get("services") or ["image"])[0] if isinstance(pool.get("services"), list) else pool.get("services"))
+            provider = _normalize_model_platform(pool.get("provider"))
+            cred_id = add_credential(
+                label=f"Legacy {service.upper()} Credential {index}",
+                service=service,
+                provider=provider,
+                base_url=pool.get("base_url"),
+                primary_secret=pool.get("key") or "",
+                backup_secrets=pool.get("backup_keys") or [],
+                enabled=pool.get("enabled", True),
+            )
+            if not cred_id:
+                continue
+            pool_models = [str(model or "").strip() for model in (pool.get("models") or []) if str(model or "").strip()]
+            if pool_models:
+                for model_id in pool_models:
+                    _append_route_credential(route_list_for_model(model_id), cred_id)
+                    model_route_allow[model_id] = True
+                continue
+            if provider:
+                for item in catalog_by_service.get(service, []):
+                    model_id = str(item.get("model") or "").strip()
+                    item_provider = _normalize_model_platform(item.get("platform"))
+                    if model_id and (not item_provider or item_provider == provider):
+                        _append_route_credential(route_list_for_model(model_id), cred_id)
+                        model_route_allow[model_id] = True
+                continue
+            service_route_candidates.setdefault(service, [])
+            _append_route_credential(service_route_candidates[service], cred_id)
+
+        auth_cfg = next_cfg.get("auth", {}) or {}
+        api_cfg = next_cfg.get("api", {}) or {}
+        tts_cfg = next_cfg.get("tts", {}) or {}
+        video_cfg = next_cfg.get("video", {}) or {}
+        legacy_service_sources = [
+            (
+                "image",
+                {
+                    "api_key": auth_cfg.get("api_key", ""),
+                    "backup_keys": normalize_key_list(auth_cfg.get("backup_keys", [])),
+                    "base_url": api_cfg.get("base_url", ""),
+                },
+                "Legacy Image Default",
+            ),
+            (
+                "audio",
+                {
+                    "api_key": tts_cfg.get("api_key", ""),
+                    "backup_keys": normalize_key_list(tts_cfg.get("backup_keys", [])),
+                    "base_url": tts_cfg.get("base_url", ""),
+                },
+                "Legacy Audio Default",
+            ),
+            (
+                "video",
+                {
+                    "api_key": video_cfg.get("api_key", "") or tts_cfg.get("api_key", ""),
+                    "backup_keys": normalize_key_list(video_cfg.get("backup_keys", []) or tts_cfg.get("backup_keys", [])),
+                    "base_url": video_cfg.get("base_url", "") or tts_cfg.get("base_url", ""),
+                },
+                "Legacy Video Default",
+            ),
+        ]
+        for service, payload, label in legacy_service_sources:
+            cred_id = add_credential(
+                label=label,
+                service=service,
+                base_url=payload.get("base_url"),
+                primary_secret=payload.get("api_key") or "",
+                backup_secrets=payload.get("backup_keys") or [],
+                enabled=True,
+            )
+            if cred_id:
+                service_route_candidates.setdefault(service, [])
+                _append_route_credential(service_route_candidates[service], cred_id)
+
+    model_routes = normalize_model_routes(next_cfg.get("model_routes") or [], credentials)
+    route_map = {item["model_id"]: item for item in model_routes}
+    if not explicit_route_mode:
+        for model_id, candidate_ids in model_route_candidates.items():
+            if not candidate_ids:
+                continue
+            existing = route_map.get(model_id)
+            if existing:
+                ordered_ids: List[str] = []
+                _append_route_credential(ordered_ids, existing.get("primary_credential_id"))
+                for cred_id in existing.get("fallback_credential_ids") or []:
+                    _append_route_credential(ordered_ids, cred_id)
+                for cred_id in candidate_ids:
+                    _append_route_credential(ordered_ids, cred_id)
+                existing["primary_credential_id"] = ordered_ids[0] if ordered_ids else None
+                existing["fallback_credential_ids"] = ordered_ids[1:]
+            else:
+                route_map[model_id] = {
+                    "model_id": model_id,
+                    "primary_credential_id": candidate_ids[0] if candidate_ids else None,
+                    "fallback_credential_ids": candidate_ids[1:],
+                    "allow_personal_override": model_route_allow.get(model_id, True),
+                    "enabled": True,
+                }
+    model_routes = list(route_map.values())
+
+    service_routes = normalize_service_routes(next_cfg.get("service_routes") or [], credentials)
+    service_route_map = {item["service"]: item for item in service_routes}
+    if not explicit_route_mode:
+        for service, candidate_ids in service_route_candidates.items():
+            if not candidate_ids:
+                continue
+            existing = service_route_map.get(service)
+            if existing:
+                ordered_ids: List[str] = []
+                _append_route_credential(ordered_ids, existing.get("primary_credential_id"))
+                for cred_id in existing.get("fallback_credential_ids") or []:
+                    _append_route_credential(ordered_ids, cred_id)
+                for cred_id in candidate_ids:
+                    _append_route_credential(ordered_ids, cred_id)
+                existing["primary_credential_id"] = ordered_ids[0] if ordered_ids else None
+                existing["fallback_credential_ids"] = ordered_ids[1:]
+            else:
+                service_route_map[service] = {
+                    "service": service,
+                    "primary_credential_id": candidate_ids[0] if candidate_ids else None,
+                    "fallback_credential_ids": candidate_ids[1:],
+                }
+    service_routes = list(service_route_map.values())
+
+    clean_model_catalog = []
+    for item in model_catalog:
+        clean_item = dict(item)
+        clean_item["api_key"] = ""
+        clean_item["backup_keys"] = []
+        clean_model_catalog.append(clean_item)
+
+    next_cfg["credentials"] = credentials
+    next_cfg["model_catalog"] = clean_model_catalog
+    next_cfg["model_routes"] = model_routes
+    next_cfg["service_routes"] = service_routes
+    return next_cfg
+
+
+def _get_credentials(scope: str = "system") -> List[Dict[str, Any]]:
+    cfg = _get_system_config_with_env()
+    return normalize_credentials(cfg.get("credentials") or [], scope=scope)
+
+
+def _get_credential_map(scope: str = "system") -> Dict[str, Dict[str, Any]]:
+    return {item["id"]: item for item in _get_credentials(scope) if item.get("id")}
+
+
+def _get_model_routes() -> List[Dict[str, Any]]:
+    cfg = _get_system_config_with_env()
+    return normalize_model_routes(cfg.get("model_routes") or [], _get_credentials())
+
+
+def _get_service_routes() -> List[Dict[str, Any]]:
+    cfg = _get_system_config_with_env()
+    return normalize_service_routes(cfg.get("service_routes") or [], _get_credentials())
+
+
+def _get_model_route_entry(model: Optional[str]) -> Optional[Dict[str, Any]]:
+    model_id = str(model or "").strip()
+    if not model_id:
+        return None
+    for item in _get_model_routes():
+        if str(item.get("model_id") or "").strip() == model_id:
+            return item
+    return None
+
+
+def _get_service_route_entry(service: Optional[str]) -> Optional[Dict[str, Any]]:
+    service_name = _normalize_service_name(service)
+    for item in _get_service_routes():
+        if _normalize_service_name(item.get("service")) == service_name:
+            return item
+    return None
+
+
+def _build_route_credential_ids(
+    service: str,
+    model_id: Optional[str],
+    model_route_map: Dict[str, Dict[str, Any]],
+    service_route_map: Dict[str, Dict[str, Any]],
+) -> List[str]:
+    route = model_route_map.get(str(model_id or "").strip())
+    ordered_ids: List[str] = []
+    if route and route.get("enabled", True):
+        _append_route_credential(ordered_ids, route.get("primary_credential_id"))
+        for cred_id in route.get("fallback_credential_ids") or []:
+            _append_route_credential(ordered_ids, cred_id)
+    if not ordered_ids:
+        service_route = service_route_map.get(_normalize_service_name(service))
+        if service_route:
+            _append_route_credential(ordered_ids, service_route.get("primary_credential_id"))
+            for cred_id in service_route.get("fallback_credential_ids") or []:
+                _append_route_credential(ordered_ids, cred_id)
+    return ordered_ids
+
+
+def _build_route_credential_chain(service: str, model: Optional[str] = None) -> List[Dict[str, Any]]:
+    credential_map = _get_credential_map()
+    ordered_ids = _build_route_credential_ids(
+        service,
+        model,
+        {item.get("model_id"): item for item in _get_model_routes() if item.get("model_id")},
+        {item.get("service"): item for item in _get_service_routes() if item.get("service")},
+    )
+    credentials: List[Dict[str, Any]] = []
+    for cred_id in ordered_ids:
+        credential = credential_map.get(cred_id)
+        if credential and credential.get("enabled", True):
+            credentials.append(credential)
+    return credentials
+
+
+def _get_model_route_summary(service: str, model: Optional[str]) -> Dict[str, Any]:
+    model_id = str(model or "").strip()
+    route = _get_model_route_entry(model_id)
+    service_route = _get_service_route_entry(service)
+    credentials = _build_route_credential_chain(service, model_id)
+    reasons: List[str] = []
+    if route and route.get("enabled", True) and not route.get("primary_credential_id") and not (route.get("fallback_credential_ids") or []):
+        reasons.append("模型已配置路由，但未绑定系统凭证")
+    if not route and not service_route:
+        reasons.append("未配置模型路由或服务默认路由")
+    if (route or service_route) and not credentials:
+        reasons.append("路由存在，但没有可用的系统凭证")
+    executable = bool(credentials)
+    return {
+        "model_id": model_id,
+        "service": _normalize_service_name(service),
+        "allow_personal_override": route.get("allow_personal_override", True) if route else True,
+        "primary_credential_id": route.get("primary_credential_id") if route else (service_route.get("primary_credential_id") if service_route else None),
+        "fallback_credential_ids": list(route.get("fallback_credential_ids") or []) if route else list(service_route.get("fallback_credential_ids") or []) if service_route else [],
+        "route_source": "model" if route else ("service" if service_route else "missing"),
+        "status": "ready" if executable else ("missing_credential" if reasons else "unavailable"),
+        "executable": executable,
+        "reason": "；".join(reasons) if reasons else "可执行",
+        "credential_ids": [item.get("id") for item in credentials if item.get("id")],
+    }
+
+
 def _get_model_catalog() -> List[Dict[str, Any]]:
     cfg = _get_system_config_with_env()
-    return normalize_model_catalog(cfg.get("models") or cfg.get("model_catalog") or [])
+    return normalize_model_catalog(cfg.get("model_catalog") or cfg.get("models") or [])
 
 
 def _get_prompt_channels_config(cfg: Optional[Dict[str, Any]] = None) -> Dict[str, Dict[str, Any]]:
@@ -638,10 +1193,32 @@ def validate_prompt_channels_config(
     models: List[Dict[str, Any]],
     key_pools: List[Dict[str, Any]],
     prompt_channels: Dict[str, Dict[str, Any]],
+    credentials: Optional[List[Dict[str, Any]]] = None,
+    model_routes: Optional[List[Dict[str, Any]]] = None,
+    service_routes: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     normalized_models = normalize_model_catalog(models or [])
     normalized_pools = normalize_key_pools(key_pools or [])
     normalized_channels = normalize_prompt_channels(prompt_channels, normalized_models)
+    normalized_credentials = normalize_credentials(credentials or [], scope="system")
+    normalized_model_routes = normalize_model_routes(model_routes or [], normalized_credentials)
+    normalized_service_routes = normalize_service_routes(service_routes or [], normalized_credentials)
+    prompt_route_mode = bool(normalized_credentials or normalized_model_routes or normalized_service_routes)
+    prompt_credential_map = {
+        item["id"]: item
+        for item in normalized_credentials
+        if item.get("id")
+    }
+    prompt_model_route_map = {
+        item["model_id"]: item
+        for item in normalized_model_routes
+        if item.get("model_id")
+    }
+    prompt_service_route_map = {
+        item["service"]: item
+        for item in normalized_service_routes
+        if item.get("service")
+    }
     prompt_model_map: Dict[str, Dict[str, Any]] = {}
     for item in normalized_models:
         if str(item.get("service") or "").strip().lower() != "prompt":
@@ -663,30 +1240,50 @@ def validate_prompt_channels_config(
         candidate_count_total = 0
 
         if channel_cfg.get("enabled") is not True:
-            errors.append(f"通道 {channel} 未启用，请启用后再保存。")
-
-        if len(models_chain) < 2:
-            errors.append(f"通道 {channel} 至少需要配置 2 个可回退模型。")
+            warnings.append(f"通道 {channel} 未启用，已跳过健康校验。")
+            channels[channel] = {
+                "enabled": False,
+                "models": models_chain,
+                "valid_models": [],
+                "candidate_models": [],
+                "candidate_count": 0,
+            }
+            continue
 
         for model_name in models_chain:
             model_item = prompt_model_map.get(model_name.lower())
             if not model_item:
-                errors.append(f"通道 {channel} 包含未配置的提示词模型：{model_name}")
+                warnings.append(f"通道 {channel} 包含未配置的提示词模型：{model_name}")
                 continue
             if not model_item.get("enabled", True):
-                errors.append(f"通道 {channel} 的模型未启用：{model_name}")
+                warnings.append(f"通道 {channel} 的模型未启用：{model_name}")
                 continue
             model_valid_chain.append(model_name)
-            pools = select_key_pools(normalized_pools, "prompt", model_name)
-            candidate_count = _count_static_prompt_candidates(model_item, pools)
+            candidate_count = 0
+            if prompt_route_mode:
+                route_credential_ids = _build_route_credential_ids(
+                    "prompt",
+                    model_name,
+                    prompt_model_route_map,
+                    prompt_service_route_map,
+                )
+                for credential_id in route_credential_ids:
+                    credential = prompt_credential_map.get(credential_id)
+                    if credential and credential.get("enabled", True):
+                        candidate_count += len(_expand_credential_candidates(credential))
+            else:
+                pools = select_key_pools(normalized_pools, "prompt", model_name)
+                candidate_count = _count_static_prompt_candidates(model_item, pools)
             candidate_count_total += candidate_count
             if candidate_count > 0:
                 model_candidate_chain.append(model_name)
             else:
                 warnings.append(f"通道 {channel} 的模型 {model_name} 未找到可用 Key 候选。")
 
-        if len(model_valid_chain) < 2:
-            errors.append(f"通道 {channel} 的有效提示词模型不足 2 个。")
+        if len(model_valid_chain) < 1:
+            errors.append(f"通道 {channel} 至少需要 1 个有效提示词模型。")
+        elif len(model_valid_chain) < 2:
+            warnings.append(f"通道 {channel} 的有效提示词模型少于 2 个，回退能力较弱。")
         if not model_candidate_chain:
             errors.append(f"通道 {channel} 没有可用的 Key 候选链。")
 
@@ -754,21 +1351,10 @@ def _merge_candidates(primary: List[Dict], secondary: List[Dict]) -> List[Dict]:
 
 
 def _build_pool_candidates(service: str, model: Optional[str] = None) -> List[Dict]:
-    pools = _select_service_key_pools(service, model)
-    if not pools:
-        return []
+    credentials = _build_route_credential_chain(service, model)
     candidates: List[Dict] = []
-    for pool in pools:
-        base_url = pool.get("base_url")
-        provider_hint = str(pool.get("provider") or "").strip().lower()
-        platform_hint = _infer_platform_from_base_url(base_url or "", provider_hint)
-        keys = [pool.get("key")] + (pool.get("backup_keys") or [])
-        seen = set()
-        for key in keys:
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            candidates.append({"key": key, "base_url": base_url, "platform": platform_hint or None})
+    for credential in credentials:
+        candidates.extend(_expand_credential_candidates(credential))
     return candidates
 
 
@@ -791,34 +1377,13 @@ def _build_model_candidates(
         preferred_base_url = preferred_base_url or fallback_base_url
         return [{"key": runtime_key, "base_url": preferred_base_url, "platform": preferred_platform}]
 
-    preferred: List[Dict] = []
     preferred_base_url = runtime_base_url or fallback_base_url
     if not preferred_base_url:
         for cfg in model_cfgs:
             if cfg.get("base_url"):
                 preferred_base_url = cfg.get("base_url")
                 break
-    for cfg in model_cfgs:
-        base_url = cfg.get("base_url") or preferred_base_url
-        keys = [cfg.get("api_key")] + (cfg.get("backup_keys") or [])
-        seen_keys = set()
-        for key in keys:
-            if not key or key in seen_keys:
-                continue
-            seen_keys.add(key)
-            preferred.append({"key": key, "base_url": base_url, "platform": cfg.get("platform")})
     pool_candidates = _build_pool_candidates(service, model)
-    if preferred:
-        merged = _merge_candidates(preferred, pool_candidates)
-        # For image service, append system-level backup keys as last resort
-        if (service or "").strip().lower() == "image":
-            image_keys = _get_image_keys()
-            if image_keys:
-                image_base_url = _get_image_base_url() or preferred_base_url
-                platform_hint = _infer_platform_from_base_url(image_base_url, model_cfgs[0].get("platform") if model_cfgs else "")
-                extra = [{"key": key, "base_url": image_base_url, "platform": platform_hint} for key in image_keys]
-                return _merge_candidates(merged, extra)
-        return merged
     if pool_candidates:
         return pool_candidates
     if preferred_base_url:
@@ -836,6 +1401,23 @@ def _get_default_model(service: str, fallback: Optional[str] = None) -> Optional
 
 
 def _select_service_key_pools(service: str, model: Optional[str] = None) -> List[Dict]:
+    route_credentials = _build_route_credential_chain(service, model)
+    if route_credentials:
+        return [
+            {
+                "key": credential.get("primary_secret"),
+                "base_url": credential.get("base_url"),
+                "backup_keys": credential.get("backup_secrets") or [],
+                "provider": credential.get("provider"),
+                "services": [credential.get("service")],
+                "models": [model] if model else [],
+                "priority": index * 10,
+                "enabled": credential.get("enabled", True),
+                "id": credential.get("id"),
+                "label": credential.get("label"),
+            }
+            for index, credential in enumerate(route_credentials, start=1)
+        ]
     pools = _get_key_pools()
     return select_key_pools(pools, service, model)
 
@@ -849,18 +1431,11 @@ def _build_service_candidates(
 ) -> List[Dict]:
     if runtime_key:
         return [{"key": runtime_key, "base_url": runtime_base_url}]
-    pools = _select_service_key_pools(service, model)
-    if pools:
+    route_credentials = _build_route_credential_chain(service, model)
+    if route_credentials:
         candidates: List[Dict] = []
-        for pool in pools:
-            base_url = pool.get("base_url")
-            keys = [pool.get("key")] + (pool.get("backup_keys") or [])
-            seen = set()
-            for key in keys:
-                if not key or key in seen:
-                    continue
-                seen.add(key)
-                candidates.append({"key": key, "base_url": base_url})
+        for credential in route_credentials:
+            candidates.extend(_expand_credential_candidates(credential))
         if candidates:
             return candidates
     return [{"key": None, "base_url": runtime_base_url or fallback_base_url}]
@@ -966,13 +1541,15 @@ def _normalize_video_status(payload: Dict[str, Any]) -> str:
 def _has_system_model_key(service: Optional[str], model: Optional[str]) -> bool:
     if not service or not model:
         return False
-    for item in _select_model_configs(service, model):
-        if item.get("api_key") or item.get("backup_keys"):
-            return True
-    for pool in _select_service_key_pools(service, model):
-        if pool.get("key") or pool.get("backup_keys"):
-            return True
-    return False
+    summary = _get_model_route_summary(service, model)
+    return bool(summary.get("executable"))
+
+
+def _allows_personal_override(service: Optional[str], model: Optional[str]) -> bool:
+    if not service or not model:
+        return True
+    summary = _get_model_route_summary(service, model)
+    return bool(summary.get("allow_personal_override", True))
 
 
 def determine_execution_mode(
@@ -983,6 +1560,8 @@ def determine_execution_mode(
     model: Optional[str] = None,
 ):
     if x_model_key:
+        if service and model and not _allows_personal_override(service, model):
+            raise HTTPException(status_code=403, detail="该模型已禁用个人凭证覆盖。")
         return "user", x_model_key, None
     if not current_user:
         raise HTTPException(status_code=401, detail="Login required or provide x-model-key.")
@@ -1014,6 +1593,8 @@ def determine_key_execution_mode(
     model: Optional[str] = None,
 ):
     if provided_key:
+        if service and model and not _allows_personal_override(service, model):
+            raise HTTPException(status_code=403, detail="该模型已禁用个人凭证覆盖。")
         return "user", provided_key
     if not current_user:
         raise HTTPException(status_code=401, detail=f"Login required or provide {header_name}.")

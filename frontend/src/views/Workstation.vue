@@ -709,14 +709,14 @@
                 </div>
             </div>
             <div class="space-y-8">
-                <div v-if="activeSettingsTab === 'user'" class="space-y-6">
+                <div v-if="activeSettingsTab === 'personal'" class="space-y-6">
                     <div class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 space-y-4">
                         <div class="flex items-center justify-between gap-4 flex-wrap">
                             <div class="flex items-center gap-4">
                                 <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-white/70 shadow-inner flex items-center justify-center icon-md">🔑</div>
                                 <div>
-                                    <h3 class="typo-card-title">{{ tSettings('settings.key_pools_title', '账号池') }}</h3>
-                                    <p class="typo-page-subtitle">{{ tSettings('settings.user_tip_desc', '在此配置个人 Key（支持阿里百炼 / 火山方舟等），仅当前浏览器生效；保存后优先使用你的 Key。') }}</p>
+                                    <h3 class="typo-card-title">{{ tSettings('settings.personal_credentials_title', '我的凭证') }}</h3>
+                                    <p class="typo-page-subtitle">{{ tSettings('settings.personal_credentials_desc', '配置当前浏览器使用的个人凭证。命中允许覆盖的模型时，会优先使用你的凭证。') }}</p>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
@@ -733,12 +733,13 @@
                         </div>
                         <div v-if="userPoolsDirty" class="text-xs text-amber-500">{{ tSettings('settings.unsaved_hint', '有未保存的更改') }}</div>
                         <div class="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-                            <div v-if="!userKeyPools.length" class="text-xs text-slate-400">{{ tSettings('settings.key_pool_empty', '暂无账号池配置') }}</div>
+                            <div v-if="!userKeyPools.length" class="text-xs text-slate-400">{{ tSettings('settings.personal_credentials_empty', '暂无个人凭证') }}</div>
                             <div v-for="(pool, idx) in userKeyPools" :key="idx" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
                                 <div class="flex items-center justify-between gap-3">
                                     <div class="flex items-center gap-3 text-xs text-slate-400">
                                         <span>#{{ idx + 1 }}</span>
                                         <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-500 border border-indigo-100 text-[10px]">{{ tSettings('settings.tag_personal', '个人') }}</span>
+                                        <span class="text-slate-700 font-medium">{{ pool.label || `个人凭证 ${idx + 1}` }}</span>
                                         <span class="text-slate-500">{{ poolSummary(pool) }}</span>
                                     </div>
                                     <div class="flex items-center gap-2 text-xs">
@@ -752,6 +753,10 @@
                                 </div>
                                 <div v-if="expandedUserPools.has(idx)" class="space-y-3">
                                     <div class="grid grid-cols-1 lg:grid-cols-7 gap-3">
+                                        <div class="space-y-1 lg:col-span-2">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.credential_label', '凭证名称') }}</label>
+                                            <input v-model="pool.label" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.credential_label_placeholder', '例如：我的火山凭证')" />
+                                        </div>
                                         <div class="space-y-1">
                                             <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_service_label', '用途（单选）') }}</label>
                                             <select v-model="pool.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleUserServiceChange(pool)">
@@ -763,7 +768,7 @@
                                             </select>
                                         </div>
                                         <div class="space-y-1 lg:col-span-2">
-                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.personal_credential_models', '适用模型（可选）') }}</label>
                                             <input
                                                 v-model="pool.models"
                                                 :list="`user-model-options-${idx}`"
@@ -774,7 +779,7 @@
                                                 <option v-for="opt in getUserModelOptionsForService(pool.service)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                                             </datalist>
                                         </div>
-                                        <div class="space-y-1 lg:col-span-3">
+                                        <div class="space-y-1 lg:col-span-2">
                                             <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
                                             <input v-model="pool.key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
                                         </div>
@@ -800,6 +805,10 @@
                                             <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_base_url', '接口地址（可选）') }}</label>
                                             <input v-model="pool.base_url" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.base_url_placeholder', '可选，例如 https://api.xxx.com')" />
                                         </div>
+                                        <div class="space-y-1 lg:col-span-2">
+                                            <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_backup_keys', '备用 Key') }}</label>
+                                            <textarea v-model="pool.backup_keys" rows="2" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all resize-y" :placeholder="tSettings('settings.key_pool_backup_keys_placeholder', '备用 Key（可选，换行分隔）')"></textarea>
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-else class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
@@ -816,14 +825,14 @@
                 </div>
             </div>
 
-            <div v-if="authStore.user.username === 'admin' && activeSettingsTab === 'models'" class="space-y-6">
-                <div class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 space-y-5">
+            <div v-if="authStore.user.username === 'admin' && (activeSettingsTab === 'credentials' || activeSettingsTab === 'routes')" class="space-y-6">
+                <div v-if="activeSettingsTab === 'credentials'" class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 space-y-5">
                     <div class="flex justify-between items-center gap-4 flex-wrap pb-4 border-b border-slate-100/70">
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-50 to-cyan-50 border border-white/70 shadow-inner flex items-center justify-center icon-md">🔐</div>
                             <div>
-                                <h3 class="typo-card-title">{{ tSettings('settings.system_pool_title', '系统账号池') }}</h3>
-                                <p class="typo-page-subtitle">{{ tSettings('settings.system_key_pools_desc', '按用途配置系统 Key 池，运行时按优先级自动回退。') }}</p>
+                                <h3 class="typo-card-title">{{ tSettings('settings.system_credentials_title', '系统凭证') }}</h3>
+                                <p class="typo-page-subtitle">{{ tSettings('settings.system_credentials_desc', '维护管理员可复用的系统凭证库。模型实际使用哪条凭证，请到“模型与路由”里绑定。') }}</p>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
@@ -866,7 +875,7 @@
 
                     <div class="space-y-3 max-h-[48vh] overflow-y-auto custom-scrollbar pr-2">
                         <div v-if="!filteredSystemKeyPools.length" class="text-xs text-slate-400 p-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/60">
-                            {{ tSettings('settings.system_pool_filtered_empty', '当前用途暂无账号池，请点击“添加”创建。') }}
+                            {{ tSettings('settings.system_pool_filtered_empty', '当前用途暂无系统凭证，请点击“添加”创建。') }}
                         </div>
                         <div v-for="entry in filteredSystemKeyPools" :key="`system-pool-${entry.index}`" class="p-4 rounded-2xl border border-slate-100 bg-white/80 space-y-3 shadow-sm">
                             <div class="flex items-center justify-between gap-3">
@@ -875,6 +884,7 @@
                                     <span class="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 text-[10px]">
                                         {{ tSettings('settings.pool_tag', '系统') }}
                                     </span>
+                                    <span class="text-slate-700 font-medium truncate">{{ entry.item.label || `系统凭证 ${entry.index + 1}` }}</span>
                                     <span class="text-slate-500 truncate">{{ poolSummary(entry.item) }}</span>
                                 </div>
                                 <div class="flex items-center gap-2 text-xs">
@@ -893,6 +903,9 @@
                                     {{ isPoolCompleted(entry.item) ? tSettings('settings.key_pool_configured', 'Key 已配置') : tSettings('settings.key_pool_not_configured', 'Key 未配置') }}
                                 </span>
                                 <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
+                                    {{ tSettings('settings.credential_reference_count', '路由引用') }}: {{ entry.item.reference_count || 0 }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
                                     {{ tSettings('settings.key_pool_backup_count', '备用 Key') }}: {{ poolBackupKeyCount(entry.item) }}
                                 </span>
                                 <span v-if="entry.item.base_url" class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 max-w-full truncate">
@@ -902,6 +915,10 @@
 
                             <div v-else class="space-y-3">
                                 <div class="grid grid-cols-1 lg:grid-cols-8 gap-3">
+                                    <div class="space-y-1 lg:col-span-2">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.credential_label', '凭证名称') }}</label>
+                                        <input v-model="entry.item.label" type="text" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" :placeholder="tSettings('settings.credential_label_placeholder', '例如：主图片凭证')" />
+                                    </div>
                                     <div class="space-y-1">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_service_label', '用途（单选）') }}</label>
                                         <select v-model="entry.item.service" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
@@ -923,18 +940,6 @@
                                             <option value="gemini">{{ tSettings('settings.key_pool_provider_gemini', 'Gemini') }}</option>
                                             <option value="other">{{ tSettings('settings.key_pool_provider_other', '其他') }}</option>
                                         </select>
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-2">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
-                                        <input
-                                            v-model="entry.item.models"
-                                            :list="`system-pool-model-options-${entry.index}`"
-                                            class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                            :placeholder="tSettings('settings.key_pool_models_hint', '支持输入自定义模型 ID，多个用逗号分隔')"
-                                        />
-                                        <datalist :id="`system-pool-model-options-${entry.index}`">
-                                            <option v-for="opt in getUserModelOptionsForService(entry.item.service)" :key="`pool-${entry.index}-${opt.value}`" :value="opt.value">{{ opt.label }}</option>
-                                        </datalist>
                                     </div>
                                     <div class="space-y-1 lg:col-span-3">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.key_pool_key', 'API 密钥') }}</label>
@@ -972,18 +977,43 @@
                                         </label>
                                     </div>
                                 </div>
+                                <div class="flex items-center gap-3 text-xs">
+                                    <button
+                                        @click="runCredentialTest(entry)"
+                                        :disabled="credentialTestLoading[entry.index]"
+                                        class="font-semibold text-emerald-600 hover:text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    >
+                                        {{ credentialTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.credential_test', '测试凭证') }}
+                                    </button>
+                                    <span class="text-slate-400">{{ tSettings('settings.credential_test_hint', '将使用该凭证测试同用途下的一条代表模型。') }}</span>
+                                </div>
+                                <div v-if="credentialTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
+                                    <span
+                                        :class="credentialTestStates[entry.index].status === 'success' ? 'text-emerald-600' : credentialTestStates[entry.index].status === 'error' ? 'text-red-500' : 'text-slate-500'"
+                                    >
+                                        {{ credentialTestStates[entry.index].message }}
+                                    </span>
+                                    <a
+                                        v-if="credentialTestStates[entry.index].url"
+                                        :href="credentialTestStates[entry.index].url"
+                                        target="_blank"
+                                        class="text-indigo-500 hover:text-indigo-700 underline"
+                                    >
+                                        {{ tSettings('settings.model_test_view', '查看结果') }}
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 space-y-6">
+                <div v-if="activeSettingsTab === 'routes'" class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 space-y-6">
                     <div class="flex justify-between items-center mb-4 pb-4 border-b border-slate-100/70">
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-white/70 shadow-inner flex items-center justify-center icon-md">🧩</div>
                             <div>
-                                <h3 class="typo-card-title">{{ tSettings('settings.model_config_title', '模型配置') }}</h3>
-                                <p class="typo-page-subtitle">{{ tSettings('settings.model_config_desc', '配置模型名称、平台、Key 与消耗积分') }}</p>
+                                <h3 class="typo-card-title">{{ tSettings('settings.model_routes_title', '模型与路由') }}</h3>
+                                <p class="typo-page-subtitle">{{ tSettings('settings.model_routes_desc', '按模型绑定系统凭证、回退链与个人覆盖策略。只有可执行模型会出现在用户可选列表。') }}</p>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
@@ -993,8 +1023,93 @@
                         </div>
                     </div>
 
+                    <div class="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/70 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <h4 class="typo-body font-extrabold text-slate-800">{{ tSettings('settings.service_routes_title', '服务默认路由') }}</h4>
+                                <p class="text-xs text-slate-500">{{ tSettings('settings.service_routes_desc', '当模型没有专属主路由时，将回退到这里配置的系统凭证链。') }}</p>
+                            </div>
+                            <button
+                                @click="showServiceRouteEditor = !showServiceRouteEditor"
+                                class="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+                                :class="showServiceRouteEditor ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'"
+                            >
+                                {{ showServiceRouteEditor ? tSettings('settings.hide_advanced', '收起高级项') : tSettings('settings.show_service_routes', '展开服务默认路由') }}
+                            </button>
+                        </div>
+                        <div v-if="showServiceRouteEditor" class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                            <div v-for="entry in serviceRouteEntries" :key="`service-route-${entry.service}`" class="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                                <div class="flex items-center justify-between gap-3">
+                                    <div class="text-sm font-semibold text-slate-700">{{ entry.label }}</div>
+                                    <span class="text-[11px] text-slate-400">{{ entry.service }}</span>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[11px] text-slate-500">{{ tSettings('settings.route_primary_credential', '主凭证') }}</label>
+                                    <select v-model="entry.route.primary_credential_id" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                        <option value="">{{ tSettings('settings.route_empty_primary', '未配置') }}</option>
+                                        <option v-for="option in credentialOptionsForService(entry.service)" :key="`service-primary-${entry.service}-${option.value}`" :value="option.value">{{ option.label }}</option>
+                                    </select>
+                                </div>
+                                <div class="space-y-1">
+                                    <label class="text-[11px] text-slate-500">{{ tSettings('settings.route_fallback_credentials', '回退凭证') }}</label>
+                                    <select v-model="entry.route.fallback_credential_ids" multiple class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all min-h-[92px]">
+                                        <option v-for="option in credentialOptionsForService(entry.service).filter((option) => option.value !== entry.route.primary_credential_id)" :key="`service-fallback-${entry.service}-${option.value}`" :value="option.value">{{ option.label }}</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+                            <div v-for="entry in serviceRouteEntries" :key="`service-route-summary-${entry.service}`" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 space-y-1">
+                                <div class="text-sm font-semibold text-slate-700">{{ entry.label }}</div>
+                                <div class="text-[11px] text-slate-500 truncate">
+                                    {{ credentialLabelById(entry.route.primary_credential_id) }}
+                                </div>
+                                <div class="text-[11px] text-slate-400">
+                                    {{ tSettings('settings.route_fallback_count', '回退') }}: {{ Array.isArray(entry.route.fallback_credential_ids) ? entry.route.fallback_credential_ids.length : 0 }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="space-y-4">
                         <div class="space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                                    <div class="text-[11px] text-slate-400">{{ tSettings('settings.route_stats_total', '模型总数') }}</div>
+                                    <div class="text-sm font-semibold text-slate-700">{{ routeOverviewStats.total }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+                                    <div class="text-[11px] text-emerald-600">{{ tSettings('settings.route_stats_ready', '可执行') }}</div>
+                                    <div class="text-sm font-semibold text-emerald-700">{{ routeOverviewStats.ready }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3">
+                                    <div class="text-[11px] text-amber-600">{{ tSettings('settings.route_stats_missing', '缺少凭证') }}</div>
+                                    <div class="text-sm font-semibold text-amber-700">{{ routeOverviewStats.missing }}</div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                                    <div class="text-[11px] text-slate-500">{{ tSettings('settings.route_stats_disabled', '已停用') }}</div>
+                                    <div class="text-sm font-semibold text-slate-700">{{ routeOverviewStats.disabled }}</div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+                                <input
+                                    v-model="routeSearchText"
+                                    type="text"
+                                    class="w-full lg:max-w-sm px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                    :placeholder="tSettings('settings.route_search_placeholder', '搜索模型名 / 标签 / 平台')"
+                                />
+                                <div class="flex flex-wrap gap-2">
+                                    <button
+                                        v-for="option in routeStatusFilters"
+                                        :key="option.id"
+                                        @click="routeStatusFilter = option.id"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border"
+                                        :class="routeStatusFilter === option.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'"
+                                    >
+                                        {{ option.label }}
+                                    </button>
+                                </div>
+                            </div>
                             <div class="flex flex-wrap items-center gap-3">
                                 <div class="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-xl p-1">
                                     <button
@@ -1042,12 +1157,9 @@
                                         >
                                             {{ isSystemModelExpanded(entry.index) ? tSettings('settings.key_pool_collapse', '收起') : tSettings('settings.key_pool_expand', '展开') }}
                                         </button>
-                                        <button @click="removeSystemModel(entry.index)" class="text-red-400 hover:text-red-600">
-                                            {{ tSettings('settings.key_pool_remove', '删除') }}
-                                        </button>
                                     </div>
                                 </div>
-                                <div v-if="!isSystemModelExpanded(entry.index)" class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                                <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                                     <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200">
                                         {{ getPlatformLabel(entry.item.platform) }}
                                     </span>
@@ -1058,10 +1170,57 @@
                                         {{ entry.item.enabled !== false ? tSettings('settings.key_pool_enabled', '启用') : tSettings('settings.key_pool_disabled', '停用') }}
                                     </span>
                                     <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 max-w-full truncate">
-                                        {{ isModelConfigured(entry.item) ? tSettings('settings.key_pool_configured', 'Key 已配置') : tSettings('settings.key_pool_not_configured', 'Key 未配置') }}
+                                        {{ getRouteStatusLabel(entry.item) }}
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 max-w-full truncate">
+                                        {{ credentialLabelById(entry.item.primary_credential_id) }}
                                     </span>
                                 </div>
-                                <div v-else class="grid grid-cols-1 lg:grid-cols-7 gap-3">
+                                <div class="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                                    <div class="space-y-1 lg:col-span-4">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
+                                        <input
+                                            v-model="entry.item.model"
+                                            :list="`system-model-options-${entry.index}`"
+                                            class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                                            @change="applyModelTemplate(entry.item, entry.item.model)"
+                                            :placeholder="tSettings('settings.model_id_placeholder', '支持输入自定义模型 ID')"
+                                        />
+                                        <datalist :id="`system-model-options-${entry.index}`">
+                                            <option v-for="opt in getSystemModelOptionsForSelection(entry.item.service, entry.item.platform)" :key="`${entry.index}-${opt.value}`" :value="opt.value">{{ opt.label }}</option>
+                                        </datalist>
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-4">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.route_primary_credential', '主凭证') }}</label>
+                                        <select v-model="entry.item.primary_credential_id" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all">
+                                            <option value="">{{ tSettings('settings.route_empty_primary', '未配置') }}</option>
+                                            <option v-for="option in credentialOptionsForService(entry.item.service)" :key="`model-primary-${entry.index}-${option.value}`" :value="option.value">{{ option.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-2">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_enabled', '启用') }}</label>
+                                        <label class="flex items-center gap-2 text-[11px] text-slate-600 mt-2">
+                                            <input type="checkbox" v-model="entry.item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                            {{ tSettings('settings.model_enabled', '启用') }}
+                                        </label>
+                                        <label class="flex items-center gap-2 text-[11px] text-slate-600 mt-2">
+                                            <input type="checkbox" v-model="entry.item.route_enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                            {{ tSettings('settings.route_enabled', '启用路由') }}
+                                        </label>
+                                    </div>
+                                    <div class="space-y-1 lg:col-span-2">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.route_allow_personal', '允许个人凭证覆盖') }}</label>
+                                        <label class="flex items-center gap-2 text-[11px] text-slate-600 mt-2">
+                                            <input type="checkbox" v-model="entry.item.allow_personal_override" class="rounded text-indigo-600 focus:ring-indigo-500" />
+                                            {{ entry.item.allow_personal_override !== false ? tSettings('settings.route_personal_on', '已允许') : tSettings('settings.route_personal_off', '已关闭') }}
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-xs text-slate-600 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+                                    <div class="font-medium text-slate-700">{{ getModelExecutionExplanation(entry.item) }}</div>
+                                    <div class="text-slate-400">{{ tSettings('settings.route_source', '路由来源') }}: {{ getRouteSourceLabel(entry.item) }}</div>
+                                </div>
+                                <div v-if="isSystemModelExpanded(entry.index)" class="grid grid-cols-1 lg:grid-cols-7 gap-3">
                                     <div class="space-y-1">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_platform', '平台') }}</label>
                                         <select v-model="entry.item.platform" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" @change="handleSystemPlatformChange(entry.item)">
@@ -1080,30 +1239,6 @@
                                             <option value="prompt">{{ tSettings('settings.model_service_prompt', '提示词优化') }}</option>
                                         </select>
                                     </div>
-                                    <div class="space-y-1 lg:col-span-2">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_id', '模型') }}</label>
-                                        <input
-                                            v-model="entry.item.model"
-                                            :list="`system-model-options-${entry.index}`"
-                                            class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                                            @change="applyModelTemplate(entry.item, entry.item.model)"
-                                            :placeholder="tSettings('settings.model_id_placeholder', '支持输入自定义模型 ID')"
-                                        />
-                                        <datalist :id="`system-model-options-${entry.index}`">
-                                            <option v-for="opt in getSystemModelOptionsForSelection(entry.item.service, entry.item.platform)" :key="`${entry.index}-${opt.value}`" :value="opt.value">{{ opt.label }}</option>
-                                        </datalist>
-                                        <div class="text-[10px] text-slate-400 mt-1">
-                                            {{ tSettings('settings.model_platform', '平台') }}: {{ getPlatformLabel(entry.item.platform) }}
-                                        </div>
-                                    </div>
-                                    <div class="space-y-1 lg:col-span-2">
-                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_api_key', 'API Key') }}</label>
-                                        <input v-model="entry.item.api_key" type="password" class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all" placeholder="sk-***" />
-                                        <label class="flex items-center gap-2 text-[11px] text-slate-500 mt-2">
-                                            <input type="checkbox" v-model="entry.item.enabled" class="rounded text-indigo-600 focus:ring-indigo-500" />
-                                            {{ tSettings('settings.model_enabled', '启用') }}
-                                        </label>
-                                    </div>
                                     <div class="space-y-1">
                                         <label class="text-[11px] text-slate-500">{{ tSettings('settings.model_cost', '消耗积分') }}</label>
                                         <input
@@ -1113,6 +1248,21 @@
                                             class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
                                             :placeholder="tSettings('settings.model_cost_placeholder', '例如 1')"
                                         />
+                                        <div class="text-[10px] text-slate-400 mt-1">
+                                            {{ tSettings('settings.model_platform', '平台') }}: {{ getPlatformLabel(entry.item.platform) }}
+                                        </div>
+                                    </div>
+                                    <div class="space-y-1">
+                                        <label class="text-[11px] text-slate-500">{{ tSettings('settings.route_fallback_credentials', '回退凭证') }}</label>
+                                        <select v-model="entry.item.fallback_credential_ids" multiple class="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs text-slate-700 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all min-h-[92px]">
+                                            <option v-for="option in credentialOptionsForService(entry.item.service).filter((option) => option.value !== entry.item.primary_credential_id)" :key="`model-fallback-${entry.index}-${option.value}`" :value="option.value">{{ option.label }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-xs text-slate-600 space-y-2 lg:col-span-2">
+                                        <div class="font-semibold text-slate-700">{{ tSettings('settings.route_status_title', '当前路由状态') }}</div>
+                                        <div>{{ getRouteStatusLabel(entry.item) }}</div>
+                                        <div>{{ getModelExecutionExplanation(entry.item) }}</div>
+                                        <div>{{ tSettings('settings.route_source', '路由来源') }}: {{ getRouteSourceLabel(entry.item) }}</div>
                                     </div>
                                 </div>
                                 <div v-if="isSystemModelExpanded(entry.index)" class="flex items-center gap-3 text-xs">
@@ -1121,10 +1271,13 @@
                                         :disabled="modelTestLoading[entry.index]"
                                         class="font-semibold text-emerald-600 hover:text-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
-                                        {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_test', '测试') }}
+                                        {{ modelTestLoading[entry.index] ? tSettings('settings.model_test_running', '测试中...') : tSettings('settings.model_route_test', '测试当前路由') }}
+                                    </button>
+                                    <button @click="removeSystemModel(entry.index)" class="text-red-400 hover:text-red-600">
+                                        {{ tSettings('settings.key_pool_remove', '删除') }}
                                     </button>
                                     <button @click="clearSystemModelKey(entry.index)" class="text-red-400 hover:text-red-600">
-                                        {{ tSettings('settings.model_remove', '清空Key') }}
+                                        {{ tSettings('settings.route_clear', '清空路由') }}
                                     </button>
                                 </div>
                                 <div v-if="isSystemModelExpanded(entry.index) && modelTestStates[entry.index]" class="text-[11px] flex flex-wrap items-center gap-2">
@@ -1153,15 +1306,15 @@
                 </div>
             </div>
 
-             <div v-if="authStore.user.username === 'admin' && activeSettingsTab === 'users'" class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm space-y-6">
+             <div v-if="authStore.user.username === 'admin' && activeSettingsTab === 'members'" class="bg-white/80 backdrop-blur-xl border border-white/60 rounded-[24px] p-8 shadow-sm space-y-6">
                 <div class="flex justify-between items-center mb-6 pb-5 border-b border-slate-100/70">
-                    <h3 class="typo-card-title">{{ localeStore.t('settings.user_mgmt') }}</h3>
+                    <h3 class="typo-card-title">{{ tSettings('settings.tab_members', '成员与额度') }}</h3>
                     <button @click="fetchUsers" class="typo-button-compact text-indigo-600 bg-white/70 border border-white/70 px-3 py-1.5 rounded-lg shadow-sm hover:bg-white hover:text-indigo-700 transition-all">{{ localeStore.t('settings.refresh') }}</button>
                 </div>
                 <div class="bg-white/70 backdrop-blur-md rounded-2xl p-6 border border-white/60 shadow-sm">
                     <div class="flex items-center justify-between mb-4">
-                        <h4 class="typo-body font-extrabold text-slate-800">{{ tSettings('settings.user_create_title', '新增用户') }}</h4>
-                        <span class="text-xs text-slate-400">{{ tSettings('settings.user_create_desc', '创建新的登录账号') }}</span>
+                        <h4 class="typo-body font-extrabold text-slate-800">{{ tSettings('settings.user_create_title', '新增成员') }}</h4>
+                        <span class="text-xs text-slate-400">{{ tSettings('settings.user_create_desc', '创建新的登录账号并设置额度') }}</span>
                     </div>
                     <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
                         <input v-model="newUserForm.username" type="text" class="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl typo-input text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10" :placeholder="tSettings('settings.user_create_username', '用户名')" />
@@ -1363,20 +1516,12 @@ const batchUserImportText = ref('')
 const batchUserSkipExisting = ref(true)
 const batchUserImporting = ref(false)
 const batchImportResult = ref('')
-const systemImageKey = ref('')
-const systemImageBackupKeysInput = ref('')
-const systemImageBaseUrl = ref('')
-const systemTtsKey = ref('')
-const systemTtsBackupKeysInput = ref('')
-const systemTtsBaseUrl = ref('')
-const systemVideoKey = ref('')
-const systemVideoBackupKeysInput = ref('')
-const systemVideoBaseUrl = ref('')
 const systemKeyPools = ref([])
 const expandedPools = reactive(new Set())
 const expandedSystemModels = reactive(new Set())
 const systemConfigDirty = ref(false)
 const systemModels = ref([])
+const serviceRoutes = ref([])
 const modelCatalog = ref([])
 const modelCatalogLoaded = ref(false)
 const promptHealthLoading = ref(false)
@@ -1420,6 +1565,14 @@ watch(
     { deep: true }
 )
 
+watch(
+    serviceRoutes,
+    () => {
+        systemConfigDirty.value = true
+    },
+    { deep: true }
+)
+
 const MODEL_PLATFORM_BASE_URLS = {
     vector: 'https://api.vectorengine.ai',
     bailian: 'https://dashscope.aliyuncs.com/api/v1',
@@ -1435,9 +1588,9 @@ const SYSTEM_PROVIDER_BASE_URLS = {
 const USER_PROVIDER_BASE_URLS = MODEL_PLATFORM_BASE_URLS
 const PROMPT_CHANNEL_KEYS = ['google', 'bytedance', 'aliyun']
 const PROMPT_CHANNEL_DEFAULTS = {
-    google: ['gemini-3.1-pro-preview', 'kimi-k2.5'],
-    bytedance: ['gemini-3.1-pro-preview', 'kimi-k2.5'],
-    aliyun: ['gemini-3.1-pro-preview', 'kimi-k2.5']
+    google: [],
+    bytedance: [],
+    aliyun: []
 }
 
 const clonePromptDefaults = () => ({
@@ -1504,6 +1657,33 @@ const normalizePlatform = (value) => {
     return text
 }
 
+const createDraftCredentialId = (scope = 'system', service = 'image') => {
+    const scopePart = String(scope || 'system').trim().toLowerCase() || 'system'
+    const servicePart = String(service || 'image').trim().toLowerCase() || 'image'
+    const randomPart = Math.random().toString(36).slice(2, 10)
+    return `${scopePart}_${servicePart}_${Date.now().toString(36)}_${randomPart}`
+}
+
+const ensureCredentialDraftId = (pool, scope = 'system') => {
+    if (!pool) return pool
+    if (!String(pool.id || '').trim()) {
+        pool.id = createDraftCredentialId(scope, pool.service)
+    }
+    return pool
+}
+
+const dedupeValues = (values = []) => {
+    const seen = new Set()
+    const output = []
+    values.forEach((value) => {
+        const normalized = String(value || '').trim()
+        if (!normalized || seen.has(normalized)) return
+        seen.add(normalized)
+        output.push(normalized)
+    })
+    return output
+}
+
 const getPlatformBaseUrl = (platform) => MODEL_PLATFORM_BASE_URLS[normalizePlatform(platform)] || ''
 
 const inferPlatformFromBaseUrl = (value) => {
@@ -1526,19 +1706,28 @@ const normalizeModelItem = (item) => {
     const model = String(item?.model || item?.id || item?.value || '').trim()
     const service = String(item?.service || item?.type || 'image').trim().toLowerCase()
     const costValue = item?.cost
-    const backupKeys = Array.isArray(item?.backup_keys)
-        ? item.backup_keys.join('\n')
-        : (item?.backup_keys || '')
+    const route = item?.route || {}
     return {
         model,
         label: String(item?.label || item?.name || model).trim(),
         service: ['image', 'video', 'audio', 'digital_human', 'prompt'].includes(service) ? service : 'image',
         platform: normalizePlatform(item?.platform || item?.provider),
-        api_key: String(item?.api_key || item?.key || '').trim(),
-        base_url: String(item?.base_url || '').trim(),
         cost: Number.isFinite(Number(costValue)) ? Number(costValue) : null,
         enabled: item?.enabled !== false,
-        backup_keys: backupKeys
+        primary_credential_id: String(item?.primary_credential_id || route?.primary_credential_id || '').trim(),
+        fallback_credential_ids: Array.isArray(item?.fallback_credential_ids)
+            ? item.fallback_credential_ids.map((value) => String(value || '').trim()).filter(Boolean)
+            : Array.isArray(route?.fallback_credential_ids)
+                ? route.fallback_credential_ids.map((value) => String(value || '').trim()).filter(Boolean)
+                : [],
+        allow_personal_override: item?.allow_personal_override !== false && route?.allow_personal_override !== false,
+        route_enabled: route?.enabled !== false,
+        route_status: String(route?.status || item?.route_status || '').trim(),
+        route_reason: String(route?.reason || item?.route_reason || '').trim(),
+        route_source: String(route?.route_source || item?.route_source || '').trim(),
+        credential_ids: Array.isArray(route?.credential_ids)
+            ? route.credential_ids.map((value) => String(value || '').trim()).filter(Boolean)
+            : []
     }
 }
 
@@ -1546,15 +1735,11 @@ const serializeSystemModels = () => {
     return (systemModels.value || [])
         .map((item) => {
             const platform = normalizePlatform(item.platform)
-            const baseUrl = getPlatformBaseUrl(platform) || String(item.base_url || '').trim()
             return {
                 model: String(item.model || '').trim(),
                 label: String(item.label || '').trim(),
                 service: String(item.service || 'image').trim().toLowerCase(),
                 platform,
-                api_key: String(item.api_key || '').trim(),
-                backup_keys: parseKeyList(item.backup_keys || ''),
-                base_url: baseUrl,
                 cost: Number.isFinite(Number(item.cost)) ? Number(item.cost) : null,
                 enabled: item.enabled !== false
             }
@@ -1566,12 +1751,13 @@ const applyModelTemplate = (item, modelValue) => {
     const template = modelCatalog.value.find((m) => m?.model === modelValue)
         || systemModels.value.find((m) => m?.model === modelValue)
     if (!template) return
-    const platform = normalizePlatform(template.platform) || inferPlatformFromBaseUrl(template.base_url) || item.platform
+    const platform = normalizePlatform(template.platform) || item.platform
     item.model = template.model
     item.label = template.label || template.model
     item.service = template.service || item.service
     item.platform = platform || item.platform
     item.cost = Number.isFinite(Number(template.cost)) ? Number(template.cost) : item.cost
+    item.allow_personal_override = template.allow_personal_override !== false
 }
 
 const getSystemModelOptionsForSelection = (service, platform) => {
@@ -1622,11 +1808,15 @@ const addSystemModel = (defaults = {}) => {
         label: template?.label || template?.model || '',
         service: ['image', 'video', 'audio', 'digital_human', 'prompt'].includes(service) ? service : 'image',
         platform,
-        api_key: '',
-        backup_keys: '',
-        base_url: '',
         cost: Number.isFinite(Number(template?.cost)) ? Number(template.cost) : null,
-        enabled: true
+        enabled: true,
+        primary_credential_id: '',
+        fallback_credential_ids: [],
+        allow_personal_override: true,
+        route_enabled: true,
+        route_status: '',
+        route_reason: '',
+        route_source: ''
     })
 }
 
@@ -1641,8 +1831,8 @@ const addSystemModelForActiveGroup = () => {
 const clearSystemModelKey = (idx) => {
     const item = systemModels.value[idx]
     if (!item) return
-    item.api_key = ''
-    item.backup_keys = ''
+    item.primary_credential_id = ''
+    item.fallback_credential_ids = []
     systemConfigDirty.value = true
 }
 
@@ -1656,18 +1846,12 @@ const toggleSystemModelExpand = (idx) => {
 const modelSummary = (item) => {
     const model = String(item?.model || '').trim() || '—'
     const cost = Number.isFinite(Number(item?.cost)) ? `${Number(item.cost)}${tSettings('settings.model_cost_unit', '积分')}` : '—'
-    const keyStatus = isModelConfigured(item)
-        ? tSettings('settings.key_pool_configured', 'Key 已配置')
-        : tSettings('settings.key_pool_not_configured', 'Key 未配置')
-    return `${model} · ${tSettings('settings.model_cost', '消耗积分')}:${cost} · ${keyStatus}`
+    const routeStatus = getRouteStatusLabel(item)
+    return `${model} · ${tSettings('settings.model_cost', '消耗积分')}:${cost} · ${routeStatus}`
 }
 
 const isModelConfigured = (item) => {
-    if (String(item?.api_key || '').trim()) return true
-    const backupKeys = Array.isArray(item?.backup_keys)
-        ? item.backup_keys
-        : String(item?.backup_keys || '').split('\n')
-    return backupKeys.some((value) => String(value || '').trim())
+    return Boolean(String(item?.primary_credential_id || '').trim() || (Array.isArray(item?.fallback_credential_ids) && item.fallback_credential_ids.length))
 }
 
 const removeSystemModel = (idx) => {
@@ -1867,12 +2051,13 @@ const systemModelOptions = computed(() => {
 const modelOptions = computed(() => buildCatalogOptions('image', true))
 const promptModelOptions = computed(() => buildCatalogOptions('prompt'))
 
-const IMAGE_PROVIDER_KEYS = ['google', 'bytedance', 'aliyun', 'openai']
+const IMAGE_PROVIDER_KEYS = ['google', 'bytedance', 'aliyun', 'openai', 'xai']
 const IMAGE_PROVIDER_MODEL_PRIORITY = {
     google: ['gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
     bytedance: ['doubao-seedream-5-0-260128', 'doubao-seedream-4-5-251128'],
     aliyun: ['z-image-turbo'],
-    openai: ['gpt-image-1.5-all', 'gpt-image-1.5']
+    openai: ['gpt-image-1.5-all', 'gpt-image-1.5'],
+    xai: ['grok-4.2-image']
 }
 const IMAGE_GLOBAL_MODEL_FALLBACK = [
     'gemini-3.1-flash-image-preview',
@@ -1880,6 +2065,7 @@ const IMAGE_GLOBAL_MODEL_FALLBACK = [
     'doubao-seedream-5-0-260128',
     'doubao-seedream-4-5-251128',
     'z-image-turbo',
+    'grok-4.2-image',
     'gpt-image-1.5-all',
     'gpt-image-1.5'
 ]
@@ -1888,6 +2074,7 @@ const normalizeImageProvider = (value) => {
     if (!text) return 'google'
     if (text === 'byte') return 'bytedance'
     if (['ali', 'aliyun'].includes(text)) return 'aliyun'
+    if (['xai', 'grok'].includes(text)) return 'xai'
     if (['openai', 'gpt', 'chatgpt'].includes(text)) return 'openai'
     if (IMAGE_PROVIDER_KEYS.includes(text)) return text
     return 'google'
@@ -1898,6 +2085,7 @@ const inferImageProviderFromModel = (model) => {
     if (text.includes('gemini')) return 'google'
     if (text.includes('doubao') || text.includes('seedream') || text.includes('seededit')) return 'bytedance'
     if (text.includes('z-image') || text.includes('wanx') || text.includes('ali')) return 'aliyun'
+    if (text.includes('grok')) return 'xai'
     if (text.includes('gpt-image') || text.includes('dall-e')) return 'openai'
     return 'google'
 }
@@ -1905,7 +2093,8 @@ const imageProviderOptions = computed(() => [
     { label: 'Google', value: 'google' },
     { label: 'Bytedance', value: 'bytedance' },
     { label: '阿里', value: 'aliyun' },
-    { label: 'OpenAI', value: 'openai' }
+    { label: 'OpenAI', value: 'openai' },
+    { label: 'xAI', value: 'xai' }
 ])
 const getImageProviderLabel = (value) => {
     const normalized = normalizeImageProvider(value)
@@ -1971,14 +2160,14 @@ const promptChannelModelOptions = computed(() => {
     return merged
 })
 const promptChannelPrimaryModel = {
-    google: 'gemini-3.1-pro-preview',
-    bytedance: 'gemini-3.1-pro-preview',
-    aliyun: 'gemini-3.1-pro-preview'
+    google: '',
+    bytedance: '',
+    aliyun: ''
 }
 const promptModelHintsByChannel = {
-    google: ['gemini-3.1-pro-preview', 'gemini', 'kimi-k2.5', 'kimi'],
-    bytedance: ['gemini-3.1-pro-preview', 'gemini', 'kimi-k2.5', 'kimi'],
-    aliyun: ['gemini-3.1-pro-preview', 'gemini', 'kimi-k2.5', 'kimi']
+    google: ['kimi-k2.5', 'kimi', 'gemini'],
+    bytedance: ['kimi-k2.5', 'kimi', 'gemini'],
+    aliyun: ['kimi-k2.5', 'kimi', 'gemini']
 }
 const resolvePromptModel = (channel, fallbackModel = '') => {
     const normalizedChannel = normalizePromptChannel(channel)
@@ -2110,22 +2299,29 @@ const validatePromptChannelsDraft = () => {
     })
     Object.entries(channels).forEach(([channel, payload]) => {
         const models = payload.models || []
-        if (payload.enabled !== true) errors.push(`${channel} 通道未启用`)
-        if (models.length < 2) errors.push(`${channel} 通道至少需要 2 个模型`)
+        if (payload.enabled !== true) {
+            warnings.push(`${channel} 通道未启用，跳过校验`)
+            return
+        }
+        let validModelCount = 0
         let hasCandidate = false
+        const candidateCount = promptDraftChannelPreview.value[channel]?.candidate_count || 0
+        if (candidateCount > 0) hasCandidate = true
         models.forEach((model) => {
             const item = promptModelMap.get(String(model || '').toLowerCase())
             if (!item) {
-                errors.push(`${channel} 通道模型未配置: ${model}`)
+                warnings.push(`${channel} 通道模型未配置: ${model}`)
                 return
             }
             if (item.enabled === false) {
-                errors.push(`${channel} 通道模型未启用: ${model}`)
+                warnings.push(`${channel} 通道模型未启用: ${model}`)
+                return
             }
-            const candidateCount = promptDraftChannelPreview.value[channel]?.candidate_count || 0
-            if (candidateCount > 0) hasCandidate = true
-            else warnings.push(`${channel} 通道模型 ${model} 未发现可用 Key`)
+            validModelCount += 1
+            if (!hasCandidate) warnings.push(`${channel} 通道模型 ${model} 未发现可用 Key`)
         })
+        if (validModelCount < 1) errors.push(`${channel} 通道至少需要 1 个已启用模型`)
+        else if (validModelCount < 2) warnings.push(`${channel} 通道仅配置了 1 个有效模型，回退能力较弱`)
         if (!hasCandidate) errors.push(`${channel} 通道没有可用 Key 候选链`)
     })
     return { errors, warnings }
@@ -2352,6 +2548,9 @@ const modelPlatformGroups = computed(() => [
 const modelViewMode = ref('service')
 const activeModelGroup = ref('image')
 const activeSystemPoolService = ref('image')
+const routeSearchText = ref('')
+const routeStatusFilter = ref('all')
+const showServiceRouteEditor = ref(false)
 
 watch(
     modelViewMode,
@@ -2378,6 +2577,12 @@ const activeModelGroups = computed(() => (
         : buildGroupStats(modelServiceGroups.value, 'service')
 ))
 
+const routeStatusFilters = computed(() => [
+    { id: 'all', label: tSettings('settings.route_filter_all', '全部') },
+    { id: 'issues', label: tSettings('settings.route_filter_issues', '只看问题') },
+    { id: 'ready', label: tSettings('settings.route_filter_ready', '只看可执行') },
+])
+
 const systemModelsWithIndex = computed(() => (systemModels.value || []).map((item, index) => ({ item, index })))
 const systemKeyPoolsWithIndex = computed(() => (systemKeyPools.value || []).map((item, index) => ({ item, index })))
 
@@ -2394,11 +2599,188 @@ const systemPoolStats = computed(() => {
     return { total, enabled, unconfigured }
 })
 
+const serviceRouteEntries = computed(() => {
+    const serviceMap = new Map((serviceRoutes.value || []).map((item) => [String(item?.service || '').trim().toLowerCase(), item]))
+    return systemPoolServiceGroups.value.map((group) => {
+        const service = group.id
+        const route = serviceMap.get(service) || {
+            service,
+            primary_credential_id: '',
+            fallback_credential_ids: []
+        }
+        return {
+            service,
+            label: group.label,
+            route
+        }
+    })
+})
+
+const routeOverviewStats = computed(() => {
+    const list = systemModels.value || []
+    return list.reduce((acc, item) => {
+        const summary = getLiveRouteSummary(item)
+        acc.total += 1
+        if (summary.status === 'ready') acc.ready += 1
+        else if (summary.status === 'disabled') acc.disabled += 1
+        else acc.missing += 1
+        return acc
+    }, { total: 0, ready: 0, missing: 0, disabled: 0 })
+})
+
+const credentialOptionsForService = (service) => {
+    const normalizedService = String(service || '').trim().toLowerCase()
+    return (systemKeyPools.value || [])
+        .filter((item) => item?.enabled !== false && String(item?.service || '').trim().toLowerCase() === normalizedService)
+        .map((item) => ({
+            label: item.label || poolSummary(item),
+            value: item.id
+        }))
+}
+
+const credentialLabelById = (credentialId) => {
+    const id = String(credentialId || '').trim()
+    if (!id) return '—'
+    const matched = (systemKeyPools.value || []).find((item) => item?.id === id)
+    return matched?.label || matched?.name || id
+}
+
+const getServiceRouteByService = (service) => {
+    const normalizedService = String(service || 'image').trim().toLowerCase()
+    return (serviceRoutes.value || []).find((item) => String(item?.service || '').trim().toLowerCase() === normalizedService) || null
+}
+
+const getLiveRouteSummary = (item) => {
+    const modelEnabled = item?.enabled !== false
+    if (!modelEnabled) {
+        return {
+            status: 'disabled',
+            reason: tSettings('settings.model_disabled', '模型已停用'),
+            route_source: 'disabled',
+            primary_credential_id: null,
+            fallback_credential_ids: [],
+            credential_ids: [],
+            executable: false
+        }
+    }
+
+    const modelPrimary = String(item?.primary_credential_id || '').trim()
+    const modelFallbacks = dedupeValues(Array.isArray(item?.fallback_credential_ids) ? item.fallback_credential_ids : [])
+        .filter((value) => value !== modelPrimary)
+    const modelRouteEnabled = item?.route_enabled !== false
+    const serviceRoute = getServiceRouteByService(item?.service)
+    const servicePrimary = String(serviceRoute?.primary_credential_id || '').trim()
+    const serviceFallbacks = dedupeValues(Array.isArray(serviceRoute?.fallback_credential_ids) ? serviceRoute.fallback_credential_ids : [])
+        .filter((value) => value !== servicePrimary)
+
+    let routeSource = 'missing'
+    let configuredIds = []
+
+    if (modelRouteEnabled && (modelPrimary || modelFallbacks.length)) {
+        routeSource = 'model'
+        configuredIds = [modelPrimary, ...modelFallbacks]
+    } else if (servicePrimary || serviceFallbacks.length) {
+        routeSource = 'service'
+        configuredIds = [servicePrimary, ...serviceFallbacks]
+    } else if (modelRouteEnabled) {
+        routeSource = 'model'
+    }
+
+    const availableIds = configuredIds.filter((credentialId) => {
+        const credential = (systemKeyPools.value || []).find((pool) => pool?.id === credentialId)
+        return Boolean(credential && credential.enabled !== false && isPoolCompleted(credential))
+    })
+
+    const reasonParts = []
+    if (routeSource === 'missing') {
+        reasonParts.push(tSettings('settings.route_missing_all', '未配置模型路由或服务默认路由'))
+    } else if (routeSource === 'model' && !configuredIds.length) {
+        reasonParts.push(tSettings('settings.route_missing_model_credentials', '模型已配置路由，但未绑定系统凭证'))
+    } else if ((routeSource === 'model' || routeSource === 'service') && !availableIds.length) {
+        reasonParts.push(tSettings('settings.route_missing_available_credentials', '路由存在，但没有可用的系统凭证'))
+    }
+
+    const status = availableIds.length ? 'ready' : 'missing_credential'
+    return {
+        status,
+        reason: reasonParts.join('；') || tSettings('settings.route_ready_reason', '可执行'),
+        route_source: routeSource,
+        primary_credential_id: routeSource === 'model'
+            ? (modelPrimary || null)
+            : routeSource === 'service'
+                ? (servicePrimary || null)
+                : null,
+        fallback_credential_ids: routeSource === 'model' ? modelFallbacks : routeSource === 'service' ? serviceFallbacks : [],
+        credential_ids: availableIds,
+        executable: availableIds.length > 0,
+    }
+}
+
+const getRouteStatusLabel = (item) => {
+    const status = getLiveRouteSummary(item).status
+    if (status === 'ready') return '可执行'
+    if (status === 'disabled') return '模型停用'
+    if (status === 'missing_credential') return '缺少凭证'
+    if (status === 'personal_override') return '个人覆盖中'
+    if (status === 'conflict') return '配置冲突'
+    if (isModelConfigured(item)) return '已绑定路由'
+    return '未配置路由'
+}
+
+const getModelExecutionExplanation = (item) => {
+    const reason = String(getLiveRouteSummary(item).reason || '').trim()
+    if (reason) return reason
+    if (!isModelConfigured(item)) return '未绑定系统凭证'
+    return '已配置系统路由'
+}
+
+const getRouteSourceLabel = (item) => {
+    const routeSource = String(getLiveRouteSummary(item).route_source || '').trim()
+    if (routeSource === 'model') return tSettings('settings.route_source_model', '模型专属')
+    if (routeSource === 'service') return tSettings('settings.route_source_service', '服务默认')
+    if (routeSource === 'disabled') return tSettings('settings.route_source_disabled', '模型停用')
+    return tSettings('settings.route_source_missing', '未配置')
+}
+
+const ensureServiceRoutes = () => {
+    const next = []
+    const existing = new Map((serviceRoutes.value || []).map((item) => [String(item?.service || '').trim().toLowerCase(), item]))
+    systemPoolServiceGroups.value.forEach((group) => {
+        const service = group.id
+        const current = existing.get(service) || {}
+        next.push({
+            service,
+            primary_credential_id: String(current.primary_credential_id || '').trim(),
+            fallback_credential_ids: Array.isArray(current.fallback_credential_ids)
+                ? current.fallback_credential_ids.map((value) => String(value || '').trim()).filter(Boolean)
+                : []
+        })
+    })
+    serviceRoutes.value = next
+}
+
 const renderModelGroups = computed(() => {
+    const keyword = String(routeSearchText.value || '').trim().toLowerCase()
+    const matchesRouteEntry = ({ item }) => {
+        const summary = getLiveRouteSummary(item)
+        if (routeStatusFilter.value === 'issues' && summary.status === 'ready') return false
+        if (routeStatusFilter.value === 'ready' && summary.status !== 'ready') return false
+        if (!keyword) return true
+        const haystack = [
+            item?.model,
+            item?.label,
+            item?.platform,
+            item?.service,
+            credentialLabelById(item?.primary_credential_id),
+        ]
+            .map((value) => String(value || '').toLowerCase())
+            .join(' ')
+        return haystack.includes(keyword)
+    }
     const list = systemModelsWithIndex.value
     if (modelViewMode.value === 'platform') {
         const platform = normalizePlatform(activeModelGroup.value)
-        const filtered = list.filter(({ item }) => normalizeModelPlatform(item) === platform)
+        const filtered = list.filter(({ item }) => normalizeModelPlatform(item) === platform).filter(matchesRouteEntry)
         return modelServiceGroups.value.map((group) => ({
             id: group.id,
             label: group.label,
@@ -2411,13 +2793,17 @@ const renderModelGroups = computed(() => {
         {
             id: service,
             label,
-            items: list.filter(({ item }) => String(item?.service || 'image').trim().toLowerCase() === service)
+            items: list
+                .filter(({ item }) => String(item?.service || 'image').trim().toLowerCase() === service)
+                .filter(matchesRouteEntry)
         }
     ]
 })
 
 const modelTestStates = reactive({})
 const modelTestLoading = reactive({})
+const credentialTestStates = reactive({})
+const credentialTestLoading = reactive({})
 const DEFAULT_MODEL_TEST_IMAGE_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Portrait_of_a_woman_%28cropped%29.jpg/1024px-Portrait_of_a_woman_%28cropped%29.jpg'
 const DEFAULT_MODEL_TEST_AUDIO_URL = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
 
@@ -2432,16 +2818,25 @@ const buildModelTestPayload = (entry) => {
     return {
         service: item.service || 'image',
         model: item.model,
-        platform: item.platform,
-        api_key: item.api_key,
-        backup_keys: Array.isArray(item.backup_keys)
-            ? item.backup_keys
-            : String(item.backup_keys || '')
-                .split('\n')
-                .map((v) => v.trim())
-                .filter(Boolean),
-        base_url: item.base_url
+        platform: item.platform
     }
+}
+
+const getDefaultTestModelForCredential = (credential) => {
+    const service = String(credential?.service || 'image').trim().toLowerCase()
+    const provider = normalizePlatform(credential?.provider)
+    const preferredModels = (systemModels.value || []).filter((item) => {
+        if (item?.enabled === false) return false
+        if (String(item?.service || '').trim().toLowerCase() !== service) return false
+        const itemProvider = normalizePlatform(item?.platform || item?.provider)
+        return !provider || !itemProvider || itemProvider === provider
+    })
+    const fallbackModels = (modelCatalog.value || []).filter((item) => {
+        if (String(item?.service || '').trim().toLowerCase() !== service) return false
+        const itemProvider = normalizePlatform(item?.platform || item?.provider)
+        return !provider || !itemProvider || itemProvider === provider
+    })
+    return preferredModels[0] || fallbackModels[0] || null
 }
 
 const runModelTest = async (entry) => {
@@ -2508,6 +2903,82 @@ const runModelTest = async (entry) => {
     }
 }
 
+const runCredentialTest = async (entry) => {
+    const credential = entry?.item || {}
+    const service = String(credential.service || 'image').trim().toLowerCase()
+    if (!String(credential.key || '').trim()) {
+        message.warning(tSettings('settings.credential_test_key_missing', '请先填写凭证主 Key'))
+        return
+    }
+    if (credentialTestLoading[entry.index]) return
+
+    const testModel = getDefaultTestModelForCredential(credential)
+    if (!testModel?.model) {
+        message.warning(tSettings('settings.credential_test_model_missing', '当前用途没有可用于测试的模型，请先在“模型与路由”中补充模型。'))
+        return
+    }
+
+    credentialTestLoading[entry.index] = true
+    credentialTestStates[entry.index] = {
+        status: 'running',
+        message: tSettings('settings.model_test_running', '测试中...')
+    }
+
+    try {
+        if (!authStore.token) {
+            throw new Error(tSettings('auth.login_required', '登录已过期，请重新登录'))
+        }
+        const payload = {
+            service,
+            model: testModel.model,
+            platform: normalizePlatform(testModel.platform || credential.provider),
+            api_key: String(credential.key || '').trim(),
+            backup_keys: parseKeyList(credential.backup_keys || ''),
+            base_url: String(credential.base_url || '').trim() || undefined,
+        }
+        const modelLower = String(testModel.model || '').toLowerCase()
+        const videoNeedsImage = service === 'video' && (modelLower.includes('sora') || modelLower.includes('i2v') || modelLower.includes('wanx') || modelLower.includes('wan2.'))
+        if (service === 'digital_human') {
+            payload.image_url = DEFAULT_MODEL_TEST_IMAGE_URL
+            payload.audio_url = DEFAULT_MODEL_TEST_AUDIO_URL
+        } else if (videoNeedsImage) {
+            payload.image_url = DEFAULT_MODEL_TEST_IMAGE_URL
+            payload.prompt = tSettings('settings.model_test_prompt_default', '测试生成内容')
+        } else {
+            payload.prompt = service === 'audio'
+                ? tSettings('settings.model_test_prompt_audio_default', '这是一次模型连通性测试')
+                : tSettings('settings.model_test_prompt_default', '测试生成内容')
+        }
+
+        const authHeaders = authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
+        const res = await api.post('/api/admin/model_test', payload, { headers: authHeaders })
+        const data = res?.data || {}
+        let messageText = `${tSettings('settings.credential_test_success', '凭证测试成功')}: ${testModel.model}`
+        let url = ''
+        if (data?.result?.url) {
+            url = normalizeTestUrl(data.result.url)
+        } else if (data?.result?.task_id || data?.result?.taskId) {
+            const taskId = data.result.task_id || data.result.taskId
+            messageText = `${tSettings('settings.model_test_submitted', '已提交任务')}: ${taskId}`
+        } else if (data?.result?.text) {
+            messageText = `${tSettings('settings.credential_test_success', '凭证测试成功')}: ${data.result.text.slice(0, 60)}`
+        }
+        credentialTestStates[entry.index] = {
+            status: 'success',
+            message: messageText,
+            url
+        }
+    } catch (e) {
+        const detail = e?.response?.data?.detail || e?.message || tSettings('settings.model_test_failed', '测试失败')
+        credentialTestStates[entry.index] = {
+            status: 'error',
+            message: `${tSettings('settings.credential_test_failed', '凭证测试失败')}: ${detail}`
+        }
+    } finally {
+        credentialTestLoading[entry.index] = false
+    }
+}
+
 const getVideoCreditCost = (model) => {
     if (!model) return 0
     const match = modelCatalog.value.find((item) => item?.service === 'video' && item?.model === model)
@@ -2561,17 +3032,15 @@ const hasDownloadable = computed(() => batchQueue.value.some((t) => {
 const recentHistory = computed(() => galleryImages.value.filter(i => i.is_mine).slice(0, 10))
 
 const settingsTabs = computed(() => {
-    const labelUser = localeStore.t('settings.tab_user')
-    const labelModels = localeStore.t('settings.tab_models')
-    const labelUsers = localeStore.t('settings.tab_users')
-    const tabs = [{ id: 'user', label: labelUser === 'settings.tab_user' ? '用户设置' : labelUser }]
+    const tabs = [{ id: 'personal', label: tSettings('settings.tab_personal_credentials', '我的凭证') }]
     if (authStore.user.username === 'admin') {
-        tabs.push({ id: 'models', label: labelModels === 'settings.tab_models' ? '模型配置' : labelModels })
-        tabs.push({ id: 'users', label: labelUsers === 'settings.tab_users' ? '用户管理' : labelUsers })
+        tabs.push({ id: 'credentials', label: tSettings('settings.tab_system_credentials', '系统凭证') })
+        tabs.push({ id: 'routes', label: tSettings('settings.tab_model_routes', '模型与路由') })
+        tabs.push({ id: 'members', label: tSettings('settings.tab_members', '成员与额度') })
     }
     return tabs
 })
-const activeSettingsTab = ref('user')
+const activeSettingsTab = ref('personal')
 
 const filteredGallery = computed(() => {
     let imgs = galleryImages.value
@@ -2599,7 +3068,7 @@ const handleGuestAccess = () => {
 
 const openUserSettings = () => {
     emit('update-tab', 'settings')
-    activeSettingsTab.value = 'user'
+    activeSettingsTab.value = 'personal'
 }
 
 // --- Actions ---
@@ -2620,10 +3089,15 @@ const resetSettings = () => {
 }
 
 const applyUserPoolHeaders = (headers, service, model) => {
-    let pool = selectUserPoolWithFallback(service, model)
+    const catalogItem = modelCatalog.value.find((item) => item?.service === service && item?.model === model)
+    let pool = selectUserPoolWithFallback(service, model, {
+        allowPersonalOverride: catalogItem?.allow_personal_override !== false
+    })
     if ((!pool || !pool.key) && service === 'digital_human') {
         // Backward compatibility: existing DH keys may be stored under video service.
-        pool = selectUserPoolWithFallback('video', model)
+        pool = selectUserPoolWithFallback('video', model, {
+            allowPersonalOverride: catalogItem?.allow_personal_override !== false
+        })
     }
     if (!pool?.key) return headers
     if (service === 'audio') {
@@ -2642,25 +3116,25 @@ const applyUserPoolHeaders = (headers, service, model) => {
 
 const buildModelHeaders = (model) => {
     const headers = {}
-    if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
+    if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
     return applyUserPoolHeaders(headers, 'image', model)
 }
 
 const buildPromptHeaders = (model) => {
     const headers = {}
-    if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
+    if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
     return applyUserPoolHeaders(headers, 'prompt', model)
 }
 
 const buildTtsHeaders = (model) => {
     const headers = {}
-    if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
+    if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
     return applyUserPoolHeaders(headers, 'audio', model)
 }
 
 const buildVideoHeaders = (model, service = 'video') => {
     const headers = {}
-    if (authStore.isLoggedIn && authStore.token) headers.Authorization = `Bearer ${authStore.token}`
+    if (authStore.token) headers.Authorization = `Bearer ${authStore.token}`
     return applyUserPoolHeaders(headers, service, model)
 }
 
@@ -2832,22 +3306,20 @@ const handleGenerateSingle = async () => {
             enhanced_prompt: result.data?.enhanced_prompt || '',
             model: result.model
         })
-        if (!authStore.isLoggedIn) {
-            await persistLocalImage({
-                id: result.data?.id || `local_${Date.now()}`,
-                url: result.data?.url || result.data?.urls?.[0],
-                urls: Array.isArray(result.data?.urls) ? result.data.urls : undefined,
-                prompt: inputText.value,
-                enhanced_prompt: result.data?.enhanced_prompt,
-                subject: settings.value.subject,
-                grade: settings.value.grade,
-                aspectRatio: settings.value.aspectRatio,
-                imageProvider: settings.value.imageProvider,
-                model: result.model,
-                time: Date.now(),
-                is_mine: true
-            })
-        }
+        await persistLocalImage({
+            id: result.data?.id || `local_${Date.now()}`,
+            url: result.data?.url || result.data?.urls?.[0],
+            urls: Array.isArray(result.data?.urls) ? result.data.urls : undefined,
+            prompt: inputText.value,
+            enhanced_prompt: result.data?.enhanced_prompt,
+            subject: settings.value.subject,
+            grade: settings.value.grade,
+            aspectRatio: settings.value.aspectRatio,
+            imageProvider: settings.value.imageProvider,
+            model: result.model,
+            time: Date.now(),
+            is_mine: true
+        })
         message.success('Generated')
         fetchHistory()
         authStore.checkAuth()
@@ -2895,14 +3367,35 @@ const decorateImageRecord = async (entry) => {
     return next
 }
 
-const persistLocalImage = async (entry) => {
-    const normalized = {
-        ...entry,
-        id: entry?.id || `local_${Date.now()}`,
-        url: entry?.url,
-        thumbnail_url: entry?.thumbnail_url || entry?.url,
-        is_mine: true
+const normalizeCachedImageRecord = (entry) => {
+    if (!entry || typeof entry !== 'object' || !entry.url) return null
+    const { display_url, display_thumbnail_url, display_urls, ...rest } = entry
+    return {
+        ...rest,
+        id: rest.id || `local_${Date.now()}`,
+        thumbnail_url: rest.thumbnail_url || rest.url,
+        is_mine: rest.is_mine !== false
     }
+}
+
+const loadCachedImageHistory = async () => {
+    const cached = loadLocalHistory(IMAGE_HISTORY_KEY)
+        .map((item) => normalizeCachedImageRecord(item))
+        .filter(Boolean)
+    return Promise.all(cached.map((item) => decorateImageRecord(item)))
+}
+
+const saveImageHistorySnapshot = (items) => {
+    const next = (Array.isArray(items) ? items : [])
+        .map((item) => normalizeCachedImageRecord(item))
+        .filter(Boolean)
+    if (!next.length) return loadLocalHistory(IMAGE_HISTORY_KEY)
+    return saveLocalHistory(IMAGE_HISTORY_KEY, next)
+}
+
+const persistLocalImage = async (entry) => {
+    const normalized = normalizeCachedImageRecord({ ...entry, is_mine: true })
+    if (!normalized) return
     const updated = prependLocalHistory(IMAGE_HISTORY_KEY, normalized, { idResolver: getLocalImageKey })
     const decorated = await Promise.all(updated.map((item) => decorateImageRecord(item)))
     galleryImages.value = mergeLocalHistory(decorated, galleryImages.value, { idResolver: getLocalImageKey })
@@ -2910,17 +3403,22 @@ const persistLocalImage = async (entry) => {
 
 const fetchHistory = async () => {
     if (!authStore.isLoggedIn && !authStore.isGuest) return
+    const localImages = await loadCachedImageHistory()
+    if (localImages.length) {
+        galleryImages.value = mergeLocalHistory(localImages, galleryImages.value, { idResolver: getLocalImageKey })
+    }
     try {
         const headers = authStore.isLoggedIn && authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
         const res = await api.get('/api/gallery', { headers })
-        const remoteImages = await Promise.all((Array.isArray(res.data) ? res.data : []).map((item) => decorateImageRecord(item)))
-        if (!authStore.isLoggedIn) {
-            const localImages = await Promise.all(loadLocalHistory(IMAGE_HISTORY_KEY).map((item) => decorateImageRecord(item)))
-            galleryImages.value = mergeLocalHistory(localImages, remoteImages, { idResolver: getLocalImageKey })
-            return
+        const remoteRawImages = Array.isArray(res.data) ? res.data : []
+        const remoteImages = await Promise.all(remoteRawImages.map((item) => decorateImageRecord(item)))
+        if (authStore.isLoggedIn) {
+            saveImageHistorySnapshot(remoteRawImages.filter((item) => item?.is_mine))
         }
-        galleryImages.value = remoteImages
-    } catch(e) {}
+        galleryImages.value = mergeLocalHistory(remoteImages, localImages, { idResolver: getLocalImageKey })
+    } catch(e) {
+        galleryImages.value = localImages
+    }
 }
 
 const handleHistorySelect = (img) => currentDisplayImage.value = img
@@ -3033,22 +3531,20 @@ const handleQuickRefine = async () => {
             enhanced_prompt: result.data?.enhanced_prompt || '',
             model: result.model
         })
-        if (!authStore.isLoggedIn) {
-            await persistLocalImage({
-                id: result.data?.id || `local_${Date.now()}`,
-                url: result.data?.url || result.data?.urls?.[0],
-                urls: Array.isArray(result.data?.urls) ? result.data.urls : undefined,
-                prompt: quickRefineText.value,
-                enhanced_prompt: result.data?.enhanced_prompt,
-                subject: settings.value.subject,
-                grade: settings.value.grade,
-                aspectRatio: settings.value.aspectRatio,
-                imageProvider: settings.value.imageProvider,
-                model: result.model,
-                time: Date.now(),
-                is_mine: true
-            })
-        }
+        await persistLocalImage({
+            id: result.data?.id || `local_${Date.now()}`,
+            url: result.data?.url || result.data?.urls?.[0],
+            urls: Array.isArray(result.data?.urls) ? result.data.urls : undefined,
+            prompt: quickRefineText.value,
+            enhanced_prompt: result.data?.enhanced_prompt,
+            subject: settings.value.subject,
+            grade: settings.value.grade,
+            aspectRatio: settings.value.aspectRatio,
+            imageProvider: settings.value.imageProvider,
+            model: result.model,
+            time: Date.now(),
+            is_mine: true
+        })
         
         // Sync to main editor
         inputText.value = quickRefineText.value
@@ -4023,20 +4519,19 @@ const handleUploadFinishWithStore = ({ file, event }) => {
 
 // User Pools
 const normalizeUserPoolItem = (pool) => {
-    const ordered = ['image', 'audio', 'video', 'digital_human', 'prompt']
-    const service = pool?.service
-        || ordered.find((item) => pool?.services?.includes?.(item))
-        || 'image'
-    const provider = (pool?.provider || '').toString().trim().toLowerCase()
-    return {
-        key: pool?.key || '',
+    const provider = normalizePlatform(pool?.provider)
+    return ensureCredentialDraftId({
+        id: String(pool?.id || pool?.credential_id || '').trim(),
+        label: String(pool?.label || pool?.name || '').trim(),
+        key: pool?.primary_secret || pool?.key || '',
         base_url: pool?.base_url || '',
         models: Array.isArray(pool?.models) ? pool.models.join(', ') : (pool?.models || ''),
+        backup_keys: Array.isArray(pool?.backup_secrets) ? pool.backup_secrets.join('\n') : (pool?.backup_keys || ''),
         priority: Number.isFinite(pool?.priority) ? pool.priority : 100,
         enabled: pool?.enabled !== false,
-        service,
+        service: pool?.service || 'image',
         provider
-    }
+    }, 'personal')
 }
 
 const loadUserKeyPools = () => {
@@ -4059,15 +4554,18 @@ const loadUserKeyPools = () => {
 }
 
 const addUserKeyPool = () => {
-    userKeyPools.value.push({
+    userKeyPools.value.push(ensureCredentialDraftId({
+        id: '',
+        label: '',
         key: '',
         base_url: '',
         models: '',
+        backup_keys: '',
         priority: 100,
         enabled: true,
         service: 'image',
         provider: ''
-    })
+    }, 'personal'))
     reorderUserKeyPools()
     userPoolsDirty.value = true
 }
@@ -4180,14 +4678,18 @@ const serializeUserKeyPools = () => {
             .filter(Boolean)
     }
     return userKeyPools.value.map((pool) => ({
-        key: (pool.key || '').trim(),
+        id: (pool.id || '').trim() || undefined,
+        label: (pool.label || '').trim(),
+        scope: 'personal',
+        primary_secret: (pool.key || '').trim(),
         base_url: (pool.base_url || '').trim(),
         models: normalizeModels(pool.models),
+        backup_secrets: parseKeyList(pool.backup_keys || ''),
         priority: Number.isFinite(Number(pool.priority)) ? Number(pool.priority) : 100,
         enabled: pool.enabled !== false,
-        services: [pool.service || 'image'],
+        service: pool.service || 'image',
         provider: (pool.provider || '').trim()
-    })).filter((pool) => pool.key)
+    })).filter((pool) => pool.primary_secret)
 }
 
 const handleSaveUserPools = () => {
@@ -4201,36 +4703,40 @@ const handleSaveUserPools = () => {
 // Admin
 const parseKeyList = (value) => value.split('\n').map(v => v.trim()).filter(Boolean)
 const normalizePoolItem = (pool) => {
-    const ordered = ['image', 'audio', 'video', 'digital_human', 'prompt']
-    const service = pool?.service
-        || ordered.find((item) => pool?.services?.includes?.(item))
-        || 'image'
-    const provider = (pool?.provider || '').toString().trim().toLowerCase()
-    const backupKeys = Array.isArray(pool?.backup_keys)
-        ? pool.backup_keys.join('\n')
-        : (pool?.backup_keys || '')
-    return {
-        key: pool?.key || '',
+    const provider = normalizePlatform(pool?.provider)
+    const backupKeys = Array.isArray(pool?.backup_secrets)
+        ? pool.backup_secrets.join('\n')
+        : Array.isArray(pool?.backup_keys)
+            ? pool.backup_keys.join('\n')
+            : (pool?.backup_keys || '')
+    return ensureCredentialDraftId({
+        id: String(pool?.id || pool?.credential_id || '').trim(),
+        label: String(pool?.label || pool?.name || '').trim(),
+        key: pool?.primary_secret || pool?.key || '',
         base_url: pool?.base_url || '',
         models: Array.isArray(pool?.models) ? pool.models.join(', ') : (pool?.models || ''),
         priority: Number.isFinite(pool?.priority) ? pool.priority : 100,
+        reference_count: Number.isFinite(Number(pool?.reference_count)) ? Number(pool.reference_count) : 0,
         enabled: pool?.enabled !== false,
-        service,
+        service: pool?.service || 'image',
         provider,
         backup_keys: backupKeys
-    }
+    }, 'system')
 }
 const addKeyPool = () => {
-    systemKeyPools.value.push({
+    systemKeyPools.value.push(ensureCredentialDraftId({
+        id: '',
+        label: '',
         key: '',
         base_url: '',
         models: '',
         priority: 100,
+        reference_count: 0,
         enabled: true,
         service: activeSystemPoolService.value || 'image',
         provider: '',
         backup_keys: ''
-    })
+    }, 'system'))
     expandedPools.add(systemKeyPools.value.length - 1)
     reorderKeyPools()
     systemConfigDirty.value = true
@@ -4240,10 +4746,13 @@ const duplicateKeyPool = (idx) => {
     const source = systemKeyPools.value[idx]
     if (!source) return
     const copy = {
+        id: createDraftCredentialId('system', source.service),
+        label: source.label ? `${source.label}（副本）` : '',
         key: source.key || '',
         base_url: source.base_url || '',
         models: source.models || '',
         priority: Number.isFinite(Number(source.priority)) ? Number(source.priority) : 100,
+        reference_count: 0,
         enabled: source.enabled !== false,
         service: source.service || 'image',
         provider: source.provider || '',
@@ -4257,6 +4766,22 @@ const duplicateKeyPool = (idx) => {
     next.add(idx + 1)
     expandedPools.clear()
     next.forEach((i) => expandedPools.add(i))
+    Object.keys(credentialTestStates)
+        .map((key) => Number(key))
+        .sort((a, b) => b - a)
+        .forEach((index) => {
+            if (index < idx + 1) return
+            credentialTestStates[index + 1] = credentialTestStates[index]
+            delete credentialTestStates[index]
+        })
+    Object.keys(credentialTestLoading)
+        .map((key) => Number(key))
+        .sort((a, b) => b - a)
+        .forEach((index) => {
+            if (index < idx + 1) return
+            credentialTestLoading[index + 1] = credentialTestLoading[index]
+            delete credentialTestLoading[index]
+        })
     reorderKeyPools()
     systemConfigDirty.value = true
 }
@@ -4271,6 +4796,28 @@ const removeKeyPool = (idx) => {
     })
     expandedPools.clear()
     next.forEach((i) => expandedPools.add(i))
+    Object.keys(credentialTestStates).forEach((key) => {
+        const index = Number(key)
+        if (index === idx) {
+            delete credentialTestStates[key]
+            return
+        }
+        if (index > idx) {
+            credentialTestStates[index - 1] = credentialTestStates[key]
+            delete credentialTestStates[key]
+        }
+    })
+    Object.keys(credentialTestLoading).forEach((key) => {
+        const index = Number(key)
+        if (index === idx) {
+            delete credentialTestLoading[key]
+            return
+        }
+        if (index > idx) {
+            credentialTestLoading[index - 1] = credentialTestLoading[key]
+            delete credentialTestLoading[key]
+        }
+    })
     reorderKeyPools()
     systemConfigDirty.value = true
 }
@@ -4295,6 +4842,22 @@ const moveKeyPool = (idx, delta) => {
         if (hasIdx) expandedPools.add(target)
         if (hasTarget) expandedPools.add(idx)
     }
+    const stateAtIdx = credentialTestStates[idx]
+    const stateAtTarget = credentialTestStates[target]
+    if (stateAtIdx !== undefined || stateAtTarget !== undefined) {
+        if (stateAtTarget === undefined) delete credentialTestStates[idx]
+        else credentialTestStates[idx] = stateAtTarget
+        if (stateAtIdx === undefined) delete credentialTestStates[target]
+        else credentialTestStates[target] = stateAtIdx
+    }
+    const loadingAtIdx = credentialTestLoading[idx]
+    const loadingAtTarget = credentialTestLoading[target]
+    if (loadingAtIdx !== undefined || loadingAtTarget !== undefined) {
+        if (loadingAtTarget === undefined) delete credentialTestLoading[idx]
+        else credentialTestLoading[idx] = loadingAtTarget
+        if (loadingAtIdx === undefined) delete credentialTestLoading[target]
+        else credentialTestLoading[target] = loadingAtIdx
+    }
     reorderKeyPools()
     systemConfigDirty.value = true
 }
@@ -4316,15 +4879,46 @@ const serializeKeyPools = () => {
             .filter(Boolean)
     }
     return systemKeyPools.value.map((pool) => ({
-        key: (pool.key || '').trim(),
+        id: (pool.id || '').trim() || undefined,
+        label: (pool.label || '').trim(),
+        scope: 'system',
+        primary_secret: (pool.key || '').trim(),
         base_url: (pool.base_url || '').trim(),
         models: normalizeModels(pool.models),
-        backup_keys: normalizeKeyList(pool.backup_keys),
+        backup_secrets: normalizeKeyList(pool.backup_keys),
         priority: Number.isFinite(Number(pool.priority)) ? Number(pool.priority) : 100,
         enabled: pool.enabled !== false,
-        services: [pool.service || 'image'],
+        service: pool.service || 'image',
         provider: (pool.provider || '').trim()
-    })).filter((pool) => pool.key)
+    })).filter((pool) => pool.primary_secret)
+}
+
+const serializeModelRoutes = () => {
+    return (systemModels.value || [])
+        .map((item) => ({
+            model_id: String(item.model || '').trim(),
+            primary_credential_id: String(item.primary_credential_id || '').trim() || null,
+            fallback_credential_ids: dedupeValues(
+                Array.isArray(item.fallback_credential_ids)
+                    ? item.fallback_credential_ids.filter((value) => String(value || '').trim() !== String(item.primary_credential_id || '').trim())
+                    : []
+            ),
+            allow_personal_override: item.allow_personal_override !== false,
+            enabled: item.route_enabled !== false
+        }))
+        .filter((item) => item.model_id)
+}
+
+const serializeServiceRoutes = () => {
+    return (serviceRoutes.value || []).map((item) => ({
+        service: String(item?.service || 'image').trim().toLowerCase(),
+        primary_credential_id: String(item?.primary_credential_id || '').trim() || null,
+        fallback_credential_ids: dedupeValues(
+            Array.isArray(item?.fallback_credential_ids)
+                ? item.fallback_credential_ids.filter((value) => String(value || '').trim() !== String(item?.primary_credential_id || '').trim())
+                : []
+        )
+    }))
 }
 
 const handleSystemPoolProviderChange = (pool) => {
@@ -4378,13 +4972,13 @@ const poolSummary = (pool) => {
                             : tSettings('settings.key_pool_provider_any', '不限')
     const usageTextLabel = `用途:${serviceLabel}`
     const providerTextLabel = `通道:${providerLabel}`
-    const modelTextLabel = models.length ? `模型:${models.join(',')}` : '模型:通用'
+    const modelTextLabel = models.length ? `覆盖模型:${models.join(',')}` : '覆盖模型:通用'
     return `${usageTextLabel} · ${providerTextLabel} · ${modelTextLabel}`
 }
 
 const confirmRemovePool = (idx) => {
     const promptText = localeStore.t('settings.key_pool_remove_confirm')
-    const fallback = promptText === 'settings.key_pool_remove_confirm' ? '确认删除该账号池' : promptText
+    const fallback = promptText === 'settings.key_pool_remove_confirm' ? '确认删除该凭证' : promptText
     return window.confirm(`${fallback} #${idx + 1}`)
 }
 
@@ -4394,23 +4988,22 @@ const fetchSystemConfig = async () => {
         const res = await api.get('/api/admin/system_config', {
             headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}
         })
-        systemImageKey.value = res.data.image?.api_key || ''
-        systemImageBackupKeysInput.value = (res.data.image?.backup_keys || []).join('\n')
-        systemImageBaseUrl.value = res.data.image?.base_url || ''
-        systemTtsKey.value = res.data.tts?.api_key || ''
-        systemTtsBackupKeysInput.value = (res.data.tts?.backup_keys || []).join('\n')
-        systemTtsBaseUrl.value = res.data.tts?.base_url || ''
-        systemVideoKey.value = res.data.video?.api_key || ''
-        systemVideoBackupKeysInput.value = (res.data.video?.backup_keys || []).join('\n')
-        systemVideoBaseUrl.value = res.data.video?.base_url || ''
-        systemKeyPools.value = (res.data.key_pools || []).map(normalizePoolItem)
-        systemModels.value = (res.data.models || []).map(normalizeModelItem)
+        systemKeyPools.value = (res.data.credentials || []).map(normalizePoolItem)
+        systemModels.value = (res.data.models || res.data.model_catalog || []).map(normalizeModelItem)
+        serviceRoutes.value = (res.data.service_routes || []).map((item) => ({
+            service: String(item?.service || 'image').trim().toLowerCase(),
+            primary_credential_id: String(item?.primary_credential_id || '').trim(),
+            fallback_credential_ids: Array.isArray(item?.fallback_credential_ids)
+                ? item.fallback_credential_ids.map((value) => String(value || '').trim()).filter(Boolean)
+                : []
+        }))
         assignPromptChannelDraft(res.data.prompt_channels || {})
         promptHealth.value = res.data.prompt_health || null
         promptConfigErrors.value = []
         promptConfigWarnings.value = []
         expandedPools.clear()
         expandedSystemModels.clear()
+        ensureServiceRoutes()
         if (systemKeyPools.value.length) reorderKeyPools()
         ensurePromptChannelDraftModels()
         systemConfigDirty.value = false
@@ -4430,23 +5023,10 @@ const handleSaveSystemConfig = async () => {
         const res = await api.post(
             '/api/admin/system_config',
             {
-                image: {
-                    api_key: systemImageKey.value,
-                    backup_keys: parseKeyList(systemImageBackupKeysInput.value),
-                    base_url: systemImageBaseUrl.value
-                },
-                tts: {
-                    api_key: systemTtsKey.value,
-                    backup_keys: parseKeyList(systemTtsBackupKeysInput.value),
-                    base_url: systemTtsBaseUrl.value
-                },
-                video: {
-                    api_key: systemVideoKey.value,
-                    backup_keys: parseKeyList(systemVideoBackupKeysInput.value),
-                    base_url: systemVideoBaseUrl.value
-                },
-                key_pools: serializeKeyPools(),
-                models: serializeSystemModels(),
+                credentials: serializeKeyPools(),
+                model_catalog: serializeSystemModels(),
+                model_routes: serializeModelRoutes(),
+                service_routes: serializeServiceRoutes(),
                 prompt_channels: serializePromptChannels()
             },
             { headers: authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {} }
@@ -4619,8 +5199,8 @@ onMounted(() => {
     restoreBatchQueue()
     if (authStore.isLoggedIn || authStore.isGuest) fetchHistory()
     if (props.activeTab === 'settings' && authStore.user.username === 'admin') {
-        if (activeSettingsTab.value === 'models') fetchSystemConfig()
-        if (activeSettingsTab.value === 'users') fetchUsers()
+        if (['credentials', 'routes'].includes(activeSettingsTab.value)) fetchSystemConfig()
+        if (activeSettingsTab.value === 'members') fetchUsers()
     }
 })
 
@@ -4637,8 +5217,8 @@ watch(
     (tab) => {
         if (tab === 'gallery') fetchHistory()
         if (tab === 'settings' && authStore.user.username === 'admin') {
-            if (activeSettingsTab.value === 'models') fetchSystemConfig()
-            if (activeSettingsTab.value === 'users') fetchUsers()
+            if (['credentials', 'routes'].includes(activeSettingsTab.value)) fetchSystemConfig()
+            if (activeSettingsTab.value === 'members') fetchUsers()
         }
     }
 )
@@ -4647,7 +5227,7 @@ watch(
     () => authStore.user.username,
     () => {
         const ids = settingsTabs.value.map((t) => t.id)
-        if (!ids.includes(activeSettingsTab.value)) activeSettingsTab.value = ids[0] || 'user'
+        if (!ids.includes(activeSettingsTab.value)) activeSettingsTab.value = ids[0] || 'personal'
     },
     { immediate: true }
 )
@@ -4655,10 +5235,10 @@ watch(
 watch(
     () => activeSettingsTab.value,
     (tab) => {
-        if (tab === 'user') loadUserKeyPools()
+        if (tab === 'personal') loadUserKeyPools()
         if (authStore.user.username !== 'admin') return
-        if (tab === 'models') fetchSystemConfig()
-        if (tab === 'users') fetchUsers()
+        if (['credentials', 'routes'].includes(tab)) fetchSystemConfig()
+        if (tab === 'members') fetchUsers()
     }
 )
 </script>
