@@ -9,6 +9,8 @@ Roil Drawing 是独立的绘图能力入口，不依赖任何历史项目仓库�
 
 目标：用 Roil 的当前运行环境完成绘图、改图、参考图重绘和提示词优化。不要为了出图切到旧项目仓库，也不要把历史 CLI 当成必需入口。
 
+Roil Web 平台就是有效执行入口。没有本地 CLI 不等于没有 Roil 出图入口；只要用户可以打开并登录 Roil 平台，就应引导用户登录平台继续，而不是直接进入 fallback。
+
 ## Execution policy
 
 1. 每次开始绘图、改图、参考图重绘或提示词优化前，先执行下面的 Startup preflight，不要跳过。
@@ -23,7 +25,21 @@ Roil Drawing 是独立的绘图能力入口，不依赖任何历史项目仓库�
 
 先快速判断当前环境属于哪一种，只做轻量检查，不要要求用户先解释环境：
 
+0. 先运行随 skill 分发的预检脚本，获取统一状态：
+
+```bash
+python3 .codex/skills/roil-drawing/scripts/roil_preflight.py --json
+```
+
+如果当前环境只扫描旧版 skill 镜像，用：
+
+```bash
+python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
+```
+
 1. 是否已经有 Roil 平台入口或浏览器会话。
+   - Roil 平台地址默认是 `https://image.roil.top/`，也可以用 `ROIL_PLATFORM_URL` 覆盖。
+   - 只要平台 URL 可用，就不能说“没有可调用的 Roil 平台入口”；应提示用户打开平台并登录。
    - 如果用户已经打开 Roil 平台或当前工具能访问平台会话，先确认登录态，再继续绘图。
    - 如果未登录，提示用户先登录 Roil 平台，再回来继续。
 2. 是否有 Roil 原生执行工具。
@@ -32,12 +48,20 @@ Roil Drawing 是独立的绘图能力入口，不依赖任何历史项目仓库�
 3. 是否有明确可用的 fallback 图片工具或 key。
    - 只检查常见环境变量是否存在，不在回复里泄露 key 值：`ROIL_API_KEY`、`ROIL_BASE_URL`、`OPENAI_API_KEY`、`IMAGE_API_KEY`。
    - 有 key 也不代表优先直连；只有没有 Roil 平台入口且用户接受 fallback 时才使用。
-4. 如果以上都没有，先不要假装能直接出图。输出优化后的 Roil 提示词、建议参数，并明确说明当前电脑缺少可调用的绘图执行入口。
+4. 只有在 Roil 平台 URL 不可用、没有浏览器/平台会话、没有 Roil 原生工具、也没有 fallback key 时，才说明当前电脑缺少可调用的绘图执行入口。
+
+不要再使用下面这种笼统结论：
+
+```text
+当前环境没有可调用的 Roil 平台/CLI 出图入口，所以按 skill 的 fallback 规则。
+```
+
+应先区分：没有 CLI、未登录平台、没有浏览器自动化能力、还是确实没有任何执行入口。没有 CLI 时，优先提示登录 Roil Web 平台。
 
 推荐给用户的登录提示：
 
 ```text
-我这边还没有检测到可用的 Roil 绘图登录态。请先打开 Roil 平台并用你的账号登录；登录完成后告诉我“已登录”，我会继续生成/改图。日常使用不需要你提供模型 API Key。
+我这边还没有检测到可用的 Roil 绘图登录态。请先打开 Roil 平台 https://image.roil.top/ 并用你的账号登录；登录完成后告诉我“已登录”，我会继续生成/改图。日常使用不需要你提供模型 API Key。
 ```
 
 如果当前电脑没有平台入口，但有 fallback key，可这样说明：
@@ -49,7 +73,7 @@ Roil Drawing 是独立的绘图能力入口，不依赖任何历史项目仓库�
 如果既没有平台入口也没有 key，可这样说明：
 
 ```text
-当前电脑还缺少绘图执行入口：没有 Roil 平台登录态，也没有可用的图片生成 key。我先给你整理好可直接粘贴到 Roil 的提示词和参数；你登录 Roil 平台后即可继续出图。
+当前电脑还没有可自动调用的绘图工具，但 Roil Web 平台可以作为执行入口。请先打开 https://image.roil.top/ 登录；我先给你整理好可直接粘贴到 Roil 的提示词和参数，登录后即可继续出图。
 ```
 
 ## Reference loading policy
