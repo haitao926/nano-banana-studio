@@ -50,13 +50,7 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
    - 有 key 也不代表优先直连；只有没有 Roil 平台入口且用户接受 fallback 时才使用。
 4. 只有在 Roil 平台 URL 不可用、没有浏览器/平台会话、没有 Roil 原生工具、也没有 fallback key 时，才说明当前电脑缺少可调用的绘图执行入口。
 
-不要再使用下面这种笼统结论：
-
-```text
-当前环境没有可调用的 Roil 平台/CLI 出图入口，所以按 skill 的 fallback 规则。
-```
-
-应先区分：没有 CLI、未登录平台、没有浏览器自动化能力、还是确实没有任何执行入口。没有 CLI 时，优先提示登录 Roil Web 平台。
+不要把“没有本地 CLI”概括成“没有 Roil 出图入口”。应先区分：没有 CLI、未登录平台、没有浏览器自动化能力、还是确实没有任何执行入口。没有 CLI 时，优先提示登录 Roil Web 平台。
 
 推荐给用户的登录提示：
 
