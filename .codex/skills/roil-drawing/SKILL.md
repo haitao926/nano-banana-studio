@@ -90,7 +90,20 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
 1. 运行 Startup preflight，先判断登录态、Roil 执行入口和 fallback key。
 2. 明确任务类型：文生图、改图、参考图重绘、提示词优化、还是只要提示词。
 3. 如果用户给的是短需求，先用参考库整理成可执行提示词；不要把平台、供应商或模型名写进提示词，除非用户明确要求。
-4. 生成图片时显式设定输出路径或文件名；多个变体使用不同输出名。
+4. 生成图片时优先运行统一执行脚本，而不是只口头说明 fallback：
+
+```bash
+python3 .codex/skills/roil-drawing/scripts/roil_draw.py \
+  --prompt "生成一张白底橙猫教学插图，简洁明亮，无文字，无水印" \
+  --model gpt-image-2 \
+  --out output/roil-drawing/test.png \
+  --json
+```
+
+如果当前环境只扫描旧版 skill 镜像，用 `.agents/skills/roil-drawing/scripts/roil_draw.py`。
+
+执行脚本会在有 `OPENAI_API_KEY` 时直接生成图片；没有 key 时写出 `.prompt.txt` 并返回 `needs_platform_login`，提示用户登录 Roil Web 平台继续。
+
 5. 改图 / 参考图重绘时，优先使用绝对图片路径，并在提示词中写清楚必须保留和必须改变的内容。
 6. 执行后在答复里说明：输出位置、使用的执行入口、模型或工具名（如可得）、是否做过提示词优化、平台侧剩余额度/计数（如返回）、失败时的具体原因。
 
