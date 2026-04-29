@@ -55,19 +55,19 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
 推荐给用户的登录提示：
 
 ```text
-我这边还没有检测到可用的 Roil 绘图登录态。请先打开 Roil 平台 https://image.roil.top/ 并用你的账号登录；登录完成后告诉我“已登录”，我会继续生成/改图。日常使用不需要你提供模型 API Key。
+请先登录 Roil 平台：https://image.roil.top/
 ```
 
 如果当前电脑没有平台入口，但有 fallback key，可这样说明：
 
 ```text
-当前没有检测到 Roil 平台会话，但环境里有可用的图片生成 fallback。你可以让我继续用 fallback 生成；如果你希望走平台额度，请先登录 Roil 平台。
+当前没有检测到 Roil 平台会话，但环境里有可用的图片生成 fallback。你可以让我继续用 fallback 生成；如果你希望走平台额度，请先登录 Roil 平台：https://image.roil.top/
 ```
 
 如果既没有平台入口也没有 key，可这样说明：
 
 ```text
-当前电脑还没有可自动调用的绘图工具，但 Roil Web 平台可以作为执行入口。请先打开 https://image.roil.top/ 登录；我先给你整理好可直接粘贴到 Roil 的提示词和参数，登录后即可继续出图。
+当前电脑还没有可自动调用的绘图工具，但 Roil Web 平台可以作为执行入口。请先登录 Roil 平台：https://image.roil.top/
 ```
 
 ## Reference loading policy
@@ -102,7 +102,7 @@ python3 .codex/skills/roil-drawing/scripts/roil_draw.py \
 
 如果当前环境只扫描旧版 skill 镜像，用 `.agents/skills/roil-drawing/scripts/roil_draw.py`。
 
-执行脚本会在有 `OPENAI_API_KEY` 时直接生成图片；没有 key 时写出 `.prompt.txt` 并返回 `needs_platform_login`，提示用户登录 Roil Web 平台继续。
+执行脚本会在有 `OPENAI_API_KEY` 时直接生成图片；没有 key 或平台未登录时写出 `.prompt.txt` 并返回 `needs_platform_login` 和 `https://image.roil.top/`。对普通用户展示时只给登录链接即可，不要输出冗长 fallback 解释。
 
 5. 改图 / 参考图重绘时，优先使用绝对图片路径，并在提示词中写清楚必须保留和必须改变的内容。
 6. 执行后在答复里说明：输出位置、使用的执行入口、模型或工具名（如可得）、是否做过提示词优化、平台侧剩余额度/计数（如返回）、失败时的具体原因。

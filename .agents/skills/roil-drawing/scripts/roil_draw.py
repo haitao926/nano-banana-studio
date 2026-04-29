@@ -37,7 +37,8 @@ def _maybe_open_platform(platform_url: str) -> None:
         subprocess.run(["xdg-open", platform_url], check=False)
 
 
-def _prepare_prompt(prompt: str, out: Path, platform_url: str, *, open_platform: bool) -> int:
+def _prepare_prompt(prompt: str, out: Path, status: dict, *, open_platform: bool) -> int:
+    platform_url = status["platform_url"]
     prompt_path = out.with_suffix(".prompt.txt")
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     prompt_path.write_text(prompt.strip() + "\n", encoding="utf-8")
@@ -49,11 +50,9 @@ def _prepare_prompt(prompt: str, out: Path, platform_url: str, *, open_platform:
             "status": "needs_platform_login",
             "via": "roil-web",
             "platform_url": platform_url,
+            "platform_probe": status.get("platform_probe"),
             "prompt_path": str(prompt_path),
-            "message": (
-                f"请先打开 Roil 平台 {platform_url} 并登录。"
-                "我已经把可直接粘贴的提示词写入 prompt_path。"
-            ),
+            "message": f"请先登录 Roil 平台：{platform_url}",
         }
     )
     return 2
@@ -124,13 +123,12 @@ def main() -> int:
     args = parser.parse_args()
 
     status = build_status()
-    platform_url = status["platform_url"]
     out = Path(args.out)
 
     if os.environ.get("OPENAI_API_KEY"):
         return _generate_openai(args.prompt, out, model=args.model, size=args.size, quality=args.quality)
 
-    return _prepare_prompt(args.prompt, out, platform_url, open_platform=args.open_platform)
+    return _prepare_prompt(args.prompt, out, status, open_platform=args.open_platform)
 
 
 if __name__ == "__main__":
