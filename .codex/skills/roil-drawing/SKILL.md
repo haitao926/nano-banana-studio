@@ -1,25 +1,27 @@
 ---
 name: roil-drawing
-description: Use when the task is to generate images, optimize drawing prompts, edit images, redraw from references, or create visual assets with Roil Drawing. This skill covers 绘图, 出图, 文生图, 改图, 参考图重绘, and prompt optimization as a standalone Roil capability. Use Roil-native tools, configured image generation tools, or the current runtime's drawing capability.
+description: Use when the task is to generate images, optimize drawing prompts, edit images, redraw from references, or create visual assets with Roil Drawing. This is the single teacher-facing drawing skill. It covers 绘图, 出图, 文生图, 改图, 参考图重绘, and prompt optimization, and should decide internally whether to use local Roil/NBS login, the public Roil platform, or other available drawing execution paths.
 ---
 
 # Roil Drawing
 
-Roil Drawing 是独立的绘图能力入口，不依赖任何历史项目仓库或旧 CLI 作为分发前提。
+Roil Drawing 是对外唯一的绘图入口，不依赖老师理解内部链路差异。
 
-目标：用 Roil 的当前运行环境完成绘图、改图、参考图重绘和提示词优化。不要为了出图切到旧项目仓库，也不要把历史 CLI 当成必需入口。
+目标：老师只需要说“请帮我生成一张图片”。skill 内部自己判断先走哪条链路。
 
 Roil Web 平台就是有效执行入口。没有本地 CLI 不等于没有 Roil 出图入口；只要用户可以打开并登录 Roil 平台，就应引导用户登录平台继续，而不是直接进入 fallback。
 
 ## Execution policy
 
 1. 每次开始绘图、改图、参考图重绘或提示词优化前，先执行下面的 Startup preflight，不要跳过。
-2. 优先使用 Roil 在线平台的已登录会话和平台侧绘图接口；生成、改图、提示词优化和额度/图片计数都应由 Roil 平台侧处理。
-3. 如果 Roil 平台会话不可用，再使用当前环境中明确配置的 Roil 原生绘图工具、图片生成工具，或系统提供的 image generation / image edit 能力。
-4. 不要默认要求用户提供 `OPENAI_API_KEY`。只有在用户明确选择直连 OpenAI，或当前环境没有 Roil 平台执行入口但已经配置了 OpenAI 图片工具时，才使用 OpenAI key 作为 fallback。
-5. 如果当前环境没有任何可调用绘图工具，则交付可直接用于 Roil 的高质量提示词、参数建议和失败修正建议，并说明缺少执行入口。
-6. 只有用户明确要求兼容旧项目、迁移旧链路、或调试历史行为时，才检查旧实现。
-7. 不要重新拼接旧项目 HTTP 请求，不要 import 旧项目内部模块，不要把旧仓库作为默认执行层。
+2. skill 内部先尝试局域网地址 `http://10.15.46.72:8002`。
+3. 如果局域网地址不可用，再尝试 `https://image.roil.top/`。
+4. 如果本地认证文件里记录了其他 Roil 地址，也把它作为补充候选，但不要让老师自己判断。
+5. 如果 Roil 平台会话不可用，再使用当前环境中明确配置的其他可用绘图入口。
+6. 不要默认要求用户提供 `OPENAI_API_KEY`。只有用户明确要求直连，或当前环境只剩这类 fallback 时，才使用。
+7. 如果当前环境没有任何可调用绘图工具，则交付可直接用于 Roil 的高质量提示词、参数建议和失败修正建议，并说明缺少执行入口。
+8. 只有用户明确要求兼容旧项目、迁移旧链路、或调试历史行为时，才检查旧实现。
+9. 不要重新拼接旧项目 HTTP 请求，不要 import 旧项目内部模块，不要把旧仓库作为默认执行层。
 
 ## Startup preflight
 
@@ -42,13 +44,17 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
    - 只要平台 URL 可用，就不能说“没有可调用的 Roil 平台入口”；应提示用户打开平台并登录。
    - 如果用户已经打开 Roil 平台或当前工具能访问平台会话，先确认登录态，再继续绘图。
    - 如果未登录，提示用户先登录 Roil 平台，再回来继续。
-2. 是否有 Roil 原生执行工具。
+2. skill 内部的 Roil 地址是否可用。
+   - 先试局域网 `http://10.15.46.72:8002`。
+   - 不行再试 `https://image.roil.top/`。
+   - 如果 `~/.nbs/auth.json` 或 `NBS_AUTH_FILE` 里记录了其他 Roil 地址，也一并尝试。
+3. 是否有 Roil 原生执行工具。
    - 例如当前运行环境暴露了 Roil image generation / image edit 工具、Roil MCP、Roil 插件、平台 API 包装器等。
    - 如果存在，优先用这个执行，不要转去旧项目 CLI。
-3. 是否有明确可用的 fallback 图片工具或 key。
+4. 是否有明确可用的 fallback 图片工具或 key。
    - 只检查常见环境变量是否存在，不在回复里泄露 key 值：`ROIL_API_KEY`、`ROIL_BASE_URL`、`OPENAI_API_KEY`、`IMAGE_API_KEY`。
    - 有 key 也不代表优先直连；只有没有 Roil 平台入口且用户接受 fallback 时才使用。
-4. 只有在 Roil 平台 URL 不可用、没有浏览器/平台会话、没有 Roil 原生工具、也没有 fallback key 时，才说明当前电脑缺少可调用的绘图执行入口。
+5. 只有在 Roil 平台 URL 不可用、没有浏览器/平台会话、没有 Roil 原生工具、也没有 fallback key 时，才说明当前电脑缺少可调用的绘图执行入口。
 
 不要把“没有本地 CLI”概括成“没有 Roil 出图入口”。应先区分：没有 CLI、未登录平台、没有浏览器自动化能力、还是确实没有任何执行入口。没有 CLI 时，优先提示登录 Roil Web 平台。
 
@@ -102,7 +108,7 @@ python3 .codex/skills/roil-drawing/scripts/roil_draw.py \
 
 如果当前环境只扫描旧版 skill 镜像，用 `.agents/skills/roil-drawing/scripts/roil_draw.py`。
 
-执行脚本会在有 `OPENAI_API_KEY` 时直接生成图片；没有 key 或平台未登录时写出 `.prompt.txt` 并返回 `needs_platform_login` 和 `https://image.roil.top/`。对普通用户展示时只给登录链接即可，不要输出冗长 fallback 解释。
+执行脚本会优先尝试当前环境里可用的 Roil 执行入口：先试局域网 `http://10.15.46.72:8002`，不行再试 `https://image.roil.top/`，本地认证文件里如果记录了其他 Roil 地址也会一并尝试；这些都由 skill 内部完成，老师不用自己选择。只有这些都不可用时，才写出 `.prompt.txt` 并返回 `needs_platform_login` 和 `https://image.roil.top/`。对普通用户展示时只给登录链接即可，不要输出冗长 fallback 解释。
 
 5. 改图 / 参考图重绘时，优先使用绝对图片路径，并在提示词中写清楚必须保留和必须改变的内容。
 6. 执行后在答复里说明：输出位置、使用的执行入口、模型或工具名（如可得）、是否做过提示词优化、平台侧剩余额度/计数（如返回）、失败时的具体原因。
