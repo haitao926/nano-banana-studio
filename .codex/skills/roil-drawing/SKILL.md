@@ -5,98 +5,99 @@ description: Use when the task is to generate images, optimize drawing prompts, 
 
 # Roil Drawing
 
-Roil Drawing 是对外唯一的绘图入口，不依赖老师理解内部链路差异。
+Roil Drawing 是对外唯一的绘图入口，面向老师隐藏内部链路差异。老师只需要提出需求，skill 负责判断使用哪条执行路径。
 
-目标：老师只需要说“请帮我生成一张图片”。skill 内部自己判断先走哪条链路。
+## Purpose And Guarantees
 
-Roil Web 平台就是有效执行入口。没有本地 CLI 不等于没有 Roil 出图入口；只要用户可以打开并登录 Roil 平台，就应引导用户登录平台继续，而不是直接进入 fallback。
+- 默认目标是产出实际图片；如果当前环境没有可执行出图路径，再退化为可执行提示词和参数建议。
+- 默认优先使用已登录的 Roil/NBS 链路，不要求普通用户先提供模型 API Key。
+- Roil Web 平台是有效入口，但主要承担登录和兜底作用，不是默认的浏览器点击执行路径。
+- 不暴露密钥，不重拼旧项目 HTTP 请求，不 import 旧项目内部模块，不把旧仓库实现当默认执行层。
+- 当前 skill 文档描述契约，实际路由与结果字段以 `scripts/roil_preflight.py` 和 `scripts/roil_draw.py` 为准。
 
-## Execution policy
+## Routing Rules
 
-1. 每次开始绘图、改图、参考图重绘或提示词优化前，先执行下面的 Startup preflight，不要跳过。
-2. skill 内部先尝试局域网地址 `http://10.15.46.72:8002`。
-3. 如果局域网地址不可用，再尝试 `https://image.roil.top/`。
-4. 如果本地认证文件里记录了其他 Roil 地址，也把它作为补充候选，但不要让老师自己判断。
-5. 如果 Roil 平台会话不可用，再使用当前环境中明确配置的其他可用绘图入口。
-6. 不要默认要求用户提供 `OPENAI_API_KEY`。只有用户明确要求直连，或当前环境只剩这类 fallback 时，才使用。
-7. 如果当前环境没有任何可调用绘图工具，则交付可直接用于 Roil 的高质量提示词、参数建议和失败修正建议，并说明缺少执行入口。
-8. 只有用户明确要求兼容旧项目、迁移旧链路、或调试历史行为时，才检查旧实现。
-9. 不要重新拼接旧项目 HTTP 请求，不要 import 旧项目内部模块，不要把旧仓库作为默认执行层。
+- 每次开始绘图、改图、参考图重绘或提示词优化前，先运行预检脚本。
+- 优先级保持不变：
+  1. 已确认登录态的 `./nbs` 后端认证链路
+  2. 本地 `./nbs` 直连链路
+  3. 明确可用的 OpenAI 图片 fallback
+  4. 生成 `.prompt.txt` 并交还 Roil 平台登录入口
+- 在 Codex 桌面环境里，只要 `./nbs auth whoami --json` 和 `./nbs models --service image --json` 能正常返回，就不要使用 Browser Use、Computer Use 或其他浏览器自动化执行常规出图。
+- 只有两类情况允许进入浏览器相关动作：
+  1. 用户明确要求打开平台、浏览器操作或网页演示。
+  2. CLI 路径不可用或失败，需要把用户引导到登录页；此时只允许打开登录页，不要在网页里代替用户持续点按钮完成常规生图。
 
-## Startup preflight
+## Startup Preflight Contract
 
-先快速判断当前环境属于哪一种，只做轻量检查，不要要求用户先解释环境：
-
-0. 先运行随 skill 分发的预检脚本，获取统一状态：
+统一预检入口：
 
 ```bash
 python3 .codex/skills/roil-drawing/scripts/roil_preflight.py --json
 ```
 
-如果当前环境只扫描旧版 skill 镜像，用：
+旧镜像环境使用：
 
 ```bash
 python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
 ```
 
-1. 是否已经有 Roil 平台入口或浏览器会话。
-   - Roil 平台地址默认是 `https://image.roil.top/`，也可以用 `ROIL_PLATFORM_URL` 覆盖。
-   - 只要平台 URL 可用，就不能说“没有可调用的 Roil 平台入口”；应提示用户打开平台并登录。
-   - 如果用户已经打开 Roil 平台或当前工具能访问平台会话，先确认登录态，再继续绘图。
-   - 如果未登录，提示用户先登录 Roil 平台，再回来继续。
-2. skill 内部的 Roil 地址是否可用。
-   - 先试局域网 `http://10.15.46.72:8002`。
-   - 不行再试 `https://image.roil.top/`。
-   - 如果 `~/.nbs/auth.json` 或 `NBS_AUTH_FILE` 里记录了其他 Roil 地址，也一并尝试。
-3. 是否有 Roil 原生执行工具。
-   - 例如当前运行环境暴露了 Roil image generation / image edit 工具、Roil MCP、Roil 插件、平台 API 包装器等。
-   - 如果存在，优先用这个执行，不要转去旧项目 CLI。
-4. 是否有明确可用的 fallback 图片工具或 key。
-   - 只检查常见环境变量是否存在，不在回复里泄露 key 值：`ROIL_API_KEY`、`ROIL_BASE_URL`、`OPENAI_API_KEY`、`IMAGE_API_KEY`。
-   - 有 key 也不代表优先直连；只有没有 Roil 平台入口且用户接受 fallback 时才使用。
-5. 只有在 Roil 平台 URL 不可用、没有浏览器/平台会话、没有 Roil 原生工具、也没有 fallback key 时，才说明当前电脑缺少可调用的绘图执行入口。
+预检脚本负责：
 
-不要把“没有本地 CLI”概括成“没有 Roil 出图入口”。应先区分：没有 CLI、未登录平台、没有浏览器自动化能力、还是确实没有任何执行入口。没有 CLI 时，优先提示登录 Roil Web 平台。
+- 探测平台入口、局域网地址、本地认证文件记录的候选地址
+- 检测本地 `nbs` CLI 是否可用
+- 检测已保存的 Roil/NBS 登录态、可用额度与 refresh 结果
+- 检测 fallback key 是否存在，但不泄露 key 值
+- 输出稳定 JSON，至少包含：
+  - `skill`
+  - `platform_url`
+  - `platform_probe`
+  - `nbs_cli`
+  - `nbs_auth`
+  - `fallback_key_available`
+  - `decision_summary`
+  - `safe_to_show_user`
+  - `recommended_next_step`
 
-推荐给用户的登录提示：
+`recommended_next_step` 只允许以下值：
+
+- `generate_via_nbs_cli_backend`
+- `try_nbs_cli_direct`
+- `open_or_login_platform`
+- `check_network_or_open_platform_manually`
+
+对老师的登录提示统一使用：
 
 ```text
 请先登录 Roil 平台：https://image.roil.top/
 ```
 
-如果当前电脑没有平台入口，但有 fallback key，可这样说明：
+如果当前电脑没有平台会话但存在 fallback key，可这样说明：
 
 ```text
 当前没有检测到 Roil 平台会话，但环境里有可用的图片生成 fallback。你可以让我继续用 fallback 生成；如果你希望走平台额度，请先登录 Roil 平台：https://image.roil.top/
 ```
 
-如果既没有平台入口也没有 key，可这样说明：
+如果当前电脑没有自动执行入口，可这样说明：
 
 ```text
 当前电脑还没有可自动调用的绘图工具，但 Roil Web 平台可以作为执行入口。请先登录 Roil 平台：https://image.roil.top/
 ```
 
-## Reference loading policy
+## Prompt And Reference Contract
 
-按需加载参考，不要一次性读完所有参考：
+- 先读 `references/gallery.md` 判断任务类型。
+- 普通任务最多读取 1 个分类，混合风格最多 2-3 个分类。
+- 需要润色提示词、中文文字、信息图、科研图、UI mockup、构图一致性时，再读 `references/craft.md`。
+- 用户明确要求“保留原词”或“不要润色”时，不读 `craft.md`，不优化 prompt。
+- 可复用参考：
+  - `references/gallery.md`
+  - `references/craft.md`
+  - `references/patterns.md`
 
-1. 先读 `references/gallery.md`，判断任务类型。
-2. 只读相关分类条目；普通任务最多 1 个分类，混合风格最多 2-3 个。
-3. 需要润色提示词、中文文字、信息图、科研图、UI mockup、构图一致性时，再读 `references/craft.md`。
-4. 用户明确要求“保留原词”“不要润色”时，不读 craft，不优化 prompt。
+## Execution Contract
 
-当前参考文件：
-
-- `references/gallery.md`：分类路由和模板索引。
-- `references/craft.md`：通用提示词结构、质量检查和失败修正。
-- `references/patterns.md`：可直接改写的分类模板。
-
-## Quick workflow
-
-1. 运行 Startup preflight，先判断登录态、Roil 执行入口和 fallback key。
-2. 明确任务类型：文生图、改图、参考图重绘、提示词优化、还是只要提示词。
-3. 如果用户给的是短需求，先用参考库整理成可执行提示词；不要把平台、供应商或模型名写进提示词，除非用户明确要求。
-4. 生成图片时优先运行统一执行脚本，而不是只口头说明 fallback：
+统一执行入口：
 
 ```bash
 python3 .codex/skills/roil-drawing/scripts/roil_draw.py \
@@ -106,43 +107,44 @@ python3 .codex/skills/roil-drawing/scripts/roil_draw.py \
   --json
 ```
 
-如果当前环境只扫描旧版 skill 镜像，用 `.agents/skills/roil-drawing/scripts/roil_draw.py`。
+旧镜像环境使用：
 
-执行脚本会优先尝试当前环境里可用的 Roil 执行入口：先试局域网 `http://10.15.46.72:8002`，不行再试 `https://image.roil.top/`，本地认证文件里如果记录了其他 Roil 地址也会一并尝试；这些都由 skill 内部完成，老师不用自己选择。只有这些都不可用时，才写出 `.prompt.txt` 并返回 `needs_platform_login` 和 `https://image.roil.top/`。对普通用户展示时只给登录链接即可，不要输出冗长 fallback 解释。
+```bash
+python3 .agents/skills/roil-drawing/scripts/roil_draw.py --prompt "..." --json
+```
 
-5. 改图 / 参考图重绘时，优先使用绝对图片路径，并在提示词中写清楚必须保留和必须改变的内容。
-6. 执行后在答复里说明：输出位置、使用的执行入口、模型或工具名（如可得）、是否做过提示词优化、平台侧剩余额度/计数（如返回）、失败时的具体原因。
+`roil_draw.py` 是执行层 source of truth。它保持当前分支顺序不变，并返回稳定结果字段。所有分支都应尽量包含：
 
-## Prompt drafting workflow
+- `success`
+- `status`
+- `via`
+- `runner`
+- `model`
+- `output_path`
+- `message`
 
-当用户只给一个短需求，而不是完整提示词时：
+在相关分支保留现有扩展字段：
 
-1. 选定图像类型：教学插图、科研图、信息图、海报、UI mockup、角色设定、产品图、摄影、国风水墨、像素/游戏等。
-2. 从 `references/gallery.md` 找到分类，再从 `references/patterns.md` 取一个最接近的骨架。
-3. 用 `references/craft.md` 检查：主体是否明确、构图是否可执行、文字是否逐字给出、输出比例是否合理、哪些内容必须保持不变。
-4. 如果用户希望“优化提示词”，交付优化后的提示词；如果当前环境支持直接出图，再继续生成。
+- `fallback_from`
+- `previous_attempt`
+- `platform_url`
+- `platform_probe`
+- `prompt_path`
+- `error`
+- `error_type`
 
-## Quality and size guidance
+`needs_platform_login` 仍然是标准登录交还状态。`--open-platform` 只允许在登录交还分支触发打开平台，不代表浏览器变成默认执行入口。
 
-- 草稿、多变体、探索：优先低成本或默认质量，先保证方向。
-- 教学插图、普通配图：优先清晰构图、准确主体、少量文字。
-- 海报、中文文字、科研图、信息图、UI mockup：明确文字、层级、布局、留白和输出比例。
-- 横向封面 / 宽屏场景：优先 `16:9` 或 landscape。
-- 手机海报 / 竖版封面：优先 portrait。
-- 图标 / 单物体 / 社交头像：优先 square。
+执行后，agent 应向用户明确汇报：
 
-## Working rules
+- 输出位置
+- 使用的执行入口
+- 模型或工具名
+- 是否做过提示词优化
+- 平台侧剩余额度或计数（如可得）
+- 失败时的具体原因
 
-- 生成类任务优先产出实际图片；如果工具不可用，产出可执行提示词和参数建议。
-- 默认使用 Roil 在线平台登录态和平台额度；不要把“用户自带 OpenAI key”作为普通用户主路径。
-- 普通用户遇到未登录时，提示登录 Roil 平台，不要先要求配置模型 key。
-- 检查 key 时只判断是否存在，不要显示、复制、记录或要求用户把 key 发到聊天里。
-- 用户强调“保留原词”或“不要润色”时，跳过提示词优化。
-- 用户要多个变体时，生成多次或提供多个明确变体提示词。
-- 如果需要可追踪结果，记录输出路径、最终提示词、输入参考图、工具/模型名和关键参数。
-- `fallback_used: false` 这类字段如果出现，只表示没有发生回退，不代表失败；失败以工具错误或明确 `success: false` 为准。
-
-## Failure triage
+## Failure Triage
 
 命令或工具失败时，按下面顺序判断：
 

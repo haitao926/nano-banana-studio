@@ -27,6 +27,7 @@ DEFAULT_SIZE = "1024x1024"
 DEFAULT_QUALITY = "low"
 DEFAULT_OUTPUT = "output/roil-drawing/roil-drawing.png"
 DEFAULT_NBS_TIMEOUT = 420
+RUNNER_NAME = "roil-drawing"
 
 
 def _write_json(data: dict) -> None:
@@ -38,6 +39,29 @@ def _maybe_open_platform(platform_url: str) -> None:
         subprocess.run(["open", platform_url], check=False)
     elif os.name == "posix":
         subprocess.run(["xdg-open", platform_url], check=False)
+
+
+def _result_payload(
+    *,
+    success: bool,
+    status: str,
+    via: str,
+    model: str | None = None,
+    output_path: str | None = None,
+    message: str | None = None,
+    **extra: object,
+) -> dict:
+    payload = {
+        "success": success,
+        "status": status,
+        "via": via,
+        "runner": RUNNER_NAME,
+        "model": model,
+        "output_path": output_path,
+        "message": message,
+    }
+    payload.update(extra)
+    return payload
 
 
 def _prepare_prompt(
@@ -54,15 +78,17 @@ def _prepare_prompt(
     prompt_path.write_text(prompt.strip() + "\n", encoding="utf-8")
     if open_platform:
         _maybe_open_platform(platform_url)
-    payload = {
-        "success": False,
-        "status": "needs_platform_login",
-        "via": "roil-web",
-        "platform_url": platform_url,
-        "platform_probe": status.get("platform_probe"),
-        "prompt_path": str(prompt_path),
-        "message": f"请先登录 Roil 平台：{platform_url}",
-    }
+    payload = _result_payload(
+        success=False,
+        status="needs_platform_login",
+        via="roil-web",
+        model=None,
+        output_path=None,
+        message=f"请先登录 Roil 平台：{platform_url}",
+        platform_url=platform_url,
+        platform_probe=status.get("platform_probe"),
+        prompt_path=str(prompt_path),
+    )
     if previous_attempt:
         payload["previous_attempt"] = previous_attempt
     _write_json(payload)
@@ -74,12 +100,15 @@ def _generate_openai(prompt: str, out: Path, *, model: str, size: str, quality: 
         from openai import OpenAI
     except ImportError:
         _write_json(
-            {
-                "success": False,
-                "status": "missing_dependency",
-                "dependency": "openai",
-                "message": "缺少 openai Python 包；请先安装 openai，或登录 Roil Web 平台继续。",
-            }
+            _result_payload(
+                success=False,
+                status="missing_dependency",
+                via="openai-image-api",
+                model=model,
+                output_path=None,
+                message="缺少 openai Python 包；请先安装 openai，或登录 Roil Web 平台继续。",
+                dependency="openai",
+            )
         )
         return 3
 
@@ -96,28 +125,31 @@ def _generate_openai(prompt: str, out: Path, *, model: str, size: str, quality: 
         )
     except Exception as exc:
         _write_json(
-            {
-                "success": False,
-                "status": "image_api_error",
-                "via": "openai-image-api",
-                "model": model,
-                "error_type": exc.__class__.__name__,
-                "error": str(exc),
-            }
+            _result_payload(
+                success=False,
+                status="image_api_error",
+                via="openai-image-api",
+                model=model,
+                output_path=None,
+                message=str(exc),
+                error_type=exc.__class__.__name__,
+                error=str(exc),
+            )
         )
         return 4
 
     image_b64 = result.data[0].b64_json
     out.write_bytes(base64.b64decode(image_b64))
     _write_json(
-        {
-            "success": True,
-            "status": "generated",
-            "via": "openai-image-api",
-            "model": model,
-            "output_path": str(out),
-            "elapsed_seconds": round(time.time() - started, 2),
-        }
+        _result_payload(
+            success=True,
+            status="generated",
+            via="openai-image-api",
+            model=model,
+            output_path=str(out),
+            message=f"Image generated via openai-image-api using {model}.",
+            elapsed_seconds=round(time.time() - started, 2),
+        )
     )
     return 0
 
@@ -159,11 +191,14 @@ def _run_nbs_generate(prompt: str, out: Path, status: dict, *, model: str, size:
     cli_info = status.get("nbs_cli") or {}
     cli_path = str(cli_info.get("path") or "").strip()
     if not cli_path:
-        return {
-            "success": False,
-            "status": "nbs_cli_unavailable",
-            "message": "Current runtime did not expose an NBS CLI entry.",
-        }
+        return _result_payload(
+            success=False,
+            status="nbs_cli_unavailable",
+            via="nbs-cli-direct" if force_direct else "nbs-cli-backend",
+            model=model,
+            output_path=None,
+            message="Current runtime did not expose an NBS CLI entry.",
+        )
 
     env = os.environ.copy()
     auth_cleanup_path = None
@@ -176,12 +211,14 @@ def _run_nbs_generate(prompt: str, out: Path, status: dict, *, model: str, size:
         try:
             auth_path, auth_cleanup_path = _prepare_auth_override(auth_info)
         except Exception as exc:
-            return {
-                "success": False,
-                "status": "nbs_auth_override_failed",
-                "via": via,
-                "message": str(exc),
-            }
+            return _result_payload(
+                success=False,
+                status="nbs_auth_override_failed",
+                via=via,
+                model=model,
+                output_path=None,
+                message=str(exc),
+            )
         if auth_path:
             env["NBS_AUTH_FILE"] = auth_path
 
@@ -212,35 +249,44 @@ def _run_nbs_generate(prompt: str, out: Path, status: dict, *, model: str, size:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        return {
-            "success": False,
-            "status": "nbs_cli_timeout",
-            "via": via,
-            "message": f"NBS image generation timed out after {DEFAULT_NBS_TIMEOUT}s.",
-            "error": str(exc),
-        }
+        return _result_payload(
+            success=False,
+            status="nbs_cli_timeout",
+            via=via,
+            model=model,
+            output_path=None,
+            message=f"NBS image generation timed out after {DEFAULT_NBS_TIMEOUT}s.",
+            error=str(exc),
+        )
     finally:
         if auth_cleanup_path:
             Path(auth_cleanup_path).unlink(missing_ok=True)
 
     payload = _parse_json(completed.stdout)
     if payload is None:
-        payload = {
-            "success": False,
-            "status": "nbs_cli_invalid_output",
-            "via": via,
-            "stdout": completed.stdout.strip()[:1000],
-            "stderr": completed.stderr.strip()[:1000],
-        }
+        payload = _result_payload(
+            success=False,
+            status="nbs_cli_invalid_output",
+            via=via,
+            model=model,
+            output_path=None,
+            message="NBS CLI returned non-JSON output.",
+            stdout=completed.stdout.strip()[:1000],
+            stderr=completed.stderr.strip()[:1000],
+        )
 
+    payload.setdefault("success", completed.returncode == 0)
+    payload.setdefault("status", "generated" if completed.returncode == 0 else "nbs_cli_error")
     payload.setdefault("via", via)
-    payload["runner"] = "roil-drawing"
+    payload.setdefault("runner", RUNNER_NAME)
+    payload.setdefault("model", payload.get("actual_model") or payload.get("model") or model)
+    payload.setdefault("output_path", payload.get("output_path") or str(out) if completed.returncode == 0 else None)
     if completed.returncode == 0:
-        payload.setdefault("success", True)
+        payload.setdefault("message", f"Image generated via {via}.")
     else:
         payload["success"] = False
         payload.setdefault("status", "nbs_cli_error")
-        payload.setdefault("message", payload.get("error") or completed.stderr.strip() or completed.stdout.strip())
+        payload.setdefault("message", payload.get("error") or completed.stderr.strip() or completed.stdout.strip() or "NBS CLI generation failed.")
     return payload
 
 

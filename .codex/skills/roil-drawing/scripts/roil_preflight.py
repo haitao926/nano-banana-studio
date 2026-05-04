@@ -69,6 +69,28 @@ def detect_nbs_cli() -> dict:
     return {"available": False, "path": None, "source": None}
 
 
+def build_decision_summary(recommended_next_step: str) -> dict:
+    if recommended_next_step == "generate_via_nbs_cli_backend":
+        return {
+            "category": "cli_backend_ready",
+            "reason": "Authenticated NBS session and local CLI are both available.",
+        }
+    if recommended_next_step == "try_nbs_cli_direct":
+        return {
+            "category": "cli_direct_only",
+            "reason": "Local CLI is available but no authenticated backend session was confirmed.",
+        }
+    if recommended_next_step == "open_or_login_platform":
+        return {
+            "category": "platform_login_handoff",
+            "reason": "No local CLI path is available, but the Roil platform entry appears reachable.",
+        }
+    return {
+        "category": "manual_platform_check",
+        "reason": "Neither a local CLI path nor a reachable platform probe was confirmed.",
+    }
+
+
 def _request_platform(platform_url: str, *, timeout: float, context: ssl.SSLContext | None = None) -> dict:
     last_error = None
     for method in ("HEAD", "GET"):
@@ -384,6 +406,7 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
         recommended_next_step = "open_or_login_platform"
     else:
         recommended_next_step = "check_network_or_open_platform_manually"
+    decision_summary = build_decision_summary(recommended_next_step)
 
     return {
         "skill": "roil-drawing",
@@ -404,6 +427,7 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
                 "只有在无法使用 Roil 平台且用户接受 fallback 时，才考虑环境中的图片生成 key。"
             ),
         },
+        "decision_summary": decision_summary,
         "recommended_next_step": recommended_next_step,
     }
 
