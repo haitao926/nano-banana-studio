@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import ssl
+import subprocess
 import sys
 from urllib import error, request
 
@@ -89,6 +90,67 @@ def build_decision_summary(recommended_next_step: str) -> dict:
         "category": "manual_platform_check",
         "reason": "Neither a local CLI path nor a reachable platform probe was confirmed.",
     }
+
+
+def _probe_session_via_cli(cli_path: str, auth_info: dict, timeout: float) -> dict:
+    result = {
+        "attempted": False,
+        "success": False,
+        "base_url": None,
+        "username": None,
+        "quota_remaining": None,
+        "quota_limit": None,
+        "quota_used": None,
+        "error": None,
+    }
+    auth_path = str(auth_info.get("auth_file_path") or "").strip()
+    if not cli_path or not auth_info.get("auth_file_present") or not auth_path:
+        return result
+
+    candidate_base_urls = auth_info.get("candidate_base_urls") or []
+    env = os.environ.copy()
+    env["NBS_AUTH_FILE"] = auth_path
+
+    for base_url in candidate_base_urls:
+        cmd = [cli_path, "auth", "whoami", "--base-url", base_url, "--json"]
+        result["attempted"] = True
+        result["base_url"] = base_url
+        try:
+            completed = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=max(10, int(timeout * 2)),
+                check=False,
+                env=env,
+            )
+        except Exception as exc:
+            result["error"] = str(exc)
+            continue
+
+        stdout = str(completed.stdout or "").strip()
+        stderr = str(completed.stderr or "").strip()
+        try:
+            payload = json.loads(stdout) if stdout else {}
+        except Exception:
+            payload = {}
+
+        if completed.returncode == 0 and isinstance(payload, dict) and payload.get("success") and payload.get("username"):
+            result["success"] = True
+            result["username"] = payload.get("username")
+            result["quota_remaining"] = payload.get("quota_remaining")
+            result["quota_limit"] = payload.get("quota_limit")
+            result["quota_used"] = payload.get("quota_used")
+            result["error"] = None
+            return result
+
+        result["error"] = (
+            payload.get("error")
+            if isinstance(payload, dict)
+            else None
+        ) or stderr or stdout[:300] or f"nbs auth whoami failed with exit code {completed.returncode}"
+
+    return result
 
 
 def _request_platform(platform_url: str, *, timeout: float, context: ssl.SSLContext | None = None) -> dict:
@@ -397,6 +459,28 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
     }
     nbs_cli = detect_nbs_cli()
     nbs_auth = inspect_nbs_auth(platform_url, lan_base_url, timeout)
+    if nbs_cli["available"] and not nbs_auth["session_available"]:
+        cli_probe = _probe_session_via_cli(str(nbs_cli.get("path") or ""), nbs_auth, timeout)
+        nbs_auth["cli_probe"] = cli_probe
+        if cli_probe.get("success"):
+            nbs_auth["session_available"] = True
+            nbs_auth["session_base_url"] = cli_probe.get("base_url")
+            nbs_auth["session_user"] = cli_probe.get("username")
+            nbs_auth["quota_remaining"] = cli_probe.get("quota_remaining")
+            nbs_auth["quota_limit"] = cli_probe.get("quota_limit")
+            nbs_auth["quota_used"] = cli_probe.get("quota_used")
+            nbs_auth["error"] = None
+    else:
+        nbs_auth["cli_probe"] = {
+            "attempted": False,
+            "success": False,
+            "base_url": None,
+            "username": None,
+            "quota_remaining": None,
+            "quota_limit": None,
+            "quota_used": None,
+            "error": None,
+        }
 
     if nbs_auth["session_available"] and nbs_cli["available"]:
         recommended_next_step = "generate_via_nbs_cli_backend"

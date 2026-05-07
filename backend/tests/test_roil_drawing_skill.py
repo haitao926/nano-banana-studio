@@ -74,6 +74,50 @@ class RoilPreflightTests(unittest.TestCase):
 
         self.assertEqual(status["recommended_next_step"], "try_nbs_cli_direct")
         self.assertEqual(status["decision_summary"]["category"], "cli_direct_only")
+        self.assertFalse(status["nbs_auth"]["cli_probe"]["success"])
+
+    def test_build_status_uses_nbs_cli_probe_when_http_probe_disagrees(self) -> None:
+        auth_info = {
+            "auth_file_path": "/tmp/auth.json",
+            "auth_file_present": True,
+            "candidate_base_urls": ["https://image.roil.top"],
+            "session_available": False,
+            "session_base_url": None,
+            "session_user": None,
+            "quota_remaining": None,
+            "quota_limit": None,
+            "quota_used": None,
+            "error": "Stored session token was not accepted by any candidate Roil endpoint.",
+        }
+        cli_probe = {
+            "attempted": True,
+            "success": True,
+            "base_url": "https://image.roil.top",
+            "username": "admin",
+            "quota_remaining": 62,
+            "quota_limit": 1000,
+            "quota_used": 938,
+            "error": None,
+        }
+        with patch.object(roil_preflight, "probe_platform", return_value={"reachable": True}), patch.object(
+            roil_preflight,
+            "detect_nbs_cli",
+            return_value={"available": True, "path": "/repo/nbs", "source": "cwd"},
+        ), patch.object(
+            roil_preflight,
+            "inspect_nbs_auth",
+            return_value=dict(auth_info),
+        ), patch.object(
+            roil_preflight,
+            "_probe_session_via_cli",
+            return_value=cli_probe,
+        ):
+            status = roil_preflight.build_status(check_platform=True)
+
+        self.assertEqual(status["recommended_next_step"], "generate_via_nbs_cli_backend")
+        self.assertEqual(status["nbs_auth"]["session_user"], "admin")
+        self.assertEqual(status["nbs_auth"]["quota_remaining"], 62)
+        self.assertTrue(status["nbs_auth"]["cli_probe"]["success"])
 
     def test_build_status_prefers_platform_handoff_when_cli_missing(self) -> None:
         with patch.object(roil_preflight, "probe_platform", return_value={"reachable": True}), patch.object(
@@ -107,6 +151,9 @@ class RoilPreflightTests(unittest.TestCase):
 
 
 class RoilDrawTests(unittest.TestCase):
+    def test_default_model_prefers_gpt_image_2_all(self) -> None:
+        self.assertEqual(roil_draw.DEFAULT_MODEL, "gpt-image-2-all")
+
     def test_run_nbs_generate_backend_success_uses_stable_fields(self) -> None:
         status = {"nbs_cli": {"path": "/repo/nbs"}, "nbs_auth": {}}
         completed = SimpleNamespace(

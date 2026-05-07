@@ -102,7 +102,7 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
 ```bash
 python3 .codex/skills/roil-drawing/scripts/roil_draw.py \
   --prompt "生成一张白底橙猫教学插图，简洁明亮，无文字，无水印" \
-  --model gpt-image-2 \
+  --model gpt-image-2-all \
   --out output/roil-drawing/test.png \
   --json
 ```
@@ -113,7 +113,7 @@ python3 .codex/skills/roil-drawing/scripts/roil_draw.py \
 python3 .agents/skills/roil-drawing/scripts/roil_draw.py --prompt "..." --json
 ```
 
-`roil_draw.py` 是执行层 source of truth。它保持当前分支顺序不变，并返回稳定结果字段。所有分支都应尽量包含：
+`roil_draw.py` 是执行层 source of truth。默认请求模型是 `gpt-image-2-all`；只有这条链路失败时，才允许继续回退到其他可用模型或执行入口。它保持当前分支顺序不变，并返回稳定结果字段。所有分支都应尽量包含：
 
 - `success`
 - `status`

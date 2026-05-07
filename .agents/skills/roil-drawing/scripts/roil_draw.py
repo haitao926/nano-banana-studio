@@ -22,7 +22,7 @@ import time
 from roil_preflight import build_status, normalize_base_url
 
 
-DEFAULT_MODEL = "gpt-image-2"
+DEFAULT_MODEL = "gpt-image-2-all"
 DEFAULT_SIZE = "1024x1024"
 DEFAULT_QUALITY = "low"
 DEFAULT_OUTPUT = "output/roil-drawing/roil-drawing.png"
