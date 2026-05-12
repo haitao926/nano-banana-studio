@@ -54,11 +54,19 @@ class RoilPreflightTests(unittest.TestCase):
             "nbs_cli",
             "nbs_auth",
             "fallback_key_available",
+            "agent_contract",
+            "recommended_commands",
             "decision_summary",
             "recommended_next_step",
             "safe_to_show_user",
         ):
             self.assertIn(field, status)
+        self.assertIn("preflight", status["recommended_commands"])
+        self.assertTrue(status["recommended_commands"]["preflight"].endswith("roil_preflight.py --json"))
+        self.assertIn("must_not_do", status["agent_contract"])
+        self.assertTrue(
+            any("Do not inspect ~/.nbs/auth.json" in item for item in status["agent_contract"]["must_not_do"])
+        )
 
     def test_build_status_prefers_cli_direct_when_no_session(self) -> None:
         with patch.object(roil_preflight, "probe_platform", return_value={"reachable": True}), patch.object(
@@ -279,7 +287,7 @@ class RoilDrawTests(unittest.TestCase):
         self.assertEqual(payload["previous_attempt"]["via"], "nbs-cli-direct")
         self.assertTrue(payload["prompt_path"].endswith(".prompt.txt"))
 
-    def test_main_uses_openai_when_cli_missing_and_key_available(self) -> None:
+    def test_main_does_not_use_openai_when_cli_missing_even_if_key_available(self) -> None:
         status = {
             "platform_url": "https://image.roil.top/",
             "platform_probe": {"reachable": True},
@@ -293,15 +301,21 @@ class RoilDrawTests(unittest.TestCase):
             "--out",
             "/tmp/roil-openai.png",
         ]
+        stdout = io.StringIO()
         with patch.object(roil_draw, "build_status", return_value=status), patch.object(
             roil_draw,
             "_generate_openai",
             return_value=0,
-        ) as generate_openai, patch.object(roil_draw.os, "environ", {"OPENAI_API_KEY": "present"}), patch.object(sys, "argv", argv):
+        ) as generate_openai, patch.object(roil_draw.os, "environ", {"OPENAI_API_KEY": "present"}), patch.object(
+            sys, "argv", argv
+        ), contextlib.redirect_stdout(stdout):
             code = roil_draw.main()
 
-        self.assertEqual(code, 0)
-        generate_openai.assert_called_once()
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(payload["status"], "needs_platform_login")
+        self.assertEqual(payload["via"], "roil-web")
+        generate_openai.assert_not_called()
 
     def test_main_returns_platform_handoff_when_no_execution_path(self) -> None:
         status = {

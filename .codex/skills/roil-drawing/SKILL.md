@@ -12,17 +12,22 @@ Roil Drawing 是对外唯一的绘图入口，面向老师隐藏内部链路差�
 - 默认目标是产出实际图片；如果当前环境没有可执行出图路径，再退化为可执行提示词和参数建议。
 - 默认优先使用已登录的 Roil/NBS 链路，不要求普通用户先提供模型 API Key。
 - Roil Web 平台是有效入口，但主要承担登录和兜底作用，不是默认的浏览器点击执行路径。
+- 没有独立的 `roil` 或 `roil-drawing` 可执行命令，不等于这个 skill 不可用；只要预检确认 `./nbs` 或 Roil 平台入口可用，就仍然存在有效执行路径。
 - 不暴露密钥，不重拼旧项目 HTTP 请求，不 import 旧项目内部模块，不把旧仓库实现当默认执行层。
 - 当前 skill 文档描述契约，实际路由与结果字段以 `scripts/roil_preflight.py` 和 `scripts/roil_draw.py` 为准。
 
 ## Routing Rules
 
 - 每次开始绘图、改图、参考图重绘或提示词优化前，先运行预检脚本。
+- 在没有跑过预检脚本前，不允许把当前环境描述成“Roil Drawing 不可用”或“没有 Roil 出图入口”。
+- 只要工作区里已经有 `roil_preflight.py` / `roil_draw.py`，就不要先去手工读取 `~/.nbs/auth.json`、搜索环境变量、grep `backend/`、grep `gpt-image-2`，或继续寻找“别的可能入口”。
+- 如果预检结果是 `generate_via_nbs_cli_backend` 或 `try_nbs_cli_direct`，下一步必须直接调用 `roil_draw.py` 或 `./nbs image generate`；不要在真正执行前反复做模型、key、配置和代码层面的额外探索。
+- 一次预检加一次实际生成尝试，优先级高于多轮环境侦察；只有脚本失败且错误信息不足时，才继续向内排查。
 - 优先级保持不变：
   1. 已确认登录态的 `./nbs` 后端认证链路
   2. 本地 `./nbs` 直连链路
-  3. 明确可用的 OpenAI 图片 fallback
-  4. 生成 `.prompt.txt` 并交还 Roil 平台登录入口
+  3. 生成 `.prompt.txt` 并交还 Roil 平台登录入口
+- 不要把“缺少独立命令 `roil` / `roil-drawing`”当成失败信号。这个 skill 的入口判定以 `roil_preflight.py` 结果为准，而不是以 `command -v roil` 是否命中为准。
 - 在 Codex 桌面环境里，只要 `./nbs auth whoami --json` 和 `./nbs models --service image --json` 能正常返回，就不要使用 Browser Use、Computer Use 或其他浏览器自动化执行常规出图。
 - 只有两类情况允许进入浏览器相关动作：
   1. 用户明确要求打开平台、浏览器操作或网页演示。
@@ -48,6 +53,7 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
 - 检测本地 `nbs` CLI 是否可用
 - 检测已保存的 Roil/NBS 登录态、可用额度与 refresh 结果
 - 检测 fallback key 是否存在，但不泄露 key 值
+- 显式输出一条防误判说明，提醒 agent 不要因为缺少 `roil` 独立命令就宣告不可用
 - 输出稳定 JSON，至少包含：
   - `skill`
   - `platform_url`
@@ -55,6 +61,7 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
   - `nbs_cli`
   - `nbs_auth`
   - `fallback_key_available`
+  - `availability_tier`
   - `decision_summary`
   - `safe_to_show_user`
   - `recommended_next_step`
@@ -66,16 +73,25 @@ python3 .agents/skills/roil-drawing/scripts/roil_preflight.py --json
 - `open_or_login_platform`
 - `check_network_or_open_platform_manually`
 
+`availability_tier` 使用更直白的入口分层，只允许以下值：
+
+- `native_cli_backend`
+- `native_cli_direct`
+- `web_handoff`
+- `manual_or_none`
+
+当 `recommended_next_step` 为 `generate_via_nbs_cli_backend` 或 `try_nbs_cli_direct` 时，agent 不得对用户说“没有可调用的 Roil 平台/CLI 出图入口”。
+
 对老师的登录提示统一使用：
 
 ```text
 请先登录 Roil 平台：https://image.roil.top/
 ```
 
-如果当前电脑没有平台会话但存在 fallback key，可这样说明：
+如果当前电脑没有平台会话，不要主动切到 key fallback；统一这样说明：
 
 ```text
-当前没有检测到 Roil 平台会话，但环境里有可用的图片生成 fallback。你可以让我继续用 fallback 生成；如果你希望走平台额度，请先登录 Roil 平台：https://image.roil.top/
+当前没有检测到可用的 Roil 平台会话。请先登录 Roil 平台：https://image.roil.top/
 ```
 
 如果当前电脑没有自动执行入口，可这样说明：

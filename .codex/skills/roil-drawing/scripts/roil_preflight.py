@@ -92,6 +92,19 @@ def build_decision_summary(recommended_next_step: str) -> dict:
     }
 
 
+def build_recommended_commands() -> dict:
+    script_dir = Path(__file__).resolve().parent
+    preflight_script = script_dir / "roil_preflight.py"
+    draw_script = script_dir / "roil_draw.py"
+    return {
+        "preflight": f"python3 {preflight_script} --json",
+        "draw": (
+            f'python3 {draw_script} --prompt "..." '
+            '--out output/roil-drawing/roil-drawing.png --json'
+        ),
+    }
+
+
 def _probe_session_via_cli(cli_path: str, auth_info: dict, timeout: float) -> dict:
     result = {
         "attempted": False,
@@ -491,10 +504,18 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
     else:
         recommended_next_step = "check_network_or_open_platform_manually"
     decision_summary = build_decision_summary(recommended_next_step)
+    recommended_commands = build_recommended_commands()
+    availability_tier = {
+        "generate_via_nbs_cli_backend": "native_cli_backend",
+        "try_nbs_cli_direct": "native_cli_direct",
+        "open_or_login_platform": "web_handoff",
+        "check_network_or_open_platform_manually": "manual_or_none",
+    }[recommended_next_step]
+    platform_entry_available = bool(platform_probe.get("reachable")) if check_platform else None
 
     return {
         "skill": "roil-drawing",
-        "platform_entry_available": True,
+        "platform_entry_available": platform_entry_available,
         "platform_url": platform_url,
         "lan_base_url": lan_base_url,
         "platform_probe": platform_probe,
@@ -505,12 +526,29 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
         "nbs_cli": nbs_cli,
         "nbs_auth": nbs_auth,
         "safe_to_show_user": {
+            "availability_summary": (
+                "不要仅因缺少 `roil` 或 `roil-drawing` 独立命令就判定不可用；"
+                "当前可用入口应以预检结果里的 `recommended_next_step`、`nbs_cli` 和 `nbs_auth` 为准。"
+            ),
             "login_prompt": f"请先登录 Roil 平台：{platform_url}",
             "no_cli_note": "没有本地 CLI 不等于没有 Roil 出图入口；Roil Web 平台就是有效入口。",
             "fallback_note": (
                 "只有在无法使用 Roil 平台且用户接受 fallback 时，才考虑环境中的图片生成 key。"
             ),
         },
+        "agent_contract": {
+            "must_do_first": [
+                recommended_commands["preflight"],
+                "If `recommended_next_step` is `generate_via_nbs_cli_backend` or `try_nbs_cli_direct`, run the draw command before more repo or config exploration.",
+            ],
+            "must_not_do": [
+                "Do not inspect ~/.nbs/auth.json, environment variables, backend source, or alternate image entrypoints before running preflight.",
+                "Do not claim there is no Roil drawing entrypoint when `recommended_next_step` points to a native CLI path.",
+                "Do not ask the user for OPENAI_API_KEY before native CLI and platform handoff paths are exhausted.",
+            ],
+        },
+        "recommended_commands": recommended_commands,
+        "availability_tier": availability_tier,
         "decision_summary": decision_summary,
         "recommended_next_step": recommended_next_step,
     }

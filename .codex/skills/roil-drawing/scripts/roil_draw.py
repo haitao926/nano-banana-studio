@@ -332,9 +332,6 @@ def main() -> int:
             _write_json(direct_result)
             return 0
 
-        if os.environ.get("OPENAI_API_KEY"):
-            return _generate_openai(args.prompt, out, model=args.model, size=args.size, quality=args.quality)
-
         backend_result["direct_attempt"] = direct_result
         _write_json(backend_result)
         return 4
@@ -353,9 +350,6 @@ def main() -> int:
             _write_json(direct_result)
             return 0
 
-        if os.environ.get("OPENAI_API_KEY"):
-            return _generate_openai(args.prompt, out, model=args.model, size=args.size, quality=args.quality)
-
         if status.get("platform_probe", {}).get("reachable") is not False:
             return _prepare_prompt(
                 args.prompt,
@@ -367,9 +361,6 @@ def main() -> int:
 
         _write_json(direct_result)
         return 4
-
-    if os.environ.get("OPENAI_API_KEY"):
-        return _generate_openai(args.prompt, out, model=args.model, size=args.size, quality=args.quality)
 
     return _prepare_prompt(args.prompt, out, status, open_platform=args.open_platform)
 
