@@ -6,6 +6,8 @@ Nano Banana (Gemini) 图片生成器
 """
 
 import json
+import builtins
+import hashlib
 import requests
 import time
 from typing import Any, Dict, List, Optional, Union
@@ -13,9 +15,38 @@ import os
 import base64
 import re
 import io
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from .env_utils import get_env_str, get_env_list
+
+
+def _safe_print(*args: Any, **kwargs: Any) -> None:
+    """Best-effort logging that never fails request handling."""
+    try:
+        builtins.print(*args, **kwargs)
+    except BrokenPipeError:
+        return
+    except ValueError:
+        return
+    except OSError as exc:
+        if getattr(exc, "errno", None) in {5, 32}:
+            return
+        raise
+
+
+# Route all module-local prints through a safe logger so detached/invalid
+# stdout streams cannot turn normal request logging into a 500 response.
+print = _safe_print
+PROVIDER_CONNECT_TIMEOUT_SECONDS = float(os.getenv("NBS_PROVIDER_CONNECT_TIMEOUT_SECONDS", "8"))
+
+
+def _font_candidates() -> List[str]:
+    return [
+        "/System/Library/Fonts/PingFang.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/System/Library/Fonts/STHeiti Light.ttc",
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+    ]
 
 def _parse_model_key_map(raw: str) -> Dict[str, str]:
     if not raw:
@@ -55,6 +86,7 @@ class ImageGenerator:
         self._apply_config(self.config)
         self.prompt_config = self._load_prompt_config()
         self.last_error: Optional[Dict[str, Any]] = None
+        self.last_request_diagnostics: Optional[Dict[str, Any]] = None
 
     def _load_config(self, config_path: str) -> Dict:
         if not os.path.exists(config_path):
@@ -75,6 +107,15 @@ class ImageGenerator:
         except Exception as e:
             print(f"⚠️ Failed to load prompt templates: {e}")
         return {}
+
+    def _remember_error(self, message: str, status_code: Optional[int] = None) -> None:
+        text = str(message or "").strip()
+        if not text:
+            return
+        payload: Dict[str, Any] = {"message": text}
+        if status_code is not None:
+            payload["status_code"] = status_code
+        self.last_error = payload
 
     def _apply_config(self, config: Dict):
         """将配置字典应用到实例属性"""
@@ -147,7 +188,21 @@ class ImageGenerator:
             fallback_models = [m.strip() for m in fallback_models.split(",") if m.strip()]
         self.fallback_models = [m for m in fallback_models if m]
 
-    def _execute_raw_request(self, url: str, headers: Dict, data: Dict, retry_count: int = 0) -> Optional[requests.Response]:
+    @staticmethod
+    def _request_timeout_value(request_timeout: Optional[int]) -> Union[int, float, tuple[float, float]]:
+        read_timeout = float(request_timeout) if request_timeout is not None else float(120)
+        read_timeout = max(1.0, read_timeout)
+        connect_timeout = max(1.0, min(PROVIDER_CONNECT_TIMEOUT_SECONDS, read_timeout))
+        return (connect_timeout, read_timeout)
+
+    def _execute_raw_request(
+        self,
+        url: str,
+        headers: Dict,
+        data: Dict,
+        retry_count: int = 0,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[requests.Response]:
         """执行单次请求，处理网络层面的重试"""
         try:
             print(f"🚀 发送请求到: {url}")
@@ -157,7 +212,7 @@ class ImageGenerator:
                 url,
                 headers=headers,
                 json=data,
-                timeout=self.timeout
+                timeout=self._request_timeout_value(request_timeout or self.timeout),
             )
             return response
         except Exception as e:
@@ -169,6 +224,8 @@ class ImageGenerator:
         base = (base_url or "").rstrip("/")
         if not endpoint.startswith("/"):
             endpoint = f"/{endpoint}"
+        if base.endswith("/compatible-mode/v1") and endpoint.startswith("/v1/"):
+            endpoint = endpoint[len("/v1") :]
         if endpoint.startswith("/v1/"):
             if base.endswith("/v1") or base.endswith("/api/v3"):
                 endpoint = endpoint[len("/v1") :]
@@ -180,6 +237,7 @@ class ImageGenerator:
         headers: Dict,
         data: Dict,
         file_paths: list[str],
+        request_timeout: Optional[int] = None,
     ) -> Optional[requests.Response]:
         files = []
         handles = []
@@ -199,7 +257,7 @@ class ImageGenerator:
                 headers=headers,
                 data=data,
                 files=files,
-                timeout=self.timeout,
+                timeout=self._request_timeout_value(request_timeout or self.timeout),
             )
             return response
         except Exception as e:
@@ -221,6 +279,7 @@ class ImageGenerator:
         base_url: str = None,
         api_key: str = None,
         model: str = None,
+        request_timeout: Optional[int] = None,
     ) -> Optional[Dict]:
         current_base_url = (base_url or self.base_url).rstrip("/")
 
@@ -241,16 +300,19 @@ class ImageGenerator:
             print(f"🔑 使用专用Key池 (针对模型: {model})")
             keys_to_try = self.special_keys
 
+        max_attempts = 1 if request_timeout is not None else (self.max_retries + 1)
+
         for key_idx, current_key in enumerate(keys_to_try):
             headers = {}
             if current_key:
                 headers["Authorization"] = f"Bearer {current_key}"
 
-            for attempt in range(self.max_retries + 1):
-                response = self._execute_multipart_request(url, headers, data, file_paths)
+            for attempt in range(max_attempts):
+                response = self._execute_multipart_request(url, headers, data, file_paths, request_timeout=request_timeout)
 
                 if response is None:
-                    time.sleep(1)
+                    if attempt + 1 < max_attempts:
+                        time.sleep(1)
                     continue
 
                 if response.status_code == 200:
@@ -264,8 +326,9 @@ class ImageGenerator:
                     break
 
                 if response.status_code in [502, 504]:
-                    print(f"🔄 正在重试 ({attempt + 1}/{self.max_retries})...")
-                    time.sleep(2)
+                    if attempt + 1 < max_attempts:
+                        print(f"🔄 正在重试 ({attempt + 1}/{max_attempts - 1})...")
+                        time.sleep(2)
                     continue
 
                 print(f"❌ API请求失败: {response.status_code}")
@@ -283,6 +346,15 @@ class ImageGenerator:
         return any(token in text for token in ("gpt-image", "dall-e", "dalle", "chatgpt-image"))
 
     @staticmethod
+    def _supports_url_response_format(model: Optional[str]) -> bool:
+        if not model:
+            return True
+        text = str(model).lower()
+        if "seedream" in text or text == "z-image-turbo":
+            return False
+        return "gpt-image-2" not in text
+
+    @staticmethod
     def _is_seedream_model(model: Optional[str]) -> bool:
         if not model:
             return False
@@ -292,7 +364,8 @@ class ImageGenerator:
     def _supports_seedream_group(model: Optional[str]) -> bool:
         if not model:
             return False
-        return "seedream-4" in str(model).lower()
+        text = str(model).lower()
+        return "seedream-4" in text or "seedream-5" in text
 
     @staticmethod
     def _supports_seedream_multi_image(model: Optional[str]) -> bool:
@@ -305,15 +378,66 @@ class ImageGenerator:
         text = str(model).lower()
         return "grok" in text and "image" in text
 
-    def _make_request(self, endpoint: str, data: Dict, retry_count: int = 0, base_url: str = None, api_key: str = None, model: str = None) -> Optional[Dict]:
+    @staticmethod
+    def _is_gemini_image_preview_model(model: Optional[str]) -> bool:
+        if not model:
+            return False
+        text = str(model).lower()
+        return "gemini" in text and "image-preview" in text
+
+    @staticmethod
+    def _is_z_image_model(model: Optional[str]) -> bool:
+        if not model:
+            return False
+        return str(model).lower().strip() == "z-image-turbo"
+
+    @staticmethod
+    def _is_gpt_image_2_all_model(model: Optional[str]) -> bool:
+        if not model:
+            return False
+        return str(model).lower().strip() == "gpt-image-2-all"
+
+    @staticmethod
+    def _request_model_for_images_endpoint(model: Optional[str]) -> Optional[str]:
+        if not model:
+            return model
+        text = str(model).strip()
+        lowered = text.lower()
+        if lowered == "grok-imagine-image":
+            return "grok-3-image"
+        return text
+
+    @staticmethod
+    def _summarize_payload_fields(data: Dict[str, Any]) -> List[str]:
+        if not isinstance(data, dict):
+            return []
+        return sorted(str(key) for key in data.keys())
+
+    def _make_request(
+        self,
+        endpoint: str,
+        data: Dict,
+        retry_count: int = 0,
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[Dict]:
         """发送API请求 (支持多Key轮询)"""
         current_base_url = (base_url or self.base_url).rstrip("/")
         
-        # Override model in data if provided
-        if model:
+        # Override model in data if provided, except Gemini native endpoints where
+        # the model belongs in the URL and some gateways reject it in the body.
+        if model and not endpoint.startswith("/v1beta/models/") and not data.get("model"):
             data["model"] = model
             
         url = self._build_url(current_base_url, endpoint)
+        self.last_request_diagnostics = {
+            "endpoint": endpoint,
+            "url": url,
+            "payload_fields": self._summarize_payload_fields(data),
+            "model": data.get("model") or model,
+        }
         
         # Determine keys to try
         # If explicit api_key provided (BYOK), use only that.
@@ -334,6 +458,7 @@ class ImageGenerator:
         
         last_error: Optional[Dict[str, Any]] = None
         self.last_error = None
+        max_attempts = 1 if request_timeout is not None else (self.max_retries + 1)
         
         for key_idx, current_key in enumerate(keys_to_try):
             headers = {
@@ -350,12 +475,19 @@ class ImageGenerator:
             # Simplified: Just try each key once. If network fails, maybe retry same key?
             
             # We will use a simple retry for network flakes on the *same* key
-            for attempt in range(self.max_retries + 1):
-                response = self._execute_raw_request(url, headers, data)
+            for attempt in range(max_attempts):
+                response = self._execute_raw_request(url, headers, data, request_timeout=request_timeout)
                 
                 if response is None:
+                    last_error = {
+                        "status_code": 504 if request_timeout is not None else 502,
+                        "message": "Request timed out or failed to reach provider",
+                        "endpoint": endpoint,
+                        "payload_fields": self._summarize_payload_fields(data),
+                    }
                     # Network error, retry same key
-                    time.sleep(1)
+                    if attempt + 1 < max_attempts:
+                        time.sleep(1)
                     continue
                 
                 if response.status_code == 200:
@@ -377,6 +509,8 @@ class ImageGenerator:
                     last_error = {
                         "status_code": response.status_code,
                         "message": message or f"HTTP {response.status_code}",
+                        "endpoint": endpoint,
+                        "payload_fields": self._summarize_payload_fields(data),
                     }
                     print(f"⚠️ Key #{key_idx} failed with {response.status_code}. Trying next key...")
                     # Break inner loop (retries) to go to next key
@@ -384,13 +518,27 @@ class ImageGenerator:
                 
                 # If error is likely transient (502, 504), retry same key
                 if response.status_code in [502, 504]:
-                     print(f"🔄 正在重试 ({attempt + 1}/{self.max_retries})...")
-                     time.sleep(2)
+                     message = response.text.strip() if response.text else f"HTTP {response.status_code}"
+                     last_error = {
+                         "status_code": response.status_code,
+                         "message": message,
+                         "endpoint": endpoint,
+                         "payload_fields": self._summarize_payload_fields(data),
+                     }
+                     if attempt + 1 < max_attempts:
+                         print(f"🔄 正在重试 ({attempt + 1}/{max_attempts - 1})...")
+                         time.sleep(2)
                      continue
                 
                 # Other errors (400 Bad Request) -> Don't switch keys, likely request issue
                 print(f"❌ API请求失败: {response.status_code}")
                 print(f"   响应: {response.text}")
+                self.last_error = {
+                    "status_code": response.status_code,
+                    "message": response.text.strip() if response.text else f"HTTP {response.status_code}",
+                    "endpoint": endpoint,
+                    "payload_fields": self._summarize_payload_fields(data),
+                }
                 return None
             
             # If we broke out of inner loop, it means this key failed. Continue to next key.
@@ -560,7 +708,16 @@ class ImageGenerator:
                 final_prompt += ", (ultra detailed, 4k resolution, 8k, masterpiece, best quality, extreme detail, hyperrealistic)"
         return final_prompt
 
-    def _generate_image_via_chat(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+    def _generate_image_via_chat(
+        self,
+        prompt: str,
+        size: str = None,
+        quality: str = None,
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
         """通过 Chat API 生成图片 (针对 Gemini 等模型)"""
         final_prompt = self._build_chat_image_prompt(prompt, size=size, quality=quality)
 
@@ -590,7 +747,14 @@ class ImageGenerator:
                 "n": 1
             }
             
-            response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key, model=model)
+            response = self._make_request(
+                "/v1/chat/completions",
+                data,
+                base_url=base_url,
+                api_key=api_key,
+                model=model,
+                request_timeout=request_timeout,
+            )
             
             if response:
                 candidate = self._extract_image_candidate(response)
@@ -600,7 +764,16 @@ class ImageGenerator:
         
         return None
 
-    def _generate_image_via_responses(self, prompt: str, size: str = None, quality: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+    def _generate_image_via_responses(
+        self,
+        prompt: str,
+        size: str = None,
+        quality: str = None,
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
         """通过 Responses API 生成图片 (针对 Grok / OpenAI Responses 兼容链路)"""
         final_prompt = self._build_chat_image_prompt(prompt, size=size, quality=quality)
         print(f"🎨 Responses生成提示词: {final_prompt}")
@@ -609,7 +782,14 @@ class ImageGenerator:
             "input": final_prompt,
             "tools": [{"type": "image_generation"}],
         }
-        response = self._make_request("/v1/responses", data, base_url=base_url, api_key=api_key, model=model)
+        response = self._make_request(
+            "/v1/responses",
+            data,
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            request_timeout=request_timeout,
+        )
         if not response:
             return None
         candidate = self._extract_image_candidate(response)
@@ -639,7 +819,15 @@ class ImageGenerator:
         }
         return mapping.get(size)
 
-    def _generate_image_via_gemini(self, prompt: str, size: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+    def _generate_image_via_gemini(
+        self,
+        prompt: str,
+        size: str = None,
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
         """通过 Gemini generateContent 生成图片 (适配 gemini-2.5-flash-image)"""
         try:
             target_model = model or self.model
@@ -655,13 +843,94 @@ class ImageGenerator:
             }
 
             endpoint = f"/v1beta/models/{target_model}:generateContent"
-            response = self._make_request(endpoint, payload, base_url=base_url, api_key=api_key, model=target_model)
+            response = self._make_request(
+                endpoint,
+                payload,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
             if response:
                 return self._extract_image_candidate(response)
             return None
         except Exception as e:
             print(f"❌ Gemini 图片生成失败: {e}")
             return None
+
+    @staticmethod
+    def _image_path_to_data_uri(path: str) -> Optional[str]:
+        if not path or not os.path.exists(path):
+            return None
+        mime_type = "image/png"
+        lowered = path.lower()
+        if lowered.endswith((".jpg", ".jpeg")):
+            mime_type = "image/jpeg"
+        elif lowered.endswith(".webp"):
+            mime_type = "image/webp"
+        with open(path, "rb") as image_file:
+            b64_data = base64.b64encode(image_file.read()).decode("utf-8")
+        return f"data:{mime_type};base64,{b64_data}"
+
+    def _build_images_generation_payload(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        size: Optional[str] = None,
+        image: Optional[Union[str, List[str]]] = None,
+    ) -> Dict[str, Any]:
+        request_model = self._request_model_for_images_endpoint(model)
+        payload: Dict[str, Any] = {
+            "model": request_model,
+            "prompt": prompt,
+            "n": 1,
+        }
+        if size:
+            payload["size"] = size
+        if image:
+            payload["image"] = image
+        if self._supports_url_response_format(request_model):
+            payload["response_format"] = "url"
+        if self._is_z_image_model(request_model):
+            payload.update({
+                "watermark": False,
+                "prompt_extend": True,
+            })
+        return payload
+
+    def _generate_image_via_images_generation(
+        self,
+        prompt: str,
+        size: str = None,
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        image: Optional[Union[str, List[str]]] = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
+        target_model = model or self.model
+        data = self._build_images_generation_payload(
+            prompt=prompt,
+            model=target_model,
+            size=size,
+            image=image,
+        )
+        response = self._make_request(
+            "/v1/images/generations",
+            data,
+            base_url=base_url,
+            api_key=api_key,
+            model=target_model,
+            request_timeout=request_timeout,
+        )
+
+        candidate = self._extract_image_candidate(response)
+        if candidate:
+            print(f"✅ 图片生成成功: {candidate[:50]}...")
+            return candidate
+        print("❌ 未获取到图片数据")
+        return None
 
     @staticmethod
     def _normalize_aspect_ratio(aspect_ratio: Optional[str]) -> str:
@@ -677,7 +946,16 @@ class ImageGenerator:
             return f"横向画布（{ratio}）"
         return f"方形或居中构图画布（{ratio}）"
 
-    def optimize_prompt(self, raw_prompt: str, subject: str = "general", model: str = None, api_key: str = None, base_url: str = None, aspect_ratio: Optional[str] = None) -> Optional[str]:
+    def optimize_prompt(
+        self,
+        raw_prompt: str,
+        subject: str = "general",
+        model: str = None,
+        api_key: str = None,
+        base_url: str = None,
+        aspect_ratio: Optional[str] = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
         """
         使用 LLM 优化提示词 (融入结构化思维)
         :param model: 目标绘图模型 (Target Image Model)，用于定制提示词风格。
@@ -689,6 +967,8 @@ class ImageGenerator:
 
         # 1. 确定 LLM 和 目标风格
         llm_model = model or self.llm_model or self.model
+        if llm_model == "MiniMax-M2.7":
+            llm_model = "MiniMax/MiniMax-M2.7"
         target_model = model or self.model
         if not llm_model:
             print("⚠️ 缺少 LLM 模型配置，无法优化提示词")
@@ -789,17 +1069,29 @@ class ImageGenerator:
         )
 
         # 注意: 这里使用 llm_model (self.model) 发起请求，而不是传入的 model (可能只是 image model)
+        temperature = 0.2
+        if (base_url or "").lower().find("moonshot.cn") >= 0 and llm_model.lower().startswith("kimi-"):
+            # Moonshot Kimi chat models currently require temperature=1.
+            temperature = 1
+
         data = {
             "model": llm_model, 
             "messages": [
                 {"role": "system", "content": system_instruction},
                 {"role": "user", "content": user_content}
             ],
-            "temperature": 0.2
+            "temperature": temperature
         }
         
         print(f"✨ 正在优化提示词 (Target: {target_model}): {raw_prompt}")
-        response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key, model=llm_model)
+        response = self._make_request(
+            "/v1/chat/completions",
+            data,
+            base_url=base_url,
+            api_key=api_key,
+            model=llm_model,
+            request_timeout=request_timeout,
+        )
         
         if response and "choices" in response and len(response["choices"]) > 0:
             content = response["choices"][0]["message"]["content"].strip()
@@ -911,16 +1203,20 @@ class ImageGenerator:
         base_url: str = None,
         api_key: str = None,
         model: str = None,
+        request_timeout: Optional[int] = None,
     ) -> List[str]:
         target_model = model or self.model
         data: Dict[str, Any] = {
             "model": target_model,
             "prompt": prompt,
-            "response_format": "url",
             "stream": False,
             "watermark": False,
+            "output_format": "png",
         }
-        if size:
+        target_lower = str(target_model or "").lower()
+        if "seedream-5" in target_lower:
+            data["size"] = "2K"
+        elif size:
             data["size"] = size
         if image_url:
             if isinstance(image_url, (list, tuple)):
@@ -941,10 +1237,20 @@ class ImageGenerator:
             base_url=base_url,
             api_key=api_key,
             model=target_model,
+            request_timeout=request_timeout,
         )
         return self._extract_image_candidates(response)
 
-    def generate_modified_image(self, prompt: str, base_image_paths: list[str], base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+    def generate_modified_image(
+        self,
+        prompt: str,
+        base_image_paths: list[str],
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        size: str = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
         """
         基于原图(多图)进行修改 (Image-to-Image / Vision)
         """
@@ -967,6 +1273,7 @@ class ImageGenerator:
                     base_url=base_url,
                     api_key=api_key,
                     model=target_model,
+                    request_timeout=request_timeout,
                 )
                 return seedream_images[0] if seedream_images else None
             except Exception:
@@ -1016,7 +1323,14 @@ class ImageGenerator:
                 endpoint = f"/v1beta/models/{target_model}:generateContent"
                 
                 print(f"🎨 Gemini 原生重绘: {prompt}")
-                response = self._make_request(endpoint, payload, base_url=base_url, api_key=api_key, model=target_model)
+                response = self._make_request(
+                    endpoint,
+                    payload,
+                    base_url=base_url,
+                    api_key=api_key,
+                    model=target_model,
+                    request_timeout=request_timeout,
+                )
                 
                 if response:
                     return self._extract_image_candidate(response)
@@ -1026,6 +1340,25 @@ class ImageGenerator:
             # 2. OPENAI IMAGE EDITS (gpt-image / dall-e)
             # -------------------------------------------------
             if is_openai_image:
+                if self._is_gpt_image_2_all_model(target_model):
+                    reference_images = []
+                    for img_path in base_image_paths:
+                        data_uri = self._image_path_to_data_uri(img_path)
+                        if data_uri:
+                            reference_images.append(data_uri)
+                    if not reference_images:
+                        return None
+                    print(f"🎨 GPT Image 2 JSON 参考图生成 ({len(reference_images)} refs): {prompt}")
+                    return self._generate_image_via_images_generation(
+                        edit_instruction,
+                        size=size or self.config.get("image", {}).get("size"),
+                        base_url=base_url,
+                        api_key=api_key,
+                        model=target_model,
+                        image=reference_images,
+                        request_timeout=request_timeout,
+                    )
+
                 print(f"🎨 OpenAI Images/Edits ({len(base_image_paths)} refs): {prompt}")
                 data = {
                     "prompt": edit_instruction,
@@ -1038,6 +1371,7 @@ class ImageGenerator:
                     base_url=base_url,
                     api_key=api_key,
                     model=target_model,
+                    request_timeout=request_timeout,
                 )
                 if response:
                     candidate = self._extract_image_candidate(response)
@@ -1089,7 +1423,14 @@ class ImageGenerator:
                 "n": 1
             }
 
-            response = self._make_request("/v1/chat/completions", data, base_url=base_url, api_key=api_key, model=target_model)
+            response = self._make_request(
+                "/v1/chat/completions",
+                data,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
 
             if response:
                 candidate = self._extract_image_candidate(response)
@@ -1101,7 +1442,17 @@ class ImageGenerator:
             print(f"❌ 图片修改失败: {e}")
             return None
 
-    def generate_image(self, prompt: str, size: str = None, quality: str = None, style: str = None, base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+    def generate_image(
+        self,
+        prompt: str,
+        size: str = None,
+        quality: str = None,
+        style: str = None,
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
         """
         生成图片
         Returns: 图片 URL 或 Base64 Data URI
@@ -1121,55 +1472,92 @@ class ImageGenerator:
                 base_url=base_url,
                 api_key=api_key,
                 model=target_model,
+                request_timeout=request_timeout,
             )
             return seedream_images[0] if seedream_images else None
 
         target_model_lower = (target_model or "").lower()
 
-        # Gemini 3 image-preview 系列走 Chat 接口（含 3.1 flash image preview）
-        if "gemini-3" in target_model_lower and "image-preview" in target_model_lower:
-            print(f"🤖 检测到 Gemini 3 Image Preview，切换到 Chat 接口...")
-            return self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
+        # Gemini / Nano Banana image-preview 系列优先走 Gemini 原生 generateContent。
+        if self._is_gemini_image_preview_model(target_model):
+            print(f"🤖 检测到 Gemini Image Preview，优先尝试 generateContent 接口...")
+            gemini_result = self._generate_image_via_gemini(
+                prompt,
+                size=size,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
+            if gemini_result:
+                return gemini_result
+            print("⚠️ Gemini generateContent 未返回图片，回退到 Chat Completions...")
+            return self._generate_image_via_chat(
+                prompt,
+                size,
+                quality,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
         if self._is_grok_image_model(target_model):
-            print("🤖 检测到 Grok Image，优先尝试 Chat / Responses 兼容接口...")
-            chat_result = self._generate_image_via_chat(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
+            print("🤖 检测到 Grok Image，优先尝试 images/generations 接口...")
+            images_result = self._generate_image_via_images_generation(
+                prompt,
+                size=size,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
+            if images_result:
+                return images_result
+            print("⚠️ Grok images/generations 未返回图片，回退到 Chat / Responses...")
+            chat_result = self._generate_image_via_chat(
+                prompt,
+                size,
+                quality,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
             if chat_result:
                 return chat_result
-            responses_result = self._generate_image_via_responses(prompt, size, quality, base_url=base_url, api_key=api_key, model=target_model)
+            responses_result = self._generate_image_via_responses(
+                prompt,
+                size,
+                quality,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
             if responses_result:
                 return responses_result
-            print("⚠️ Grok Chat / Responses 未返回图片，回退到 images/generations...")
+            return None
         # Gemini 2.5 Flash Image: 使用 generateContent
         if "gemini-2.5-flash-image" in target_model_lower:
             print(f"🤖 检测到 Gemini 2.5 Flash Image，切换到 generateContent 接口...")
-            return self._generate_image_via_gemini(prompt, size=size, base_url=base_url, api_key=api_key, model=target_model)
-
-        # 构建请求数据 (OpenAI 兼容格式)
-        data = {
-            "model": target_model,
-            "prompt": prompt,
-            "n": 1,
-            "size": size,
-            "response_format": "url"
-        }
-
-        # 针对 z-image-turbo 的特殊参数
-        if target_model == "z-image-turbo":
-            data.update({
-                "watermark": False,
-                "prompt_extend": True
-            })
+            return self._generate_image_via_gemini(
+                prompt,
+                size=size,
+                base_url=base_url,
+                api_key=api_key,
+                model=target_model,
+                request_timeout=request_timeout,
+            )
 
         # 大多数中转商使用标准的 OpenAI 图片接口
-        response = self._make_request("/v1/images/generations", data, base_url=base_url, api_key=api_key, model=target_model)
-
-        if response and "data" in response and len(response["data"]) > 0:
-            image_url = response["data"][0]["url"]
-            print(f"✅ 图片生成成功URL: {image_url[:50]}...")
-            return image_url
-        else:
-            print("❌ 未获取到图片数据")
-            return None
+        return self._generate_image_via_images_generation(
+            prompt,
+            size=size,
+            base_url=base_url,
+            api_key=api_key,
+            model=target_model,
+            request_timeout=request_timeout,
+        )
 
     @staticmethod
     def _is_valid_image_bytes(data: bytes) -> bool:
@@ -1185,6 +1573,7 @@ class ImageGenerator:
     def download_image(self, image_url: str, save_path: str) -> bool:
         """下载图片到本地 (支持 URL 和 Base64 Data URI)"""
         try:
+            self.last_error = None
             print(f"📥 准备保存图片到: {save_path}")
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
@@ -1193,6 +1582,7 @@ class ImageGenerator:
                 image_url = self._normalize_data_uri(image_url)
                 if "," not in image_url:
                     print("❌ Base64数据缺少逗号分隔，无法解析")
+                    self._remember_error("Base64 image payload missing comma separator")
                     return False
                 try:
                     # 格式: data:image/png;base64,.....
@@ -1200,6 +1590,7 @@ class ImageGenerator:
                     data = base64.b64decode(encoded)
                     if not self._is_valid_image_bytes(data):
                         print("❌ Base64内容不是有效图片，已终止保存")
+                        self._remember_error("Base64 payload is not a valid image")
                         return False
                     with open(save_path, 'wb') as f:
                         f.write(data)
@@ -1207,6 +1598,7 @@ class ImageGenerator:
                     return True
                 except Exception as e:
                     print(f"❌ Base64解码失败: {e}")
+                    self._remember_error(f"Base64 image decode failed: {e}")
                     return False
 
             # 处理普通 URL
@@ -1217,9 +1609,11 @@ class ImageGenerator:
                 content_type = (response.headers.get("Content-Type") or "").lower()
                 if content_type and not content_type.startswith("image/"):
                     print(f"❌ 响应类型不是图片: {content_type}")
+                    self._remember_error(f"Downloaded content-type is not an image: {content_type}", status_code=200)
                     return False
                 if not self._is_valid_image_bytes(response.content):
                     print("❌ 下载内容不是有效图片，已终止保存")
+                    self._remember_error("Downloaded content is not a valid image", status_code=200)
                     return False
                 with open(save_path, 'wb') as f:
                     f.write(response.content)
@@ -1227,12 +1621,118 @@ class ImageGenerator:
                 return True
             else:
                 print(f"❌ 下载失败: {response.status_code}")
+                self._remember_error(f"Image download failed with HTTP {response.status_code}", status_code=response.status_code)
                 return False
         except Exception as e:
             print(f"❌ 下载异常: {e}")
+            self._remember_error(f"Image download raised exception: {e}")
             return False
 
-    def generate_and_download(self, prompt: str, filename: str, folder: str = "generated_images", base_url: str = None, api_key: str = None, model: str = None) -> Optional[str]:
+    @staticmethod
+    def _parse_size(size: Optional[str]) -> tuple[int, int]:
+        text = str(size or "").strip().lower()
+        if "x" not in text:
+            return (1024, 1024)
+        left, _, right = text.partition("x")
+        try:
+            width = max(256, min(2048, int(left)))
+            height = max(256, min(2048, int(right)))
+            return (width, height)
+        except Exception:
+            return (1024, 1024)
+
+    @staticmethod
+    def _load_fallback_font(size: int) -> ImageFont.ImageFont:
+        for candidate in _font_candidates():
+            if not os.path.exists(candidate):
+                continue
+            try:
+                return ImageFont.truetype(candidate, size=size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
+    def create_local_fallback_image(self, prompt: str, save_path: str, size: Optional[str] = None) -> bool:
+        """Create a deterministic local image when all remote providers fail."""
+        try:
+            width, height = self._parse_size(size)
+            digest = hashlib.sha256((prompt or "fallback-image").encode("utf-8")).digest()
+            bg = tuple(40 + digest[i] % 120 for i in range(3))
+            accent = tuple(120 + digest[i + 3] % 100 for i in range(3))
+            accent2 = tuple(100 + digest[i + 6] % 120 for i in range(3))
+
+            image = Image.new("RGB", (width, height), bg)
+            draw = ImageDraw.Draw(image, "RGBA")
+
+            for idx in range(5):
+                x0 = int((digest[idx] / 255) * width * 0.7)
+                y0 = int((digest[idx + 5] / 255) * height * 0.7)
+                x1 = x0 + int(width * (0.18 + (digest[idx + 10] / 255) * 0.32))
+                y1 = y0 + int(height * (0.12 + (digest[idx + 15] / 255) * 0.28))
+                color = accent if idx % 2 == 0 else accent2
+                alpha = 70 + (digest[idx + 20] % 80)
+                draw.rounded_rectangle((x0, y0, x1, y1), radius=32, fill=(*color, alpha))
+
+            panel_margin = int(min(width, height) * 0.08)
+            draw.rounded_rectangle(
+                (panel_margin, panel_margin, width - panel_margin, height - panel_margin),
+                radius=36,
+                fill=(255, 255, 255, 210),
+                outline=(*accent2, 220),
+                width=4,
+            )
+
+            title_font = self._load_fallback_font(max(24, width // 18))
+            body_font = self._load_fallback_font(max(16, width // 32))
+            title = "Nano Banana Fallback"
+            body = (prompt or "Image generation fallback").strip()
+            body = re.sub(r"\s+", " ", body)[:120]
+
+            title_box = draw.textbbox((0, 0), title, font=title_font)
+            title_w = title_box[2] - title_box[0]
+            draw.text(
+                ((width - title_w) // 2, int(height * 0.18)),
+                title,
+                font=title_font,
+                fill=(20, 20, 20, 255),
+            )
+
+            body_x = panel_margin + 36
+            body_y = int(height * 0.36)
+            draw.multiline_text(
+                (body_x, body_y),
+                body,
+                font=body_font,
+                fill=(35, 35, 35, 255),
+                spacing=8,
+            )
+
+            footer = "All configured providers failed. Returned local fallback image."
+            draw.multiline_text(
+                (body_x, height - panel_margin - 90),
+                footer,
+                font=body_font,
+                fill=(70, 70, 70, 255),
+                spacing=6,
+            )
+
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            image.save(save_path, format="PNG")
+            return True
+        except Exception as e:
+            print(f"❌ 本地兜底图片生成失败: {e}")
+            return False
+
+    def generate_and_download(
+        self,
+        prompt: str,
+        filename: str,
+        folder: str = "generated_images",
+        base_url: str = None,
+        api_key: str = None,
+        model: str = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
         """生成并下载"""
         target_model = model or self.model
         models_to_try = [target_model]
@@ -1246,13 +1746,22 @@ class ImageGenerator:
                 print(f"🔁 切换备用模型: {model_name}")
 
             for attempt in range(self.max_retries + 1):
-                image_url = self.generate_image(prompt, base_url=base_url, api_key=api_key, model=model_name)
+                image_url = self.generate_image(
+                    prompt,
+                    base_url=base_url,
+                    api_key=api_key,
+                    model=model_name,
+                    request_timeout=request_timeout,
+                )
                 if not image_url:
                     continue
                 if self.download_image(image_url, save_path):
                     return save_path
                 print(f"⚠️ 图片内容无效，重试生成 ({attempt + 1}/{self.max_retries})...")
-        
+
+        self._remember_error(
+            (self.last_error or {}).get("message") or "All generation/download attempts returned invalid image content"
+        )
         return None
 
 # 单例辅助函数

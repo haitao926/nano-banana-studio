@@ -32,6 +32,18 @@ roil_draw = _load_script_module("test_roil_draw", "roil_draw.py")
 
 
 class RoilPreflightTests(unittest.TestCase):
+    def test_candidate_base_urls_prefer_stored_and_platform_before_lan(self) -> None:
+        candidates = roil_preflight._candidate_base_urls(
+            "https://image.roil.top/",
+            "http://10.15.46.72:8002",
+            {"base_url": "http://10.15.46.72:8002"},
+        )
+
+        self.assertEqual(
+            candidates,
+            ["https://image.roil.top", "http://10.15.46.72:8002"],
+        )
+
     def test_build_status_prefers_authenticated_cli_backend(self) -> None:
         with patch.object(roil_preflight, "probe_platform", return_value={"reachable": True}), patch.object(
             roil_preflight,
@@ -61,8 +73,11 @@ class RoilPreflightTests(unittest.TestCase):
             "safe_to_show_user",
         ):
             self.assertIn(field, status)
+        self.assertIn("draw", status["recommended_commands"])
         self.assertIn("preflight", status["recommended_commands"])
+        self.assertTrue(status["recommended_commands"]["draw"].endswith("--json"))
         self.assertTrue(status["recommended_commands"]["preflight"].endswith("roil_preflight.py --json"))
+        self.assertEqual(status["safe_to_show_user"]["login_url"], "https://image.roil.top/")
         self.assertIn("must_not_do", status["agent_contract"])
         self.assertTrue(
             any("Do not inspect ~/.nbs/auth.json" in item for item in status["agent_contract"]["must_not_do"])
@@ -83,6 +98,36 @@ class RoilPreflightTests(unittest.TestCase):
         self.assertEqual(status["recommended_next_step"], "try_nbs_cli_direct")
         self.assertEqual(status["decision_summary"]["category"], "cli_direct_only")
         self.assertFalse(status["nbs_auth"]["cli_probe"]["success"])
+
+    def test_build_status_prefers_platform_when_lan_login_is_unreachable(self) -> None:
+        auth_info = {
+            "auth_file_present": True,
+            "access_token_present": True,
+            "stored_base_url": "http://10.15.46.72:8002",
+            "session_available": False,
+            "probes": [
+                {
+                    "base_url": "http://10.15.46.72:8002",
+                    "valid": False,
+                    "reachable": False,
+                    "error": "timed out",
+                }
+            ],
+            "cli_probe": {"success": False},
+        }
+        with patch.object(roil_preflight, "probe_platform", return_value={"reachable": True}), patch.object(
+            roil_preflight,
+            "detect_nbs_cli",
+            return_value={"available": True, "path": "/repo/nbs", "source": "cwd"},
+        ), patch.object(
+            roil_preflight,
+            "inspect_nbs_auth",
+            return_value=dict(auth_info),
+        ):
+            status = roil_preflight.build_status(check_platform=True)
+
+        self.assertEqual(status["recommended_next_step"], "open_or_login_platform")
+        self.assertEqual(status["decision_summary"]["category"], "platform_login_handoff")
 
     def test_build_status_uses_nbs_cli_probe_when_http_probe_disagrees(self) -> None:
         auth_info = {
@@ -249,6 +294,7 @@ class RoilDrawTests(unittest.TestCase):
         status = {
             "platform_url": "https://image.roil.top/",
             "platform_probe": {"reachable": True},
+            "recommended_next_step": "try_nbs_cli_direct",
             "nbs_auth": {"session_available": False},
             "nbs_cli": {"available": True},
         }
@@ -284,6 +330,8 @@ class RoilDrawTests(unittest.TestCase):
         self.assertEqual(payload["status"], "needs_platform_login")
         self.assertEqual(payload["via"], "roil-web")
         self.assertEqual(payload["runner"], "roil-drawing")
+        self.assertTrue(payload["login_required"])
+        self.assertEqual(payload["login_url"], "https://image.roil.top/")
         self.assertEqual(payload["previous_attempt"]["via"], "nbs-cli-direct")
         self.assertTrue(payload["prompt_path"].endswith(".prompt.txt"))
 
@@ -291,6 +339,7 @@ class RoilDrawTests(unittest.TestCase):
         status = {
             "platform_url": "https://image.roil.top/",
             "platform_probe": {"reachable": True},
+            "recommended_next_step": "open_or_login_platform",
             "nbs_auth": {"session_available": False},
             "nbs_cli": {"available": False},
         }
@@ -315,12 +364,15 @@ class RoilDrawTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(payload["status"], "needs_platform_login")
         self.assertEqual(payload["via"], "roil-web")
+        self.assertTrue(payload["login_required"])
+        self.assertEqual(payload["login_url"], "https://image.roil.top/")
         generate_openai.assert_not_called()
 
     def test_main_returns_platform_handoff_when_no_execution_path(self) -> None:
         status = {
             "platform_url": "https://image.roil.top/",
             "platform_probe": {"reachable": False},
+            "recommended_next_step": "check_network_or_open_platform_manually",
             "nbs_auth": {"session_available": False},
             "nbs_cli": {"available": False},
         }
@@ -344,6 +396,38 @@ class RoilDrawTests(unittest.TestCase):
         self.assertEqual(payload["status"], "needs_platform_login")
         self.assertEqual(payload["runner"], "roil-drawing")
         self.assertEqual(payload["platform_url"], "https://image.roil.top/")
+        self.assertTrue(payload["login_required"])
+        self.assertEqual(payload["login_url"], "https://image.roil.top/")
+
+    def test_main_prefers_platform_handoff_when_preflight_requests_it(self) -> None:
+        status = {
+            "platform_url": "https://image.roil.top/",
+            "platform_probe": {"reachable": True},
+            "recommended_next_step": "open_or_login_platform",
+            "nbs_auth": {"session_available": False},
+            "nbs_cli": {"available": True},
+        }
+        argv = [
+            "roil_draw.py",
+            "--prompt",
+            "draw a cat",
+            "--out",
+            "/tmp/roil-platform-handoff.png",
+        ]
+        stdout = io.StringIO()
+        with patch.object(roil_draw, "build_status", return_value=status), patch.object(
+            roil_draw,
+            "_run_nbs_generate",
+        ) as run_nbs_generate, patch.object(roil_draw.os, "environ", {}), patch.object(
+            sys, "argv", argv
+        ), contextlib.redirect_stdout(stdout):
+            code = roil_draw.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(payload["status"], "needs_platform_login")
+        self.assertEqual(payload["login_url"], "https://image.roil.top/")
+        run_nbs_generate.assert_not_called()
 
 
 if __name__ == "__main__":

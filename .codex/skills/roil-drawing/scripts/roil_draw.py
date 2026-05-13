@@ -85,6 +85,8 @@ def _prepare_prompt(
         model=None,
         output_path=None,
         message=f"请先登录 Roil 平台：{platform_url}",
+        login_required=True,
+        login_url=platform_url,
         platform_url=platform_url,
         platform_probe=status.get("platform_probe"),
         prompt_path=str(prompt_path),
@@ -303,6 +305,14 @@ def main() -> int:
 
     status = build_status()
     out = Path(args.out)
+
+    if status.get("recommended_next_step") == "open_or_login_platform":
+        return _prepare_prompt(
+            args.prompt,
+            out,
+            status,
+            open_platform=args.open_platform,
+        )
 
     if status.get("nbs_auth", {}).get("session_available") and status.get("nbs_cli", {}).get("available"):
         backend_result = _run_nbs_generate(

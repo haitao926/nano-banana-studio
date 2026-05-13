@@ -84,7 +84,7 @@ def build_decision_summary(recommended_next_step: str) -> dict:
     if recommended_next_step == "open_or_login_platform":
         return {
             "category": "platform_login_handoff",
-            "reason": "No local CLI path is available, but the Roil platform entry appears reachable.",
+            "reason": "Roil platform login is the most reliable next step for this runtime.",
         }
     return {
         "category": "manual_platform_check",
@@ -97,11 +97,11 @@ def build_recommended_commands() -> dict:
     preflight_script = script_dir / "roil_preflight.py"
     draw_script = script_dir / "roil_draw.py"
     return {
-        "preflight": f"python3 {preflight_script} --json",
         "draw": (
             f'python3 {draw_script} --prompt "..." '
             '--out output/roil-drawing/roil-drawing.png --json'
         ),
+        "preflight": f"python3 {preflight_script} --json",
     }
 
 
@@ -229,18 +229,46 @@ def probe_platform(platform_url: str, timeout: float = DEFAULT_PROBE_TIMEOUT) ->
 def _candidate_base_urls(platform_url: str, lan_base_url: str, session: dict) -> list[str]:
     candidates: list[str] = []
     seen: set[str] = set()
-    for raw in (
-        os.environ.get("ROIL_BACKEND_BASE_URL"),
-        lan_base_url,
-        platform_url,
-        session.get("base_url"),
-    ):
+    normalized_lan = normalize_base_url(lan_base_url)
+    stored_base_url = normalize_base_url(session.get("base_url"))
+
+    ordered_raws = [os.environ.get("ROIL_BACKEND_BASE_URL")]
+    if stored_base_url and stored_base_url != normalized_lan:
+        ordered_raws.append(stored_base_url)
+    ordered_raws.append(platform_url)
+    if stored_base_url == normalized_lan:
+        ordered_raws.append(stored_base_url)
+    ordered_raws.append(lan_base_url)
+
+    for raw in ordered_raws:
         base_url = normalize_base_url(raw)
         if not base_url or base_url in seen:
             continue
         seen.add(base_url)
         candidates.append(base_url)
     return candidates
+
+
+def _should_prefer_platform_login(nbs_auth: dict, platform_probe: dict, lan_base_url: str) -> bool:
+    if platform_probe.get("reachable") is False:
+        return False
+    if nbs_auth.get("session_available"):
+        return False
+    if not nbs_auth.get("auth_file_present") or not nbs_auth.get("access_token_present"):
+        return False
+
+    normalized_lan = normalize_base_url(lan_base_url)
+    stored_base_url = normalize_base_url(nbs_auth.get("stored_base_url"))
+    if stored_base_url and stored_base_url != normalized_lan:
+        return False
+
+    for probe in nbs_auth.get("probes") or []:
+        if normalize_base_url(probe.get("base_url")) != normalized_lan:
+            continue
+        if probe.get("valid"):
+            return False
+        return True
+    return False
 
 
 def _request_json(url: str, *, headers: dict, timeout: float, method: str = "GET", data: bytes | None = None, context: ssl.SSLContext | None = None) -> dict:
@@ -497,6 +525,8 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
 
     if nbs_auth["session_available"] and nbs_cli["available"]:
         recommended_next_step = "generate_via_nbs_cli_backend"
+    elif _should_prefer_platform_login(nbs_auth, platform_probe, lan_base_url):
+        recommended_next_step = "open_or_login_platform"
     elif nbs_cli["available"]:
         recommended_next_step = "try_nbs_cli_direct"
     elif platform_probe["reachable"] is not False:
@@ -530,6 +560,7 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
                 "不要仅因缺少 `roil` 或 `roil-drawing` 独立命令就判定不可用；"
                 "当前可用入口应以预检结果里的 `recommended_next_step`、`nbs_cli` 和 `nbs_auth` 为准。"
             ),
+            "login_url": platform_url,
             "login_prompt": f"请先登录 Roil 平台：{platform_url}",
             "no_cli_note": "没有本地 CLI 不等于没有 Roil 出图入口；Roil Web 平台就是有效入口。",
             "fallback_note": (
@@ -538,8 +569,8 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
         },
         "agent_contract": {
             "must_do_first": [
-                recommended_commands["preflight"],
-                "If `recommended_next_step` is `generate_via_nbs_cli_backend` or `try_nbs_cli_direct`, run the draw command before more repo or config exploration.",
+                recommended_commands["draw"],
+                "Only run the preflight command separately when you need to debug login state or routing; do not surface preflight by default before trying to generate.",
             ],
             "must_not_do": [
                 "Do not inspect ~/.nbs/auth.json, environment variables, backend source, or alternate image entrypoints before running preflight.",
