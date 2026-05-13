@@ -175,13 +175,46 @@ CLI_SYNC_PAGE = """<!doctype html>
     const statusEl = document.getElementById('status');
     document.getElementById('user-code').textContent = userCode || deviceCode || '缺少授权码';
     function token() { return localStorage.getItem('token') || ''; }
+    function refreshToken() { return localStorage.getItem('refresh_token') || ''; }
     function show(text, cls) { statusEl.textContent = text; statusEl.className = 'status ' + (cls || ''); }
+    async function refreshWith(payload) {
+      const res = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload || {})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || data.error || ('刷新登录态失败：HTTP ' + res.status));
+      if (!data.access_token) throw new Error('刷新登录态失败：服务端没有返回 access token');
+      localStorage.setItem('token', data.access_token);
+      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+      return data.access_token;
+    }
+    async function freshToken() {
+      // Prefer the HttpOnly cookie first because localStorage can lag behind refresh-token rotation.
+      try {
+        return await refreshWith({});
+      } catch (cookieErr) {
+        const storedRefreshToken = refreshToken();
+        if (storedRefreshToken) {
+          try {
+            return await refreshWith({ refresh_token: storedRefreshToken });
+          } catch (_) {}
+        }
+        const existingToken = token();
+        if (existingToken) return existingToken;
+        throw cookieErr;
+      }
+    }
     document.getElementById('approve').onclick = async () => {
       const btn = document.getElementById('approve');
       btn.disabled = true;
       try {
-        const accessToken = token();
+        show('正在刷新浏览器登录态...', '');
+        const accessToken = await freshToken();
         if (!accessToken) throw new Error('浏览器当前没有可用登录态，请先在 Roil 平台登录。');
+        show('正在授权给 CLI...', '');
         const res = await fetch('/api/auth/cli/device/approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },

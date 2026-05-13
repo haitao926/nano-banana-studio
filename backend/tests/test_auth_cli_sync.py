@@ -103,6 +103,16 @@ class AuthCliSyncTests(unittest.TestCase):
         self.assertEqual(poll_after.status_code, 200)
         self.assertEqual(poll_after.json()["base_url"], "https://image.roil.top")
 
+    def test_cli_sync_page_refreshes_browser_session_before_approval(self) -> None:
+        response = self.client.get("/api/auth/cli/sync-page")
+        self.assertEqual(response.status_code, 200)
+        body = response.text
+        self.assertIn("async function freshToken()", body)
+        self.assertIn("return await refreshWith({});", body)
+        self.assertIn("localStorage.setItem('token', data.access_token)", body)
+        self.assertIn("Authorization': 'Bearer ' + accessToken", body)
+        self.assertLess(body.index("const accessToken = await freshToken();"), body.index("/api/auth/cli/device/approve"))
+
     def test_cli_sync_web_writes_auth_session_after_approval(self) -> None:
         auth_file = os.path.join(self.tmpdir.name, "auth.json")
         start_payload = {
