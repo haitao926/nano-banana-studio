@@ -97,6 +97,33 @@ def _prepare_prompt(
     return 2
 
 
+def _prepare_cli_sync(prompt: str, out: Path, status: dict, *, open_platform: bool) -> int:
+    prompt_path = out.with_suffix(".prompt.txt")
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(prompt.strip() + "\n", encoding="utf-8")
+    sync_info = (status.get("nbs_auth") or {}).get("sync_web") or {}
+    verification_url = str(sync_info.get("verification_uri_complete") or sync_info.get("verification_uri") or "").strip()
+    if open_platform and verification_url:
+        _maybe_open_platform(verification_url)
+    payload = _result_payload(
+        success=False,
+        status="needs_cli_sync",
+        via="nbs-cli-web-sync",
+        model=None,
+        output_path=None,
+        message="浏览器登录态可用，但 CLI 本地会话已失效。请在浏览器打开授权链接确认后重新运行绘图命令。",
+        login_required=False,
+        cli_sync_required=True,
+        verification_url=verification_url,
+        user_code=sync_info.get("user_code"),
+        expires_in=sync_info.get("expires_in"),
+        sync_command=sync_info.get("command"),
+        prompt_path=str(prompt_path),
+    )
+    _write_json(payload)
+    return 2
+
+
 def _generate_openai(prompt: str, out: Path, *, model: str, size: str, quality: str) -> int:
     try:
         from openai import OpenAI
@@ -305,6 +332,14 @@ def main() -> int:
 
     status = build_status()
     out = Path(args.out)
+
+    if status.get("recommended_next_step") == "sync_cli_from_browser":
+        return _prepare_cli_sync(
+            args.prompt,
+            out,
+            status,
+            open_platform=args.open_platform,
+        )
 
     if status.get("recommended_next_step") == "open_or_login_platform":
         return _prepare_prompt(

@@ -60,8 +60,8 @@ class AuthCliSyncTests(unittest.TestCase):
         start = self.client.post("/api/auth/cli/device/start")
         self.assertEqual(start.status_code, 200)
         payload = start.json()
-        self.assertIn("/cli-sync?user_code=", payload["verification_uri_complete"])
-        self.assertNotIn("device_code=", payload["verification_uri_complete"])
+        self.assertIn("/api/auth/cli/sync-page?user_code=", payload["verification_uri_complete"])
+        self.assertIn("device_code=", payload["verification_uri_complete"])
 
         poll_before = self.client.post("/api/auth/cli/device/poll", json={"device_code": payload["device_code"]})
         self.assertEqual(poll_before.status_code, 428)
@@ -84,13 +84,32 @@ class AuthCliSyncTests(unittest.TestCase):
         poll_again = self.client.post("/api/auth/cli/device/poll", json={"device_code": payload["device_code"]})
         self.assertEqual(poll_again.status_code, 400)
 
+    def test_device_flow_uses_external_base_url_for_links_and_session(self) -> None:
+        session = self._login()
+        with patch.dict(os.environ, {"EXTERNAL_BASE_URL": "https://image.roil.top/"}):
+            start = self.client.post("/api/auth/cli/device/start")
+            self.assertEqual(start.status_code, 200)
+            payload = start.json()
+            self.assertTrue(payload["verification_uri"].startswith("https://image.roil.top/"))
+
+            approve = self.client.post(
+                "/api/auth/cli/device/approve",
+                json={"device_code": payload["device_code"]},
+                headers={"Authorization": f"Bearer {session['access_token']}"},
+            )
+            self.assertEqual(approve.status_code, 200)
+
+        poll_after = self.client.post("/api/auth/cli/device/poll", json={"device_code": payload["device_code"]})
+        self.assertEqual(poll_after.status_code, 200)
+        self.assertEqual(poll_after.json()["base_url"], "https://image.roil.top")
+
     def test_cli_sync_web_writes_auth_session_after_approval(self) -> None:
         auth_file = os.path.join(self.tmpdir.name, "auth.json")
         start_payload = {
             "device_code": "device-123",
             "user_code": "ABCD-EFGH",
-            "verification_uri": "https://image.roil.top/cli-sync",
-            "verification_uri_complete": "https://image.roil.top/cli-sync?user_code=ABCD-EFGH",
+            "verification_uri": "https://image.roil.top/api/auth/cli/sync-page",
+            "verification_uri_complete": "https://image.roil.top/api/auth/cli/sync-page?user_code=ABCD-EFGH&device_code=device-123",
             "expires_in": 60,
             "interval": 0,
         }

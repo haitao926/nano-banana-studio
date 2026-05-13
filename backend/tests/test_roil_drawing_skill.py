@@ -92,12 +92,58 @@ class RoilPreflightTests(unittest.TestCase):
             roil_preflight,
             "inspect_nbs_auth",
             return_value={"session_available": False},
+        ), patch.object(
+            roil_preflight,
+            "_start_cli_sync",
+            return_value={"attempted": True, "success": False, "available": False, "error": "not found"},
         ):
             status = roil_preflight.build_status(check_platform=True)
 
         self.assertEqual(status["recommended_next_step"], "try_nbs_cli_direct")
         self.assertEqual(status["decision_summary"]["category"], "cli_direct_only")
         self.assertFalse(status["nbs_auth"]["cli_probe"]["success"])
+
+    def test_build_status_prefers_cli_browser_sync_when_available(self) -> None:
+        auth_info = {
+            "auth_file_present": True,
+            "access_token_present": True,
+            "session_available": False,
+            "candidate_base_urls": ["https://image.roil.top"],
+            "probes": [],
+            "refresh_probes": [{"payload": {"detail": "Refresh token revoked"}}],
+        }
+        sync_payload = {
+            "attempted": True,
+            "available": True,
+            "success": True,
+            "base_url": "https://image.roil.top",
+            "verification_uri": "https://image.roil.top/api/auth/cli/sync-page",
+            "verification_uri_complete": "https://image.roil.top/api/auth/cli/sync-page?user_code=ABCD-EFGH&device_code=device",
+            "user_code": "ABCD-EFGH",
+            "expires_in": 600,
+            "interval": 2,
+            "error": None,
+        }
+        with patch.object(roil_preflight, "probe_platform", return_value={"reachable": True}), patch.object(
+            roil_preflight,
+            "detect_nbs_cli",
+            return_value={"available": True, "path": "/repo/nbs", "source": "cwd"},
+        ), patch.object(
+            roil_preflight,
+            "inspect_nbs_auth",
+            return_value=dict(auth_info),
+        ), patch.object(
+            roil_preflight,
+            "_start_cli_sync",
+            return_value=sync_payload,
+        ):
+            status = roil_preflight.build_status(check_platform=True)
+
+        self.assertEqual(status["recommended_next_step"], "sync_cli_from_browser")
+        self.assertEqual(status["decision_summary"]["category"], "cli_browser_sync_available")
+        self.assertEqual(status["availability_tier"], "needs_cli_sync")
+        self.assertEqual(status["nbs_auth"]["sync_web"]["user_code"], "ABCD-EFGH")
+        self.assertIn("auth sync-web", status["recommended_commands"]["sync_web"])
 
     def test_build_status_prefers_platform_when_lan_login_is_unreachable(self) -> None:
         auth_info = {
@@ -123,6 +169,10 @@ class RoilPreflightTests(unittest.TestCase):
             roil_preflight,
             "inspect_nbs_auth",
             return_value=dict(auth_info),
+        ), patch.object(
+            roil_preflight,
+            "_start_cli_sync",
+            return_value={"attempted": True, "success": False, "available": False, "error": "not deployed"},
         ):
             status = roil_preflight.build_status(check_platform=True)
 
@@ -427,6 +477,50 @@ class RoilDrawTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(payload["status"], "needs_platform_login")
         self.assertEqual(payload["login_url"], "https://image.roil.top/")
+        run_nbs_generate.assert_not_called()
+
+    def test_main_returns_cli_sync_when_preflight_requests_it(self) -> None:
+        status = {
+            "platform_url": "https://image.roil.top/",
+            "platform_probe": {"reachable": True},
+            "recommended_next_step": "sync_cli_from_browser",
+            "nbs_auth": {
+                "session_available": False,
+                "sync_web": {
+                    "verification_uri_complete": "https://image.roil.top/api/auth/cli/sync-page?user_code=ABCD-EFGH&device_code=device",
+                    "user_code": "ABCD-EFGH",
+                    "expires_in": 600,
+                    "command": "/repo/nbs auth sync-web --base-url https://image.roil.top",
+                },
+            },
+            "nbs_cli": {"available": True},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_path = Path(tmpdir) / "generated.png"
+            argv = [
+                "roil_draw.py",
+                "--prompt",
+                "draw a cat",
+                "--out",
+                str(out_path),
+            ]
+            stdout = io.StringIO()
+            with patch.object(roil_draw, "build_status", return_value=status), patch.object(
+                roil_draw,
+                "_run_nbs_generate",
+            ) as run_nbs_generate, patch.object(roil_draw.os, "environ", {}), patch.object(
+                sys, "argv", argv
+            ), contextlib.redirect_stdout(stdout):
+                code = roil_draw.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(payload["status"], "needs_cli_sync")
+        self.assertEqual(payload["via"], "nbs-cli-web-sync")
+        self.assertTrue(payload["cli_sync_required"])
+        self.assertEqual(payload["user_code"], "ABCD-EFGH")
+        self.assertIn("api/auth/cli/sync-page", payload["verification_url"])
+        self.assertTrue(payload["prompt_path"].endswith(".prompt.txt"))
         run_nbs_generate.assert_not_called()
 
 

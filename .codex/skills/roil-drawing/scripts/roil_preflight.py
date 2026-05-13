@@ -76,6 +76,11 @@ def build_decision_summary(recommended_next_step: str) -> dict:
             "category": "cli_backend_ready",
             "reason": "Authenticated NBS session and local CLI are both available.",
         }
+    if recommended_next_step == "sync_cli_from_browser":
+        return {
+            "category": "cli_browser_sync_available",
+            "reason": "The local CLI session is stale, but the Roil platform can mint a fresh CLI session from the logged-in browser.",
+        }
     if recommended_next_step == "try_nbs_cli_direct":
         return {
             "category": "cli_direct_only",
@@ -92,16 +97,18 @@ def build_decision_summary(recommended_next_step: str) -> dict:
     }
 
 
-def build_recommended_commands() -> dict:
+def build_recommended_commands(platform_url: str = DEFAULT_PLATFORM_URL) -> dict:
     script_dir = Path(__file__).resolve().parent
     preflight_script = script_dir / "roil_preflight.py"
     draw_script = script_dir / "roil_draw.py"
+    sync_base_url = normalize_base_url(platform_url) or normalize_base_url(DEFAULT_PLATFORM_URL)
     return {
         "draw": (
             f'python3 {draw_script} --prompt "..." '
             '--out output/roil-drawing/roil-drawing.png --json'
         ),
         "preflight": f"python3 {preflight_script} --json",
+        "sync_web": f"nbs auth sync-web --base-url {sync_base_url}",
     }
 
 
@@ -414,6 +421,77 @@ def _refresh_session(base_url: str, refresh_token: str, timeout: float) -> dict:
     return result
 
 
+def _start_cli_sync(platform_url: str, timeout: float) -> dict:
+    base_url = normalize_base_url(platform_url)
+    url = f"{base_url}/api/auth/cli/device/start"
+    result = {
+        "attempted": True,
+        "available": False,
+        "success": False,
+        "base_url": base_url,
+        "status_code": None,
+        "verification_uri": None,
+        "verification_uri_complete": None,
+        "user_code": None,
+        "expires_in": None,
+        "interval": None,
+        "error": None,
+    }
+    headers = {**PROBE_HEADERS, "Accept": "application/json,text/plain,*/*"}
+    try:
+        payload = _request_json(url, headers=headers, timeout=timeout, method="POST", data=b"")
+    except error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")
+        try:
+            payload_data = json.loads(body_text) if body_text else {}
+        except Exception:
+            payload_data = {"detail": body_text[:300] if body_text else str(exc)}
+        result["status_code"] = exc.code
+        result["error"] = str(payload_data.get("detail") if isinstance(payload_data, dict) else payload_data)
+        return result
+    except Exception as exc:
+        if "CERTIFICATE_VERIFY_FAILED" in str(exc):
+            try:
+                context = ssl._create_unverified_context()
+                payload = _request_json(url, headers=headers, timeout=timeout, method="POST", data=b"", context=context)
+            except Exception as retry_exc:
+                result["error"] = f"{exc}; unverified retry failed: {retry_exc}"
+                return result
+        else:
+            result["error"] = str(exc)
+            return result
+
+    payload_data = payload.get("payload") if isinstance(payload, dict) else {}
+    result["status_code"] = payload.get("status_code")
+    if payload.get("status_code") == 200 and isinstance(payload_data, dict):
+        result.update(
+            {
+                "available": True,
+                "success": bool(payload_data.get("device_code") and payload_data.get("verification_uri_complete")),
+                "device_code": payload_data.get("device_code"),
+                "verification_uri": payload_data.get("verification_uri"),
+                "verification_uri_complete": payload_data.get("verification_uri_complete"),
+                "user_code": payload_data.get("user_code"),
+                "expires_in": payload_data.get("expires_in"),
+                "interval": payload_data.get("interval"),
+                "error": None,
+            }
+        )
+    else:
+        result["error"] = payload.get("error") or "CLI sync endpoint did not return a usable device flow payload."
+    return result
+
+
+def _should_offer_cli_sync(nbs_auth: dict, platform_probe: dict) -> bool:
+    if nbs_auth.get("session_available"):
+        return False
+    if platform_probe.get("reachable") is False:
+        return False
+    if not (nbs_auth.get("auth_file_present") or nbs_auth.get("access_token_present")):
+        return False
+    return True
+
+
 def inspect_nbs_auth(platform_url: str, lan_base_url: str, timeout: float = DEFAULT_PROBE_TIMEOUT) -> dict:
     session, path = load_auth_session()
     access_token = str(session.get("access_token") or "").strip()
@@ -523,8 +601,27 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
             "error": None,
         }
 
+    sync_web = {
+        "attempted": False,
+        "available": False,
+        "success": False,
+        "base_url": normalize_base_url(platform_url),
+        "verification_uri": None,
+        "verification_uri_complete": None,
+        "user_code": None,
+        "expires_in": None,
+        "interval": None,
+        "command": f"{nbs_cli.get('path') or 'nbs'} auth sync-web --base-url {normalize_base_url(platform_url)}",
+        "error": None,
+    }
+    if nbs_cli["available"] and _should_offer_cli_sync(nbs_auth, platform_probe):
+        sync_web.update(_start_cli_sync(platform_url, timeout))
+    nbs_auth["sync_web"] = sync_web
+
     if nbs_auth["session_available"] and nbs_cli["available"]:
         recommended_next_step = "generate_via_nbs_cli_backend"
+    elif nbs_cli["available"] and nbs_auth.get("sync_web", {}).get("success"):
+        recommended_next_step = "sync_cli_from_browser"
     elif _should_prefer_platform_login(nbs_auth, platform_probe, lan_base_url):
         recommended_next_step = "open_or_login_platform"
     elif nbs_cli["available"]:
@@ -534,9 +631,10 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
     else:
         recommended_next_step = "check_network_or_open_platform_manually"
     decision_summary = build_decision_summary(recommended_next_step)
-    recommended_commands = build_recommended_commands()
+    recommended_commands = build_recommended_commands(platform_url)
     availability_tier = {
         "generate_via_nbs_cli_backend": "native_cli_backend",
+        "sync_cli_from_browser": "needs_cli_sync",
         "try_nbs_cli_direct": "native_cli_direct",
         "open_or_login_platform": "web_handoff",
         "check_network_or_open_platform_manually": "manual_or_none",
@@ -562,6 +660,9 @@ def build_status(*, check_platform: bool = True, timeout: float = DEFAULT_PROBE_
             ),
             "login_url": platform_url,
             "login_prompt": f"请先登录 Roil 平台：{platform_url}",
+            "cli_sync_prompt": (
+                "浏览器登录态已可用于恢复 CLI：打开授权链接确认后，重新运行绘图命令。"
+            ),
             "no_cli_note": "没有本地 CLI 不等于没有 Roil 出图入口；Roil Web 平台就是有效入口。",
             "fallback_note": (
                 "只有在无法使用 Roil 平台且用户接受 fallback 时，才考虑环境中的图片生成 key。"

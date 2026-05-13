@@ -7,6 +7,7 @@ from datetime import timezone
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
 
@@ -115,17 +116,89 @@ def _cli_user_code() -> str:
     return "-".join(raw[i : i + 4] for i in range(0, len(raw), 4))
 
 
+def _public_base_url(request: Request) -> str:
+    configured = str(os.getenv("EXTERNAL_BASE_URL") or "").strip().rstrip("/")
+    if configured:
+        return configured
+    proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+    host = request.headers.get("x-forwarded-host", "").split(",")[0].strip() or request.headers.get("host", "").strip()
+    if host:
+        scheme = proto or request.url.scheme
+        return f"{scheme}://{host}".rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
 def _cli_device_payload(device_code: str, user_code: str, request: Request) -> CliDeviceStartResponse:
-    base_url = str(request.base_url).rstrip("/")
-    verification_uri = f"{base_url}/cli-sync"
+    base_url = _public_base_url(request)
+    verification_uri = f"{base_url}/api/auth/cli/sync-page"
     return CliDeviceStartResponse(
         device_code=device_code,
         user_code=user_code,
         verification_uri=verification_uri,
-        verification_uri_complete=f"{verification_uri}?user_code={user_code}",
+        verification_uri_complete=f"{verification_uri}?user_code={user_code}&device_code={device_code}",
         expires_in=CLI_DEVICE_CODE_TTL_SECONDS,
         interval=CLI_DEVICE_POLL_INTERVAL_SECONDS,
     )
+
+
+CLI_SYNC_PAGE = """<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roil CLI 登录同步</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: linear-gradient(135deg, #f8fafc, #dbeafe 48%, #fef3c7); color: #0f172a; }
+    main { width: min(560px, calc(100vw - 32px)); background: rgba(255,255,255,.84); border: 1px solid rgba(148,163,184,.45); border-radius: 28px; padding: 30px; box-shadow: 0 24px 80px rgba(15,23,42,.14); }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    p { line-height: 1.7; color: #334155; }
+    code { display: inline-block; padding: 6px 10px; border-radius: 10px; background: #e0f2fe; color: #075985; font-weight: 700; letter-spacing: .08em; }
+    button { width: 100%; margin-top: 16px; border: 0; border-radius: 16px; padding: 14px 18px; color: white; background: #0f766e; font-weight: 800; font-size: 16px; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    .status { margin-top: 16px; min-height: 24px; font-weight: 700; }
+    .ok { color: #047857; }
+    .err { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>同步 Roil CLI 登录态</h1>
+    <p>这会给当前终端生成一个新的 CLI 会话，不会复制浏览器里的 refresh token。</p>
+    <p>授权码：<code id="user-code">读取中</code></p>
+    <button id="approve">授权给 CLI</button>
+    <div id="status" class="status"></div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const userCode = (params.get('user_code') || '').trim();
+    const deviceCode = (params.get('device_code') || '').trim();
+    const statusEl = document.getElementById('status');
+    document.getElementById('user-code').textContent = userCode || deviceCode || '缺少授权码';
+    function token() { return localStorage.getItem('token') || ''; }
+    function show(text, cls) { statusEl.textContent = text; statusEl.className = 'status ' + (cls || ''); }
+    document.getElementById('approve').onclick = async () => {
+      const btn = document.getElementById('approve');
+      btn.disabled = true;
+      try {
+        const accessToken = token();
+        if (!accessToken) throw new Error('浏览器当前没有可用登录态，请先在 Roil 平台登录。');
+        const res = await fetch('/api/auth/cli/device/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + accessToken },
+          credentials: 'include',
+          body: JSON.stringify({ user_code: userCode || undefined, device_code: deviceCode || undefined })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || data.error || ('授权失败：HTTP ' + res.status));
+        show('已授权。回到终端等待 nbs auth sync-web 自动完成。', 'ok');
+      } catch (err) {
+        show(err.message || String(err), 'err');
+        btn.disabled = false;
+      }
+    };
+  </script>
+</body>
+</html>"""
 
 
 @router.post("/api/auth/register")
@@ -229,6 +302,11 @@ async def read_users_me(current_user: Dict = Depends(get_current_user)):
     }
 
 
+@router.get("/api/auth/cli/sync-page", response_class=HTMLResponse)
+async def cli_sync_page():
+    return HTMLResponse(CLI_SYNC_PAGE)
+
+
 @router.post("/api/auth/cli/device/start", response_model=CliDeviceStartResponse)
 async def start_cli_device(request: Request):
     db.purge_expired_cli_device_tokens()
@@ -269,7 +347,7 @@ async def approve_cli_device(
         access_token=session.access_token or "",
         refresh_token=session.refresh_token or "",
         token_type=session.token_type,
-        base_url=str(request.base_url).rstrip("/"),
+        base_url=_public_base_url(request),
         username=current_user["username"],
         user_agent=request.headers.get("user-agent"),
         ip=_request_ip(request),
