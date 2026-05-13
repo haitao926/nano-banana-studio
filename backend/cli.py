@@ -397,6 +397,94 @@ def cmd_auth_logout(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_auth_sync_web(args: argparse.Namespace) -> int:
+    try:
+        start_response = _auth_request(
+            "POST",
+            "/api/auth/cli/device/start",
+            base_url=args.base_url,
+            timeout=max(30, int(args.timeout or 120)),
+        )
+        start_payload = start_response.json()
+    except Exception as exc:
+        return _fail(str(exc), as_json=args.json)
+
+    if start_response.status_code >= 400:
+        return _fail(str(start_payload.get("detail") or start_payload), as_json=args.json)
+
+    device_code = str(start_payload.get("device_code") or "").strip()
+    user_code = str(start_payload.get("user_code") or "").strip()
+    verify_url = str(start_payload.get("verification_uri_complete") or start_payload.get("verification_uri") or "").strip()
+    expires_in = max(30, int(start_payload.get("expires_in") or 600))
+    interval = max(1, int(start_payload.get("interval") or 2))
+
+    if not device_code or not user_code or not verify_url:
+        return _fail("Backend returned incomplete CLI sync payload.", as_json=args.json)
+
+    if args.json:
+        _print(
+            {
+                "success": True,
+                "status": "pending",
+                "user_code": user_code,
+                "verification_uri": start_payload.get("verification_uri"),
+                "verification_uri_complete": verify_url,
+                "expires_in": expires_in,
+                "interval": interval,
+            },
+            as_json=True,
+        )
+    else:
+        print(f"Open this in your logged-in browser and approve CLI access:\n{verify_url}\n")
+        print(f"User code: {user_code}")
+
+    deadline = time.time() + min(max(30, int(args.timeout or expires_in)), expires_in)
+    last_detail = ""
+
+    while time.time() < deadline:
+        try:
+            poll_response = _auth_request(
+                "POST",
+                "/api/auth/cli/device/poll",
+                base_url=args.base_url,
+                json_body={"device_code": device_code},
+                timeout=30,
+            )
+            poll_payload = poll_response.json()
+        except Exception as exc:
+            return _fail(str(exc), as_json=args.json)
+
+        if poll_response.status_code == 200:
+            session = {
+                "base_url": _auth_base_url(poll_payload.get("base_url") or args.base_url),
+                "username": poll_payload.get("username"),
+                "access_token": poll_payload.get("access_token"),
+                "refresh_token": poll_payload.get("refresh_token"),
+                "token_type": poll_payload.get("token_type", "bearer"),
+            }
+            _save_auth_session(session)
+            result = {
+                "success": True,
+                "base_url": session["base_url"],
+                "username": session.get("username"),
+                "auth_file": str(_auth_file_path()),
+                "synced_via": "web_device_flow",
+            }
+            _print(result if args.json else f"Synced CLI session for {session.get('username') or 'user'}", as_json=args.json)
+            return 0
+
+        detail = str(poll_payload.get("detail") or poll_payload).strip()
+        last_detail = detail or last_detail
+        if poll_response.status_code == 428:
+            time.sleep(interval)
+            continue
+        if poll_response.status_code == 410:
+            return _fail("CLI sync request expired. Please run `nbs auth sync-web` again.", as_json=args.json)
+        return _fail(detail or f"CLI sync failed: {poll_response.status_code}", as_json=args.json)
+
+    return _fail(last_detail or "Timed out waiting for browser approval.", as_json=args.json)
+
+
 def _batch_prompt_payload() -> Dict[str, Any]:
     return {
         "system_prompts": dict(batch_gen.system_prompts),
@@ -1942,6 +2030,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_auth_logout.add_argument("--base-url")
     p_auth_logout.add_argument("--json", action="store_true")
     p_auth_logout.set_defaults(func=cmd_auth_logout)
+
+    p_auth_sync_web = p_auth_sub.add_parser("sync-web", help="Sync CLI auth from an already logged-in browser session")
+    p_auth_sync_web.add_argument("--base-url")
+    p_auth_sync_web.add_argument("--timeout", type=int, default=120)
+    p_auth_sync_web.add_argument("--json", action="store_true")
+    p_auth_sync_web.set_defaults(func=cmd_auth_sync_web)
 
     p_models = subparsers.add_parser("models", help="List configured models")
     p_models.add_argument("--service", choices=["image", "audio", "video", "digital_human", "prompt"])

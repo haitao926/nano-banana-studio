@@ -1,6 +1,8 @@
 <template>
   <n-config-provider :theme="null">
     <n-message-provider>
+      <CliSyncPage v-if="isCliSyncPage" />
+      <template v-else>
       <!-- 全局背景增加微弱渐变，提升空间感 -->
       <div class="flex h-screen bg-gradient-to-br from-slate-50 via-[#F8FAFC] to-slate-100 overflow-hidden font-sans text-slate-800 selection:bg-indigo-100 selection:text-indigo-700">
         
@@ -127,7 +129,10 @@
            <!-- Scrollable Content -->
            <main class="flex-1 overflow-y-auto px-10 pb-10 custom-scrollbar">
               <!-- 使用 TransitionGroup 实现页面切换动画 -->
-              <Transition name="page-fade" mode="out-in">
+              <div v-if="!authStore.authReady" class="h-full flex items-center justify-center text-slate-400 text-sm">
+                正在校验登录态...
+              </div>
+              <Transition v-else name="page-fade" mode="out-in">
                   <div :key="currentTab" class="h-full">
                       <Workstation v-if="currentTab !== 'audio' && currentTab !== 'video' && currentTab !== 'assistant'" :active-tab="currentTab" @update-tab="currentTab = $event" />
                       <AudioStudio v-else-if="currentTab === 'audio'" />
@@ -139,6 +144,7 @@
         </div>
 
       </div>
+      </template>
     </n-message-provider>
   </n-config-provider>
 </template>
@@ -151,6 +157,7 @@ import Workstation from './views/Workstation.vue'
 import AudioStudio from './views/AudioStudio.vue'
 import VideoStudio from './components/VideoStudio.vue'
 import AssistantStudio from './views/AssistantStudio.vue'
+import CliSyncPage from './components/CliSyncPage.vue'
 import { useAuthStore } from './stores/auth'
 import { useLocaleStore } from './stores/locale'
 import logoMarkUrl from './assets/logo-mark.png'
@@ -160,6 +167,7 @@ const schoolLogoUrl = '/logo.png'
 const authStore = useAuthStore()
 const localeStore = useLocaleStore()
 const currentTab = ref('single')
+const isCliSyncPage = typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/cli-sync'
 
 const menuGroups = computed(() => [
   {
@@ -207,7 +215,7 @@ const getGreeting = computed(() => {
 })
 
 onMounted(() => {
-    authStore.checkAuth()
+    void authStore.checkAuth()
 })
 </script>
 

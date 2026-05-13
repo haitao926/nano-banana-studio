@@ -20,6 +20,29 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
+class CliDeviceApproveRequest(BaseModel):
+    user_code: Optional[str] = None
+    device_code: Optional[str] = None
+
+
+class CliDevicePollRequest(BaseModel):
+    device_code: str
+
+
+class CliDeviceStartResponse(BaseModel):
+    device_code: str
+    user_code: str
+    verification_uri: str
+    verification_uri_complete: str
+    expires_in: int
+    interval: int
+
+
+class CliDeviceSessionResponse(Token):
+    base_url: str
+    username: Optional[str] = None
+
+
 class SingleGenRequest(BaseModel):
     prompt: str
     size: str = "1024x1024"
@@ -151,16 +174,30 @@ class SystemVideoConfig(BaseModel):
     base_url: Optional[str] = None
 
 
+class CredentialConfig(BaseModel):
+    id: Optional[str] = None
+    label: str = ""
+    scope: Literal["system", "personal"] = "system"
+    service: Literal["image", "video", "audio", "digital_human", "prompt"] = "image"
+    provider: Optional[str] = None
+    base_url: Optional[str] = None
+    primary_secret: str = ""
+    backup_secrets: List[str] = Field(default_factory=list)
+    priority: Optional[int] = None
+    enabled: bool = True
+
+
 class ModelCatalogItem(BaseModel):
     model: str
     label: Optional[str] = None
     service: Literal["image", "video", "audio", "digital_human", "prompt"]
-    platform: Optional[str] = None
-    api_key: Optional[str] = None
-    backup_keys: List[str] = Field(default_factory=list)
+    provider: Optional[str] = None
     base_url: Optional[str] = None
     cost: Optional[int] = None
     enabled: bool = True
+    recommended: bool = False
+    allow_personal_override: bool = True
+    credential_chain: List[str] = Field(default_factory=list)
 
 
 class PromptChannelConfig(BaseModel):
@@ -169,11 +206,14 @@ class PromptChannelConfig(BaseModel):
 
 
 class SystemConfigUpdateRequest(BaseModel):
-    image: SystemImageConfig
-    tts: SystemTTSConfig
+    image: Optional[SystemImageConfig] = None
+    tts: Optional[SystemTTSConfig] = None
     video: Optional[SystemVideoConfig] = None
+    personal_access_enabled: Optional[bool] = None
     key_pools: Optional[List[Dict]] = None
     models: Optional[List[ModelCatalogItem]] = None
+    model_catalog: Optional[List[ModelCatalogItem]] = None
+    credentials: Optional[List[CredentialConfig]] = None
     prompt_channels: Optional[Dict[str, PromptChannelConfig]] = None
 
 
