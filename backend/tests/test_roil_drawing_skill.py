@@ -167,6 +167,44 @@ class RoilPreflightTests(unittest.TestCase):
         self.assertEqual(status["nbs_auth"]["sync_web"]["user_code"], "ABCD-EFGH")
         self.assertIn("auth sync-web", status["recommended_commands"]["sync_web"])
 
+    def test_build_status_reuses_pending_cli_sync_before_starting_new_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir, patch.dict(
+            os.environ,
+            {"NBS_AUTH_FILE": str(Path(tmpdir) / "auth.json")},
+            clear=False,
+        ):
+            roil_preflight.save_pending_cli_sync(
+                {
+                    "base_url": "https://image.roil.top",
+                    "device_code": "pending-device",
+                    "verification_uri": "https://image.roil.top/api/auth/cli/sync-page",
+                    "verification_uri_complete": "https://image.roil.top/api/auth/cli/sync-page?user_code=PEND-1234&device_code=pending-device",
+                    "user_code": "PEND-1234",
+                    "expires_in": 600,
+                    "interval": 1,
+                }
+            )
+            with patch.object(roil_preflight, "probe_platform", return_value={"reachable": True}), patch.object(
+                roil_preflight,
+                "detect_nbs_cli",
+                return_value={"available": False, "path": None, "source": None},
+            ), patch.object(
+                roil_preflight,
+                "inspect_nbs_auth",
+                return_value={"session_available": False, "auth_file_present": False, "access_token_present": False},
+            ), patch.object(
+                roil_preflight,
+                "_start_cli_sync",
+            ) as start_cli_sync:
+                status = roil_preflight.build_status(check_platform=True)
+
+        sync_web = status["nbs_auth"]["sync_web"]
+        self.assertEqual(status["recommended_next_step"], "sync_cli_from_browser")
+        self.assertEqual(sync_web["device_code"], "pending-device")
+        self.assertEqual(sync_web["user_code"], "PEND-1234")
+        self.assertTrue(sync_web["pending_reused"])
+        start_cli_sync.assert_not_called()
+
     def test_build_status_offers_browser_sync_without_nbs_cli(self) -> None:
         sync_payload = {
             "attempted": True,
@@ -587,6 +625,73 @@ class RoilDrawTests(unittest.TestCase):
         self.assertTrue(payload["prompt_path"].endswith(".prompt.txt"))
         run_nbs_generate.assert_not_called()
 
+    def test_main_polls_cli_sync_without_requiring_browser_open(self) -> None:
+        status = {
+            "platform_url": "https://image.roil.top/",
+            "platform_probe": {"reachable": True},
+            "recommended_next_step": "sync_cli_from_browser",
+            "nbs_auth": {
+                "session_available": False,
+                "sync_web": {
+                    "base_url": "https://image.roil.top",
+                    "device_code": "device-123",
+                    "verification_uri_complete": "https://image.roil.top/api/auth/cli/sync-page?user_code=ABCD-EFGH&device_code=device-123",
+                    "user_code": "ABCD-EFGH",
+                    "expires_in": 600,
+                    "interval": 1,
+                },
+            },
+            "nbs_cli": {"available": False},
+        }
+        generated = {
+            "success": True,
+            "status": "generated",
+            "via": "roil-platform-backend",
+            "runner": "roil-drawing",
+            "model": "gpt-image-2-all",
+            "output_path": "/tmp/generated.png",
+            "message": "generated",
+        }
+        argv = [
+            "roil_draw.py",
+            "--prompt",
+            "draw a cat",
+            "--out",
+            "/tmp/generated.png",
+        ]
+        stdout = io.StringIO()
+        with patch.object(roil_draw, "build_status", return_value=status), patch.object(
+            roil_draw,
+            "save_pending_cli_sync",
+        ) as save_pending_cli_sync, patch.object(
+            roil_draw,
+            "clear_pending_cli_sync",
+        ) as clear_pending_cli_sync, patch.object(
+            roil_draw,
+            "_poll_cli_sync",
+            return_value={"base_url": "https://image.roil.top", "username": "teacher"},
+        ) as poll_cli_sync, patch.object(
+            roil_draw,
+            "_run_platform_generate",
+            return_value=generated,
+        ) as run_platform_generate, patch.object(
+            roil_draw,
+            "_maybe_open_platform",
+        ) as maybe_open_platform, patch.object(
+            sys, "argv", argv
+        ), contextlib.redirect_stdout(stdout):
+            code = roil_draw.main()
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["via"], "roil-platform-backend")
+        self.assertEqual(payload["synced_via"], "web_device_flow")
+        save_pending_cli_sync.assert_called_once()
+        clear_pending_cli_sync.assert_called_once()
+        poll_cli_sync.assert_called_once()
+        run_platform_generate.assert_called_once()
+        maybe_open_platform.assert_not_called()
+
     def test_main_polls_browser_sync_and_generates_without_nbs_cli(self) -> None:
         status = {
             "platform_url": "https://image.roil.top/",
@@ -626,6 +731,12 @@ class RoilDrawTests(unittest.TestCase):
         stdout = io.StringIO()
         with patch.object(roil_draw, "build_status", return_value=status), patch.object(
             roil_draw,
+            "save_pending_cli_sync",
+        ) as save_pending_cli_sync, patch.object(
+            roil_draw,
+            "clear_pending_cli_sync",
+        ) as clear_pending_cli_sync, patch.object(
+            roil_draw,
             "_poll_cli_sync",
             return_value={"base_url": "https://image.roil.top", "username": "teacher"},
         ) as poll_cli_sync, patch.object(
@@ -644,6 +755,8 @@ class RoilDrawTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(payload["via"], "roil-platform-backend")
         self.assertEqual(payload["synced_via"], "web_device_flow")
+        save_pending_cli_sync.assert_called_once()
+        clear_pending_cli_sync.assert_called_once()
         poll_cli_sync.assert_called_once()
         run_platform_generate.assert_called_once()
         maybe_open_platform.assert_called_once()
